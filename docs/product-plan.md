@@ -47,6 +47,8 @@ Future users include people who want the same vault retrieval foundation from an
 - Index a vault locally and run basic search without sending note content outside the machine.
 - Start with manual index / reindex, then later support automatic index updates.
 - Stabilize the CLI and HTTP API so future clients can share the same server and core.
+- Add structured search filters in a later phase, such as path prefix and tag filters, after the Phase 1 retrieval foundation is stable.
+- Consider language-specific lexical tokenizers in a later phase, such as Japanese tokenization, after the portable Phase 1 lexical and semantic retrieval foundation is stable.
 
 ## Goals
 
@@ -127,7 +129,7 @@ In the initial product, one server process handles one vault root. The vault roo
 
 API and CLI output should return vault-relative paths by default. Absolute paths should appear only when needed for setup or diagnostics, and private paths should not be leaked into logs or responses.
 
-The CLI should provide a `vault config` command for user-local configuration. The initial scope is limited to local settings required for server and CLI connectivity, such as the vault root, server endpoint, and bind / access settings. Provider credentials and private paths should live in user-local config or environment variables, not in the repository.
+The CLI should provide a `vault-agent config` command for user-local configuration. The initial scope is limited to local settings required for server and CLI connectivity, such as the vault root, server endpoint, and bind / access settings. Provider credentials and private paths should live in user-local config or environment variables, not in the repository.
 
 Client endpoint resolution should be defined in phase specifications, but the default endpoint is the local-only `http://127.0.0.1:8787`.
 
@@ -251,21 +253,25 @@ External embedding providers such as OpenAI can be added later, but they must no
 Initial commands:
 
 ```bash
-vault config
-vault config set vault.root "/path/to/vault"
-vault serve
-vault index
-vault search "local embedding privacy"
-vault get "Examples/Search Architecture.md"
-vault related "Examples/Search Architecture.md"
+vault-agent config get
+vault-agent config set vault.root "/path/to/vault"
+vault-agent config path
+vault-agent serve
+vault-agent index
+vault-agent reindex
+vault-agent search "local embedding privacy"
+vault-agent related "<note-or-chunk-id>"
+vault-agent get note "<note-id>"
+vault-agent get chunk "<note-id>" "<chunk-index>"
+vault-agent get attachment "attachments/example.pdf"
 ```
 
 Post-MVP commands:
 
 ```bash
-vault sync
-vault chat "summarize the requirements related to this design note"
-vault chat
+vault-agent sync
+vault-agent chat "summarize the requirements related to this design note"
+vault-agent chat
 ```
 
 Responsibility split:
@@ -283,12 +289,12 @@ The MVP is Phase 1: Retrieval Foundation. Phase 2 and later are post-MVP extensi
 
 ### Phase 1: Retrieval Foundation
 
-- `vault serve`
-- `vault config`
-- `vault index`
-- `vault search`
-- `vault get`
-- `vault related`
+- `vault-agent serve`
+- `vault-agent config`
+- `vault-agent index`
+- `vault-agent search`
+- `vault-agent get`
+- `vault-agent related`
 - Local HTTP API used by the CLI
 - Stable request / response schemas for search, get, related, and reindex
 - Endpoint configuration
@@ -305,11 +311,11 @@ Purpose: let Codex, opencode, Claude Code, and similar CLI-based agent workflows
 - Manual reindex fallback
 - Provider / model change reindex guidance
 - Opt-in Git sync for remote / server deployments
-- `vault sync` for configured Git checkout updates
+- `vault-agent sync` for configured Git checkout updates
 - Manual / scheduled / webhook-triggered Git sync policy
 - File tree change detection and index stale handling after `git fetch` / `git pull`
 
-Purpose: stop depending only on manual `vault index` and let the system follow vault changes in a local-first way. If the vault root on a remote server is a Git checkout, explicitly configured sync policy should support manual, scheduled, or webhook-triggered `git fetch` / `git pull`, then connect resulting file changes to stale index handling or reindexing.
+Purpose: stop depending only on manual `vault-agent index` and let the system follow vault changes in a local-first way. If the vault root on a remote server is a Git checkout, explicitly configured sync policy should support manual, scheduled, or webhook-triggered `git fetch` / `git pull`, then connect resulting file changes to stale index handling or reindexing.
 
 Git sync is not a note writing or editing workflow. It is a helper that lets a read-only retrieval server update a vault checkout managed elsewhere. Automatic pull is opt-in and must explicitly configure the target repository / branch, schedule or webhook, credentials, and access control. Conflict handling, dirty worktree behavior, and remote URL handling are defined in the Phase 2 specification. The system must not perform implicit push or automatic conflict resolution. Automatic pull should default to clean-worktree and fast-forward-only behavior.
 
@@ -324,8 +330,8 @@ Purpose: let MCP-compatible clients safely retrieve vault context in stages.
 
 ### Phase 4: LLM Integration
 
-- `vault chat "question"` for single-shot vault-aware answers
-- `vault chat` for interactive sessions
+- `vault-agent chat "question"` for single-shot vault-aware answers
+- `vault-agent chat` for interactive sessions
 - HTTP chat interface for single-shot and explicit-session usage
 - LLM provider settings
 - Conversation history
@@ -333,7 +339,7 @@ Purpose: let MCP-compatible clients safely retrieve vault context in stages.
 
 Purpose: let users ask vault-aware questions directly from the CLI without going through Codex or another external agent.
 
-`vault chat "question"` returns a single-shot answer and exits. By default it does not persist conversation history. `vault chat` starts an interactive session and keeps conversation history for that session. For HTTP clients, single-shot chat should not require a persistent session, while interactive chat assumes the client explicitly provides a session id. Chat does not write or edit notes.
+`vault-agent chat "question"` returns a single-shot answer and exits. By default it does not persist conversation history. `vault-agent chat` starts an interactive session and keeps conversation history for that session. For HTTP clients, single-shot chat should not require a persistent session, while interactive chat assumes the client explicitly provides a session id. Chat does not write or edit notes.
 
 ### Phase 5: Obsidian Plugin
 

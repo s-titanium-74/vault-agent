@@ -71,6 +71,8 @@ Markdown notes may expose attachment references as compact metadata where useful
 Attachment retrieval is explicit and limited:
 
 - Attachments are addressed by vault-relative path.
+- Attachment retrieval is limited to regular non-Markdown files inside the configured vault root.
+- Attachment retrieval must not bypass note retrieval, default exclusions, user-configured exclusions, or path safety rules.
 - The default attachment response returns metadata only.
 - File bytes are returned only through an explicit download option.
 - Attachment downloads have a default size limit.
@@ -79,7 +81,9 @@ Attachment retrieval is explicit and limited:
 
 ## Indexing
 
-Indexing is manually triggered in Phase 1.
+Indexing is manually triggered in Phase 1, except for an optional first-run bootstrap when no usable index exists.
+
+The first-run bootstrap may build the initial index during server startup. It must not watch files, automatically update an existing index, or silently repair stale or incompatible indexes.
 
 `index` should attempt an incremental update when an index already exists. `reindex` performs a full rebuild.
 
@@ -94,6 +98,8 @@ Index data is private derived data from the vault. By default, indexes must be s
 Index paths should be derived from a vault identifier, such as a hash of the vault root. Generated indexes must be excluded from commits.
 
 Stale index conditions should be detectable where practical.
+
+Large Markdown notes may be registered as retrievable note records even when their bodies are too large to chunk, search, or embed in Phase 1. Explicit note retrieval still applies the configured retrieval size limits.
 
 ## Embeddings
 
@@ -116,7 +122,7 @@ Embedding failures must not corrupt or remove a usable lexical index. If lexical
 When embedding search is unavailable:
 
 - Hybrid search may fall back to lexical search.
-- The fallback must be visible in search and related responses.
+- The fallback must be visible in search and related responses when an embedding-capable mode was explicitly requested or embeddings are configured but unavailable.
 - Explicit embedding-only mode must fail with an actionable error.
 
 Warnings and errors must not include raw note content, raw chunks, secrets, provider credentials, or private absolute paths.
@@ -196,7 +202,8 @@ Inputs:
 Default behavior:
 
 - If embeddings are configured and available, related defaults to embedding-based retrieval.
-- If embeddings are not configured, related falls back to lexical candidate retrieval.
+- If embeddings are not configured, related defaults to lexical candidate retrieval without a warning.
+- If embeddings are configured but unavailable, related falls back to lexical candidate retrieval with a visible warning.
 
 `related` must not silently retrieve note bodies or chunk bodies. Body retrieval must go through explicit note or chunk retrieval.
 
@@ -206,11 +213,11 @@ The input note or chunk itself must be excluded from related results. The exact 
 
 ## Snippets
 
-Search and related results include short snippets.
+Search and related results include short snippets where safe.
 
 A snippet is shorter than a chunk, is not independently retrievable, and is used only to help the user or agent decide whether to retrieve the note or chunk.
 
-Snippets must not contain full note bodies or full chunks. Exact snippet length limits are specification concerns.
+Snippets must not contain full note bodies or full chunks. If a chunk is too short to excerpt without returning the whole chunk, the snippet may be empty. Exact snippet length limits are specification concerns.
 
 ## Result Shape
 
@@ -222,7 +229,7 @@ Each search or related result must include:
 - Vault-relative path.
 - Title where available.
 - Heading where available.
-- Short snippet.
+- Short snippet, which may be empty when needed to avoid returning a full chunk.
 - Score.
 - Reason.
 - Compact allowlisted metadata.
@@ -293,11 +300,12 @@ The required Phase 1 HTTP API is:
 
 - `GET /health`
 - `POST /index`
+- `POST /reindex`
 - `POST /search`
 - `POST /related`
 - `GET /notes/{noteId}`
 - `GET /chunks/{noteId}/{chunkIndex}`
-- `GET /attachments/{vaultRelativePath}`
+- `GET /attachments/{*vaultRelativePath}`
 
 Known resource retrieval uses `GET`.
 
@@ -322,6 +330,8 @@ Binding outside localhost requires:
 - A startup warning.
 
 API keys must come from user-local configuration or environment variables. API keys must not be committed to the repository.
+
+Automatically generated API keys must be written only to user-local configuration, not to arbitrary configuration paths or repository files.
 
 API keys are supplied with:
 
@@ -367,6 +377,8 @@ Large note and attachment retrieval must support an explicit allow option.
 
 Phase 1 does not require a `status` or `doctor` command. Embedding fallback and availability issues must be visible in search and related responses.
 
+Phase 1 CLI retrieval and indexing commands are server-backed. If the server is unreachable, commands must fail with an actionable message that tells the user how to start or configure the server.
+
 ## Configuration
 
 User-local configuration uses TOML.
@@ -393,7 +405,9 @@ Configuration covers at least:
 
 The repository may include only public-safe example configuration. Private vault paths, credentials, API keys, tokens, private endpoints, and provider-specific secrets must not be committed.
 
-Configuration commands and API responses must not display secret values. For API keys, tokens, credentials, and provider secrets, output may indicate only whether a value is set. Phase 1 should not include an option to print secret values.
+Configuration commands and API responses must not display secret values by default. For API keys, tokens, credentials, and provider secrets, output may indicate only whether a value is set.
+
+Phase 1 may include an explicit API-key reveal command for remote client setup. This command must be narrow, intentional, and must not affect normal configuration display behavior.
 
 API responses, logs, errors, search results, related results, note responses, chunk responses, and attachment responses must not return private absolute paths by default. Explicit local CLI configuration commands, such as `vault-agent config get` and `vault-agent config path`, may display configured local paths so users can inspect their own setup.
 
@@ -469,7 +483,7 @@ Phase 1 is complete when:
 - CLI supports compact human-readable output and `--json`.
 - Non-localhost bind requires API key authentication.
 - Retrieval rejects path inputs that resolve outside the configured vault root.
-- Configuration output indicates whether secrets are set without printing secret values.
+- Normal configuration output indicates whether secrets are set without printing secret values.
 - Search and related return actionable errors when no usable index exists.
 - Detected embedding fallback, stale index, incomplete index, or incompatible index state is visible through warnings or errors.
 - Malformed frontmatter in one note does not fail indexing for the whole vault.
