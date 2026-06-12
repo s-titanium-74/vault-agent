@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -25,10 +25,7 @@ let fakeServerPort: number;
 
 const EMBEDDING_DIMENSION = 8;
 
-function deterministicVector(
-  input: string,
-  dimension: number,
-): Float32Array {
+function deterministicVector(input: string, dimension: number): Float32Array {
   const vec = new Float32Array(dimension);
   let hash = 0;
   for (let i = 0; i < input.length; i++) {
@@ -67,7 +64,9 @@ function startFakeServer(): Promise<void> {
           const data = inputs.map((input: string, index: number) => ({
             object: "embedding",
             index,
-            embedding: Array.from(deterministicVector(input, EMBEDDING_DIMENSION)),
+            embedding: Array.from(
+              deterministicVector(input, EMBEDDING_DIMENSION),
+            ),
           }));
 
           res.writeHead(200, { "Content-Type": "application/json" });
@@ -388,9 +387,7 @@ describe("Embedding provider integration", () => {
           config,
         );
 
-        const noteTypeResults = result.results.filter(
-          (r) => r.type === "note",
-        );
+        const noteTypeResults = result.results.filter((r) => r.type === "note");
         expect(noteTypeResults.length).toBeGreaterThan(0);
 
         for (const nr of noteTypeResults) {
@@ -408,13 +405,7 @@ describe("Embedding provider integration", () => {
       const store = await openStoreForConfig(config);
 
       try {
-        const result = await search(
-          store,
-          "empty note",
-          "lexical",
-          10,
-          config,
-        );
+        const result = await search(store, "empty note", "lexical", 10, config);
 
         const emptyNoteResults = result.results.filter(
           (r) => r.noteId === store.getNoteByPath("Empty.md")!.note_id,
@@ -429,14 +420,24 @@ describe("Embedding provider integration", () => {
 
   describe("EmbeddingProvider - endpoint validation", () => {
     it("accepts localhost endpoints", () => {
-      expect(validateEmbeddingEndpoint("http://127.0.0.1:11434/v1/embeddings")).toBeNull();
-      expect(validateEmbeddingEndpoint("http://localhost:11434/v1/embeddings")).toBeNull();
-      expect(validateEmbeddingEndpoint("http://[::1]:11434/v1/embeddings")).toBeNull();
+      expect(
+        validateEmbeddingEndpoint("http://127.0.0.1:11434/v1/embeddings"),
+      ).toBeNull();
+      expect(
+        validateEmbeddingEndpoint("http://localhost:11434/v1/embeddings"),
+      ).toBeNull();
+      expect(
+        validateEmbeddingEndpoint("http://[::1]:11434/v1/embeddings"),
+      ).toBeNull();
     });
 
     it("rejects non-localhost endpoints", () => {
-      expect(validateEmbeddingEndpoint("http://192.168.1.1:11434/v1/embeddings")).not.toBeNull();
-      expect(validateEmbeddingEndpoint("http://example.com:11434/v1/embeddings")).not.toBeNull();
+      expect(
+        validateEmbeddingEndpoint("http://192.168.1.1:11434/v1/embeddings"),
+      ).not.toBeNull();
+      expect(
+        validateEmbeddingEndpoint("http://example.com:11434/v1/embeddings"),
+      ).not.toBeNull();
     });
 
     it("rejects invalid URLs", () => {
@@ -478,7 +479,10 @@ describe("Embedding provider integration", () => {
       });
 
       const provider = new EmbeddingProvider(config);
-      const texts = Array.from({ length: EMBEDDING_BATCH_SIZE + 5 }, (_, i) => `text ${i}`);
+      const texts = Array.from(
+        { length: EMBEDDING_BATCH_SIZE + 5 },
+        (_, i) => `text ${i}`,
+      );
 
       const result = await provider.embed(texts);
       expect(result.embeddings).toHaveLength(EMBEDDING_BATCH_SIZE + 5);
@@ -671,6 +675,65 @@ describe("Embedding provider integration", () => {
       }
     });
 
+    it("falls back to lexical search when hybrid query embedding generation fails", async () => {
+      await indexVault(configWithEmbedding);
+      configWithEmbedding.embedding.endpoint =
+        "http://127.0.0.1:1/v1/embeddings";
+
+      const store = await openStoreForConfig(
+        configWithEmbedding,
+        EMBEDDING_DIMENSION,
+      );
+      try {
+        const provider = new EmbeddingProvider(configWithEmbedding);
+
+        const result = await search(
+          store,
+          "search",
+          "hybrid",
+          10,
+          configWithEmbedding,
+          provider,
+        );
+
+        expect(result.requestedMode).toBe("hybrid");
+        expect(result.usedMode).toBe("lexical");
+        expect(result.results.length).toBeGreaterThan(0);
+        expect(result.warnings).toContainEqual(
+          expect.objectContaining({ code: "EMBEDDING_UNAVAILABLE" }),
+        );
+      } finally {
+        store.close();
+      }
+    });
+
+    it("throws SearchError when embedding-only query embedding generation fails", async () => {
+      await indexVault(configWithEmbedding);
+      configWithEmbedding.embedding.endpoint =
+        "http://127.0.0.1:1/v1/embeddings";
+
+      const store = await openStoreForConfig(
+        configWithEmbedding,
+        EMBEDDING_DIMENSION,
+      );
+      try {
+        const provider = new EmbeddingProvider(configWithEmbedding);
+
+        await expect(
+          search(
+            store,
+            "search",
+            "embedding",
+            10,
+            configWithEmbedding,
+            provider,
+          ),
+        ).rejects.toMatchObject({ code: "EMBEDDING_UNAVAILABLE" });
+      } finally {
+        store.close();
+      }
+    });
+
     it("uses related with embedding mode using a provider", async () => {
       await indexVault(configWithEmbedding);
 
@@ -701,12 +764,79 @@ describe("Embedding provider integration", () => {
         store.close();
       }
     });
+
+    it("falls back to lexical related results when hybrid query embedding generation fails", async () => {
+      await indexVault(configWithEmbedding);
+      configWithEmbedding.embedding.endpoint =
+        "http://127.0.0.1:1/v1/embeddings";
+
+      const store = await openStoreForConfig(
+        configWithEmbedding,
+        EMBEDDING_DIMENSION,
+      );
+      try {
+        const provider = new EmbeddingProvider(configWithEmbedding);
+        const notes = store.getAllNotes();
+        const noteId = notes[0]!.note_id as string;
+
+        const result = await getRelated(
+          store,
+          "note",
+          noteId,
+          "hybrid",
+          10,
+          configWithEmbedding,
+          provider,
+        );
+
+        expect(result.requestedMode).toBe("hybrid");
+        expect(result.usedMode).toBe("lexical");
+        expect(result.results.length).toBeGreaterThan(0);
+        expect(result.warnings).toContainEqual(
+          expect.objectContaining({ code: "EMBEDDING_UNAVAILABLE" }),
+        );
+      } finally {
+        store.close();
+      }
+    });
+
+    it("throws SearchError when embedding-only related query embedding generation fails", async () => {
+      await indexVault(configWithEmbedding);
+      configWithEmbedding.embedding.endpoint =
+        "http://127.0.0.1:1/v1/embeddings";
+
+      const store = await openStoreForConfig(
+        configWithEmbedding,
+        EMBEDDING_DIMENSION,
+      );
+      try {
+        const provider = new EmbeddingProvider(configWithEmbedding);
+        const notes = store.getAllNotes();
+        const noteId = notes[0]!.note_id as string;
+
+        await expect(
+          getRelated(
+            store,
+            "note",
+            noteId,
+            "embedding",
+            10,
+            configWithEmbedding,
+            provider,
+          ),
+        ).rejects.toMatchObject({ code: "EMBEDDING_UNAVAILABLE" });
+      } finally {
+        store.close();
+      }
+    });
   });
 
   describe("Embedding failure behavior", () => {
     it("indexing succeeds with warning when embedding fails and require=false", async () => {
       const vaultDir = createTestVault();
-      const indexDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-idx-"));
+      const indexDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "vault-agent-idx-"),
+      );
       const config = createTestConfig(vaultDir, indexDir, {
         enabled: true,
         model: "test-model",
@@ -730,7 +860,9 @@ describe("Embedding provider integration", () => {
 
     it("indexing fails when embedding fails and require=true", async () => {
       const vaultDir = createTestVault();
-      const indexDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-idx-"));
+      const indexDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "vault-agent-idx-"),
+      );
       const config = createTestConfig(vaultDir, indexDir, {
         enabled: true,
         model: "test-model",
@@ -741,6 +873,32 @@ describe("Embedding provider integration", () => {
       try {
         await expect(indexVault(config)).rejects.toThrow();
       } finally {
+        fs.rmSync(vaultDir, { recursive: true, force: true });
+        fs.rmSync(indexDir, { recursive: true, force: true });
+      }
+    });
+
+    it("indexing fails when embeddings are required but sqlite-vec is unavailable", async () => {
+      const vaultDir = createTestVault();
+      const indexDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "vault-agent-idx-"),
+      );
+      const config = createTestConfig(vaultDir, indexDir, {
+        enabled: true,
+        model: "test-model",
+        endpoint: "http://127.0.0.1:1/v1/embeddings",
+        require: true,
+      });
+      const vecSpy = vi
+        .spyOn(IndexStore.prototype, "isVecAvailable")
+        .mockReturnValue(false);
+
+      try {
+        await expect(indexVault(config)).rejects.toMatchObject({
+          code: "EMBEDDING_UNAVAILABLE",
+        });
+      } finally {
+        vecSpy.mockRestore();
         fs.rmSync(vaultDir, { recursive: true, force: true });
         fs.rmSync(indexDir, { recursive: true, force: true });
       }

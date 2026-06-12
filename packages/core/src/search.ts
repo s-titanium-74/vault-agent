@@ -9,11 +9,8 @@ import {
 } from "./schemas.js";
 import { Config } from "./config.js";
 import { SearchError } from "./errors.js";
-import { EmbeddingProvider } from "./embedding.js";
-import {
-  chunkToResultItem,
-  noteRowToResultItem,
-} from "./result-helpers.js";
+import { EmbeddingProvider, EmbeddingProviderError } from "./embedding.js";
+import { chunkToResultItem, noteRowToResultItem } from "./result-helpers.js";
 
 export async function search(
   store: IndexStore,
@@ -106,14 +103,30 @@ export async function search(
       };
     }
 
-    // Hybrid mode: combine with embedding results when available
     if (embeddingsAvailable) {
-      const embeddingResults = await searchEmbedding(
-        store,
-        query,
-        effectiveLimit,
-        embeddingProvider,
-      );
+      let embeddingResults: SearchResultItem[];
+      try {
+        embeddingResults = await searchEmbedding(
+          store,
+          query,
+          effectiveLimit,
+          embeddingProvider,
+        );
+      } catch (error) {
+        if (!(error instanceof EmbeddingProviderError)) throw error;
+        warnings.push({
+          code: "EMBEDDING_UNAVAILABLE",
+          message:
+            "Embeddings are unavailable. Falling back to lexical search.",
+        });
+        return {
+          requestedMode,
+          usedMode: "lexical",
+          limit: effectiveLimit,
+          results: lexicalResults.slice(0, effectiveLimit),
+          warnings,
+        };
+      }
       return {
         requestedMode,
         usedMode: "hybrid",
@@ -133,12 +146,21 @@ export async function search(
   }
 
   if (usedMode === "embedding") {
-    const embeddingResults = await searchEmbedding(
-      store,
-      query,
-      effectiveLimit,
-      embeddingProvider,
-    );
+    let embeddingResults: SearchResultItem[];
+    try {
+      embeddingResults = await searchEmbedding(
+        store,
+        query,
+        effectiveLimit,
+        embeddingProvider,
+      );
+    } catch (error) {
+      if (!(error instanceof EmbeddingProviderError)) throw error;
+      throw new SearchError(
+        "EMBEDDING_UNAVAILABLE",
+        "Embeddings are unavailable. Cannot perform embedding-only search.",
+      );
+    }
     return {
       requestedMode,
       usedMode,
