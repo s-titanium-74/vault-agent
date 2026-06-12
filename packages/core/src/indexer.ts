@@ -5,12 +5,7 @@ import { chunkNote } from "./chunking.js";
 import { noteIdFromPath, vaultIdentity } from "./identifiers.js";
 import { validateVaultPath } from "./pathsafety.js";
 import { Config } from "./config.js";
-import {
-  Note,
-  IndexManifest,
-  IndexResult,
-  IndexWarning,
-} from "./types.js";
+import { Note, IndexManifest, IndexResult, IndexWarning } from "./types.js";
 import {
   INDEX_SCHEMA_VERSION,
   DEFAULT_EXCLUDE_PATTERNS,
@@ -306,7 +301,19 @@ async function performIndex(
       indexedAt: Date.now(),
     };
 
-    if (config.embedding.enabled && store.isVecAvailable()) {
+    if (config.embedding.enabled && !store.isVecAvailable()) {
+      if (effectiveRequireEmbeddings) {
+        throw new IndexError(
+          "EMBEDDING_UNAVAILABLE",
+          "Embedding search is unavailable because sqlite-vec could not be loaded.",
+        );
+      }
+      warnings.push({
+        code: "EMBEDDING_UNAVAILABLE",
+        message:
+          "Embedding search is unavailable because sqlite-vec could not be loaded. Lexical index is still usable.",
+      });
+    } else if (config.embedding.enabled) {
       if (!config.embedding.model) {
         if (effectiveRequireEmbeddings) {
           throw new IndexError(
@@ -372,7 +379,7 @@ async function performIndex(
               manifest.embeddingModel = result.model;
               manifest.embeddingDimension = result.dimension;
             }
-} catch (error) {
+          } catch (error) {
             if (effectiveRequireEmbeddings) {
               if (error instanceof EmbeddingProviderError) {
                 throw new IndexError("EMBEDDING_FAILED", error.message);

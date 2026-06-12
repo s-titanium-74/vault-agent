@@ -10,10 +10,8 @@ import {
 import { Config } from "./config.js";
 import { isValidNoteId, parseChunkId } from "./identifiers.js";
 import { SearchError } from "./errors.js";
-import { EmbeddingProvider } from "./embedding.js";
-import {
-  chunkToResultItem,
-} from "./result-helpers.js";
+import { EmbeddingProvider, EmbeddingProviderError } from "./embedding.js";
+import { chunkToResultItem } from "./result-helpers.js";
 
 export async function getRelated(
   store: IndexStore,
@@ -213,8 +211,20 @@ export async function getRelated(
           );
         }
       }
-    } catch {
-      // Embedding search failed, continue with lexical only
+    } catch (error) {
+      if (!(error instanceof EmbeddingProviderError)) throw error;
+      if (mode === "embedding") {
+        throw new SearchError(
+          "EMBEDDING_UNAVAILABLE",
+          "Embeddings are unavailable. Cannot perform embedding-only retrieval.",
+        );
+      }
+      usedMode = "lexical";
+      warnings.push({
+        code: "EMBEDDING_UNAVAILABLE",
+        message:
+          "Embeddings are unavailable. Falling back to lexical retrieval.",
+      });
     }
   }
 

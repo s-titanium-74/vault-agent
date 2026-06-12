@@ -30,13 +30,17 @@ import {
   EmbeddingProvider,
 } from "@vault-agent/core";
 
-const indexRequestSchema = z.object({
-  requireEmbeddings: z.boolean().optional(),
-}).strict();
+const indexRequestSchema = z
+  .object({
+    requireEmbeddings: z.boolean().optional(),
+  })
+  .strict();
 
-const reindexRequestSchema = z.object({
-  requireEmbeddings: z.boolean().optional(),
-}).strict();
+const reindexRequestSchema = z
+  .object({
+    requireEmbeddings: z.boolean().optional(),
+  })
+  .strict();
 
 let store: IndexStore | null = null;
 let config: Config | null = null;
@@ -70,14 +74,23 @@ function err(code: string, message: string, requestId: string) {
   };
 }
 
-function validationErrorCode(
-  error: z.ZodError,
-  fallbackCode: string,
-): string {
+function validationErrorCode(error: z.ZodError, fallbackCode: string): string {
   const fields = new Set(error.issues.map((issue) => String(issue.path[0])));
   if (fields.has("limit")) return "INVALID_LIMIT";
   if (fields.has("mode")) return "INVALID_MODE";
   return fallbackCode;
+}
+
+function indexErrorStatus(error: IndexError): number | null {
+  if (error.code === "INDEX_BUSY") return 409;
+  if (error.code === "EMBEDDING_CONFIG_INVALID") return 400;
+  if (
+    error.code === "EMBEDDING_FAILED" ||
+    error.code === "EMBEDDING_UNAVAILABLE"
+  ) {
+    return 503;
+  }
+  return null;
 }
 
 export interface PrepareServerAccessOptions {
@@ -127,7 +140,9 @@ export function prepareServerAccessConfig(
 function validateServerAccessConfig(appConfig: Config): void {
   if (isLocalhostHost(appConfig.server.host)) return;
   if (!appConfig.server.apiKey) {
-    throw new Error("API_KEY_REQUIRED: Non-localhost bind requires an API key.");
+    throw new Error(
+      "API_KEY_REQUIRED: Non-localhost bind requires an API key.",
+    );
   }
   validateRemoteApiKey(appConfig.server.apiKey);
 }
@@ -304,10 +319,12 @@ export async function createServer(
         warnings: result.warnings.slice(0, 100),
       };
     } catch (error) {
-      if (error instanceof IndexError && error.code === "INDEX_BUSY") {
+      if (error instanceof IndexError) {
+        const status = indexErrorStatus(error);
+        if (status === null) throw error;
         return reply
-          .code(409)
-          .send(err("INDEX_BUSY", error.message, request.id));
+          .code(status)
+          .send(err(error.code, error.message, request.id));
       }
       throw error;
     }
@@ -343,6 +360,9 @@ export async function createServer(
 
     try {
       const result = await reindexVault(appConfig, { requireEmbeddings });
+      const reopenedStore = await IndexStore.open(store.getDbPath());
+      store.close();
+      initApp(reopenedStore, appConfig);
 
       return {
         data: {
@@ -355,10 +375,12 @@ export async function createServer(
         warnings: result.warnings.slice(0, 100),
       };
     } catch (error) {
-      if (error instanceof IndexError && error.code === "INDEX_BUSY") {
+      if (error instanceof IndexError) {
+        const status = indexErrorStatus(error);
+        if (status === null) throw error;
         return reply
-          .code(409)
-          .send(err("INDEX_BUSY", error.message, request.id));
+          .code(status)
+          .send(err(error.code, error.message, request.id));
       }
       throw error;
     }

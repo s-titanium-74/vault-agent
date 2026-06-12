@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -132,7 +132,9 @@ describe("Server Routes", () => {
 
   beforeEach(async () => {
     vaultDir = createTestVault();
-    indexDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-server-idx-"));
+    indexDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vault-agent-server-idx-"),
+    );
     config = createTestConfig(vaultDir, indexDir);
 
     await indexVault(config);
@@ -433,7 +435,10 @@ describe("Server Routes", () => {
     it("returns attachment metadata", async () => {
       const attachmentsDir = path.join(vaultDir, "attachments");
       fs.mkdirSync(attachmentsDir, { recursive: true });
-      fs.writeFileSync(path.join(attachmentsDir, "diagram.png"), "fake-png-data");
+      fs.writeFileSync(
+        path.join(attachmentsDir, "diagram.png"),
+        "fake-png-data",
+      );
 
       const response = await app.inject({
         method: "GET",
@@ -451,7 +456,10 @@ describe("Server Routes", () => {
     it("returns attachment bytes with download=true", async () => {
       const attachmentsDir = path.join(vaultDir, "attachments");
       fs.mkdirSync(attachmentsDir, { recursive: true });
-      fs.writeFileSync(path.join(attachmentsDir, "data.csv"), "id,name\n1,test");
+      fs.writeFileSync(
+        path.join(attachmentsDir, "data.csv"),
+        "id,name\n1,test",
+      );
 
       const response = await app.inject({
         method: "GET",
@@ -478,7 +486,10 @@ describe("Server Routes", () => {
       config.vault.exclude.push("attachments/private/**");
       const attachmentsDir = path.join(vaultDir, "attachments", "private");
       fs.mkdirSync(attachmentsDir, { recursive: true });
-      fs.writeFileSync(path.join(attachmentsDir, "secret.pdf"), "fake-pdf-data");
+      fs.writeFileSync(
+        path.join(attachmentsDir, "secret.pdf"),
+        "fake-pdf-data",
+      );
 
       const response = await app.inject({
         method: "GET",
@@ -523,7 +534,7 @@ describe("Server Routes", () => {
   describe("413 NOTE_TOO_LARGE for oversized note", () => {
     it("returns 413 when note exceeds size limit without allowLarge", async () => {
       const largeContent =
-        "---\ntitle: \"Large Note\"\n---\n\n" +
+        '---\ntitle: "Large Note"\n---\n\n' +
         "x".repeat(DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT + 1000);
       fs.writeFileSync(path.join(vaultDir, "LargeNote.md"), largeContent);
 
@@ -698,6 +709,28 @@ describe("Server Routes", () => {
       const body = response.json();
       expect(body.data.mode).toBeTruthy();
     });
+
+    it("returns 503 when required embeddings are unavailable", async () => {
+      config.embedding.enabled = true;
+      config.embedding.model = "test-model";
+      const vecSpy = vi
+        .spyOn(IndexStore.prototype, "isVecAvailable")
+        .mockReturnValue(false);
+
+      try {
+        const response = await app.inject({
+          method: "POST",
+          url: "/index",
+          payload: { requireEmbeddings: true },
+        });
+
+        expect(response.statusCode).toBe(503);
+        const body = response.json();
+        expect(body.error.code).toBe("EMBEDDING_UNAVAILABLE");
+      } finally {
+        vecSpy.mockRestore();
+      }
+    });
   });
 
   describe("POST /reindex with requireEmbeddings", () => {
@@ -711,6 +744,54 @@ describe("Server Routes", () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.mode).toBeTruthy();
+    });
+
+    it("returns 503 when required embeddings are unavailable", async () => {
+      config.embedding.enabled = true;
+      config.embedding.model = "test-model";
+      const vecSpy = vi
+        .spyOn(IndexStore.prototype, "isVecAvailable")
+        .mockReturnValue(false);
+
+      try {
+        const response = await app.inject({
+          method: "POST",
+          url: "/reindex",
+          payload: { requireEmbeddings: true },
+        });
+
+        expect(response.statusCode).toBe(503);
+        const body = response.json();
+        expect(body.error.code).toBe("EMBEDDING_UNAVAILABLE");
+      } finally {
+        vecSpy.mockRestore();
+      }
+    });
+
+    it("serves results from the rebuilt index after reindex completes", async () => {
+      fs.writeFileSync(
+        path.join(vaultDir, "Fresh.md"),
+        "# Fresh Note\n\nFresh-only phrase after reindex.",
+      );
+
+      const reindexResponse = await app.inject({
+        method: "POST",
+        url: "/reindex",
+      });
+
+      expect(reindexResponse.statusCode).toBe(200);
+
+      const searchResponse = await app.inject({
+        method: "POST",
+        url: "/search",
+        payload: { query: "fresh-only", mode: "lexical" },
+      });
+
+      expect(searchResponse.statusCode).toBe(200);
+      const body = searchResponse.json();
+      expect(body.data.results).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: "Fresh.md" })]),
+      );
     });
   });
 });
@@ -828,7 +909,9 @@ describe("Server non-localhost access policy", () => {
     remoteConfig.server.host = "0.0.0.0";
     remoteConfig.server.apiKey = "";
 
-    await expect(createServer(remoteConfig)).rejects.toThrow("API_KEY_REQUIRED");
+    await expect(createServer(remoteConfig)).rejects.toThrow(
+      "API_KEY_REQUIRED",
+    );
   });
 
   it("rejects non-localhost bind with a short API key", async () => {
@@ -836,7 +919,9 @@ describe("Server non-localhost access policy", () => {
     remoteConfig.server.host = "0.0.0.0";
     remoteConfig.server.apiKey = "short";
 
-    await expect(createServer(remoteConfig)).rejects.toThrow("API_KEY_REQUIRED");
+    await expect(createServer(remoteConfig)).rejects.toThrow(
+      "API_KEY_REQUIRED",
+    );
   });
 
   it("generates and stores an API key only for the default user-local config path", () => {
