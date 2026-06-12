@@ -39,11 +39,21 @@ This repository is intended to become the public `vault-agent` project: a standa
 - `server` owns HTTP routing, request validation, endpoint configuration, access control boundaries, and delegation to core.
 - `cli` owns argument parsing, user-facing command behavior, output formatting, endpoint resolution, and server communication.
 - Do not duplicate core search, indexing, or note lookup behavior in server route handlers or clients.
-- TODO: Add concrete source directory paths once the project structure exists.
+- Core source lives under `packages/core/src`.
+- Server source lives under `packages/server/src`.
+- CLI source lives under `packages/cli/src`.
 
 ## Working Commands
 
-- TODO: Add install, test, typecheck, lint, server, and local CLI commands once the implementation stack and package scripts exist.
+- `npm install`: Install dependencies
+- `npm run build`: Build all packages
+- `npm run typecheck`: Type-check all packages
+- `npm run lint`: Lint source files
+- `npm run format`: Format source files
+- `npm run format:check`: Check formatting
+- `npm test` or `npm run test`: Run all tests
+- `npm run test:watch`: Run tests in watch mode
+- `npm run dev:server`: Start the development server with tsx
 
 ## Test And Fixture Policy
 

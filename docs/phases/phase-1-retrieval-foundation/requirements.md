@@ -366,6 +366,7 @@ Required Phase 1 CLI commands:
 - `vault-agent config get`
 - `vault-agent config set`
 - `vault-agent config path`
+- `vault-agent config reveal-api-key`
 
 CLI output defaults to compact human-readable output.
 

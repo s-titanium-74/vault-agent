@@ -83,7 +83,7 @@ The CLI may use `core` configuration utilities and shared API schema types, but 
 
 Phase 1 does not generate OpenAPI documentation. Public API schemas are defined in this specification and enforced with Zod in code.
 
-`AGENTS.md` Working Commands should remain TODO until the implementation adds and verifies concrete package scripts.
+`AGENTS.md` Working Commands should list the verified root package scripts once the implementation adds them.
 
 The root workspace is private. npm publishing automation is out of scope for Phase 1. A future publishable CLI package may expose the `vault-agent` binary from `packages/cli`.
 
@@ -1196,6 +1196,10 @@ Command flags:
 - `vault-agent get note`: `--allow-large`, `--json`
 - `vault-agent get chunk`: `--json`
 - `vault-agent get attachment`: `--download`, `--output <path>`, `--allow-large`, `--json`
+- `vault-agent config get`: `--json`
+- `vault-agent config set`: no command-specific flags
+- `vault-agent config path`: `--json`
+- `vault-agent config reveal-api-key`: `--json`
 
 Attachment downloads require an explicit output target. `--download` without `--output` must fail. Writing attachment bytes to stdout is allowed only with `--output -`.
 

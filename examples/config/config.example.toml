@@ -1,0 +1,26 @@
+# vault-agent configuration example
+# Copy this file to your local config and adjust values.
+
+[vault]
+root = "/path/to/your/vault"
+exclude = []
+
+[server]
+endpoint = "http://127.0.0.1:8787"
+host = "127.0.0.1"
+port = 8787
+api_key = ""
+log_level = "info"
+
+[index]
+dir = ""
+
+[embedding]
+enabled = false
+endpoint = "http://127.0.0.1:11434/v1/embeddings"
+model = ""
+require = false
+
+[cors]
+enabled = false
+allowed_origins = []

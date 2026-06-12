@@ -256,6 +256,7 @@ Initial commands:
 vault-agent config get
 vault-agent config set vault.root "/path/to/vault"
 vault-agent config path
+vault-agent config reveal-api-key
 vault-agent serve
 vault-agent index
 vault-agent reindex
