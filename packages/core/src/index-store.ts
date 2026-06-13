@@ -16,105 +16,12 @@ import {
   generateLexicalIndexText,
   generateEmbeddingInputText,
 } from "./markdown.js";
-
-const SCHEMA_SQL = `
-CREATE TABLE IF NOT EXISTS manifest (
-  id INTEGER PRIMARY KEY CHECK (id = 1),
-  schema_version INTEGER NOT NULL,
-  vault_identity TEXT NOT NULL,
-  effective_exclude_patterns TEXT NOT NULL,
-  target_chunk_size INTEGER NOT NULL,
-  max_chunk_size INTEGER NOT NULL,
-  embedding_model TEXT,
-  embedding_dimension INTEGER,
-  note_count INTEGER NOT NULL DEFAULT 0,
-  chunk_count INTEGER NOT NULL DEFAULT 0,
-  indexed_at REAL NOT NULL,
-  config_fingerprint TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS notes (
-  note_id TEXT PRIMARY KEY,
-  path TEXT NOT NULL,
-  title TEXT,
-  file_size INTEGER NOT NULL,
-  content_hash TEXT NOT NULL,
-  mtime_ms REAL NOT NULL,
-  frontmatter_title TEXT,
-  aliases_json TEXT,
-  tags_json TEXT,
-  date_value TEXT,
-  created_value TEXT,
-  updated_value TEXT,
-  has_frontmatter INTEGER NOT NULL DEFAULT 0,
-  frontmatter_degraded INTEGER NOT NULL DEFAULT 0,
-  links_json TEXT,
-  attachment_refs_json TEXT,
-  body_text TEXT,
-  oversized INTEGER NOT NULL DEFAULT 0,
-  empty INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS chunks (
-  chunk_id TEXT PRIMARY KEY,
-  note_id TEXT NOT NULL,
-  chunk_index INTEGER NOT NULL,
-  path TEXT NOT NULL,
-  title TEXT,
-  heading TEXT,
-  heading_path_json TEXT NOT NULL DEFAULT '[]',
-  content TEXT NOT NULL,
-  content_hash TEXT NOT NULL,
-  char_start INTEGER NOT NULL,
-  char_end INTEGER NOT NULL,
-  lexical_text TEXT NOT NULL,
-  embedding_input_text TEXT NOT NULL,
-  FOREIGN KEY (note_id) REFERENCES notes(note_id) ON DELETE CASCADE
-);
-
-CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunks USING fts5(
-  chunk_id,
-  lexical_text,
-  content='chunks',
-  content_rowid='rowid',
-  tokenize='unicode61'
-);
-
-CREATE TRIGGER IF NOT EXISTS chunks_ai AFTER INSERT ON chunks BEGIN
-  INSERT INTO fts_chunks(rowid, chunk_id, lexical_text)
-  VALUES (new.rowid, new.chunk_id, new.lexical_text);
-END;
-
-CREATE TRIGGER IF NOT EXISTS chunks_ad AFTER DELETE ON chunks BEGIN
-  INSERT INTO fts_chunks(fts_chunks, rowid, chunk_id, lexical_text)
-  VALUES('delete', old.rowid, old.chunk_id, old.lexical_text);
-END;
-
-CREATE TRIGGER IF NOT EXISTS chunks_au AFTER UPDATE ON chunks BEGIN
-  INSERT INTO fts_chunks(fts_chunks, rowid, chunk_id, lexical_text)
-  VALUES('delete', old.rowid, old.chunk_id, old.lexical_text);
-  INSERT INTO fts_chunks(rowid, chunk_id, lexical_text)
-  VALUES (new.rowid, new.chunk_id, new.lexical_text);
-END;
-
-CREATE TABLE IF NOT EXISTS trigrams (
-  chunk_id TEXT NOT NULL,
-  gram TEXT NOT NULL,
-  FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_trigrams_gram ON trigrams(gram);
-CREATE INDEX IF NOT EXISTS idx_trigrams_chunk ON trigrams(chunk_id);
-CREATE INDEX IF NOT EXISTS idx_chunks_note_id ON chunks(note_id);
-CREATE INDEX IF NOT EXISTS idx_notes_path ON notes(path);
-`;
-
-const VEC_SCHEMA_SQL = (dimension: number) => `
-CREATE VIRTUAL TABLE IF NOT EXISTS vec_chunks USING vec0(
-  chunk_id TEXT PRIMARY KEY,
-  embedding float[${dimension}]
-);
-`;
+import { escapeFTSQuery, textToTrigrams } from "./index-store-fts.js";
+import { SCHEMA_SQL, VEC_SCHEMA_SQL } from "./index-store-sql.js";
+import {
+  float32ArrayToBuffer,
+  parseVectorDimension,
+} from "./index-store-vectors.js";
 
 export class IndexStore {
   private db: Database.Database;
@@ -420,16 +327,6 @@ export class IndexStore {
   }
 
   private insertTrigrams(chunkId: string, text: string): void {
-    const normalized = text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, " ");
-    const grams = new Set<string>();
-
-    for (let i = 0; i <= normalized.length - 3; i++) {
-      const gram = normalized.slice(i, i + 3);
-      if (gram.trim().length === 3) {
-        grams.add(gram);
-      }
-    }
-
     const insert = this.db.prepare(
       "INSERT INTO trigrams (chunk_id, gram) VALUES (?, ?)",
     );
@@ -438,7 +335,7 @@ export class IndexStore {
         insert.run(chunkId, gram);
       }
     });
-    insertMany(Array.from(grams));
+    insertMany(textToTrigrams(text));
   }
 
   private deleteNoteChunks(noteId: string): void {
@@ -531,19 +428,9 @@ export class IndexStore {
   }
 
   searchTrigrams(query: string, limit: number): Array<Record<string, unknown>> {
-    const normalizedQuery = query.toLowerCase().replace(/[^\p{L}\p{N}]/gu, " ");
-    const queryGrams = new Set<string>();
+    const gramsArray = textToTrigrams(query);
+    if (gramsArray.length === 0) return [];
 
-    for (let i = 0; i <= normalizedQuery.length - 3; i++) {
-      const gram = normalizedQuery.slice(i, i + 3);
-      if (gram.trim().length === 3) {
-        queryGrams.add(gram);
-      }
-    }
-
-    if (queryGrams.size === 0) return [];
-
-    const gramsArray = Array.from(queryGrams);
     const placeholders = gramsArray.map(() => "?").join(",");
 
     const results = this.db
@@ -677,12 +564,7 @@ export class IndexStore {
         const chunkId = chunkIds[i]!;
         const embedding = embeddings[i]!;
         const hash = contentHashes[i] ?? "";
-        const buffer = Buffer.from(
-          embedding.buffer,
-          embedding.byteOffset,
-          embedding.byteLength,
-        );
-        insertVec.run(chunkId, buffer);
+        insertVec.run(chunkId, float32ArrayToBuffer(embedding));
         if (hash) {
           insertHash.run(hash, chunkId);
         }
@@ -699,12 +581,6 @@ export class IndexStore {
     if (!this.vecLoaded) return [];
 
     try {
-      const buffer = Buffer.from(
-        queryEmbedding.buffer,
-        queryEmbedding.byteOffset,
-        queryEmbedding.byteLength,
-      );
-
       const rows = this.db
         .prepare(
           `SELECT chunk_id, distance
@@ -713,7 +589,10 @@ export class IndexStore {
            ORDER BY distance
            LIMIT ?`,
         )
-        .all(buffer, limit) as Array<{ chunk_id: string; distance: number }>;
+        .all(float32ArrayToBuffer(queryEmbedding), limit) as Array<{
+        chunk_id: string;
+        distance: number;
+      }>;
 
       return rows;
     } catch {
@@ -730,8 +609,7 @@ export class IndexStore {
         )
         .get() as { sql: string } | undefined;
       if (!row?.sql) return null;
-      const match = row.sql.match(/float\[(\d+)\]/);
-      return match ? parseInt(match[1]!, 10) : null;
+      return parseVectorDimension(row.sql);
     } catch {
       return null;
     }
@@ -760,24 +638,6 @@ export class IndexStore {
   getDb(): Database.Database {
     return this.db;
   }
-}
-
-function escapeFTSQuery(query: string): string {
-  const tokens = query
-    .trim()
-    .split(/\s+/)
-    .filter((t) => t.length > 0);
-  if (tokens.length === 0) return "";
-
-  return tokens
-    .map((token) => {
-      const cleaned = token.replace(/[*"'(){}[\]:;,.!?]/g, "");
-      if (cleaned.length === 0) return "";
-      const escaped = cleaned.replace(/"/g, '""');
-      return `"${escaped}"*`;
-    })
-    .filter((t) => t.length > 0)
-    .join(" ");
 }
 
 export function getIndexPath(config: Config): string {
