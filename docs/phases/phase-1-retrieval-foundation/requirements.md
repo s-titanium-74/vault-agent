@@ -2,11 +2,15 @@
 
 ## Purpose
 
+Specification: [Tooling And Repository](specifications/tooling.md).
+
 Phase 1 establishes the standalone retrieval foundation for `vault-agent`: a local server and CLI that can index a single Markdown vault, return compact search and related-note candidates, and retrieve only explicitly requested notes, chunks, or attachments.
 
 The phase must preserve the product direction from `docs/product-plan.md`: local-first, private-by-default, deterministic retrieval, progressive disclosure, and a clean separation between core, server, and CLI responsibilities.
 
 ## Scope
+
+Specification: [Tooling And Repository](specifications/tooling.md).
 
 Phase 1 must include:
 
@@ -38,6 +42,8 @@ Implementation language, framework, database, and storage engine choices are spe
 
 ## Vault Scope
 
+Specification: [Indexing](specifications/indexing.md).
+
 One server process handles one configured vault root.
 
 The vault root must come from user-local configuration, environment variables, or CLI flags. Private absolute vault paths must not be committed to repository files.
@@ -64,6 +70,8 @@ Path inputs that resolve outside the vault root must be rejected, including pare
 
 ## Attachments
 
+Specification: [Retrieval](specifications/retrieval.md#attachment-retrieval).
+
 Attachments are not indexed, searched, embedded, OCRed, summarized, or automatically expanded in Phase 1.
 
 Markdown notes may expose attachment references as compact metadata where useful, but attachment contents must not appear in search or related results.
@@ -80,6 +88,8 @@ Attachment retrieval is explicit and limited:
 - MIME or content type metadata should be returned where practical.
 
 ## Indexing
+
+Specification: [Indexing](specifications/indexing.md#index-command-flow).
 
 Indexing is manually triggered in Phase 1, except for an optional first-run bootstrap when no usable index exists.
 
@@ -102,6 +112,8 @@ Stale index conditions should be detectable where practical.
 Large Markdown notes may be registered as retrievable note records even when their bodies are too large to chunk, search, or embed in Phase 1. Explicit note retrieval still applies the configured retrieval size limits.
 
 ## Embeddings
+
+Specification: [Indexing](specifications/indexing.md#embedding-provider).
 
 Embedding search is optional and disabled by default.
 
@@ -129,6 +141,8 @@ Warnings and errors must not include raw note content, raw chunks, secrets, prov
 
 ## Chunking
 
+Specification: [Indexing](specifications/indexing.md#chunking).
+
 Phase 1 uses heading-aware Markdown chunking.
 
 Chunks are primarily based on Markdown heading sections. Heading hierarchy must be retained as metadata.
@@ -138,6 +152,8 @@ Oversized sections must be split further. Paragraph boundaries should be preferr
 Exact chunk size limits are specification concerns.
 
 ## Identifiers
+
+Specification: [Indexing](specifications/indexing.md#identifiers).
 
 Phase 1 uses `note ID` as the external note identifier in APIs, CLI commands, and result objects.
 
@@ -150,6 +166,8 @@ IDs are stable within the current index, but they are not permanent cross-rename
 Search, related, note, chunk, and attachment responses must prefer vault-relative paths. Absolute paths must not be returned by default.
 
 ## Frontmatter
+
+Specification: [Indexing](specifications/indexing.md#markdown-parsing).
 
 YAML frontmatter is parsed during indexing.
 
@@ -167,6 +185,8 @@ Future phases may add user-configurable frontmatter field selection.
 Explicit note retrieval may return the original Markdown content including frontmatter.
 
 ## Search
+
+Specification: [Retrieval](specifications/retrieval.md#search-api).
 
 Search returns deterministic retrieval results only. It must not call an LLM or generate answers.
 
@@ -191,6 +211,8 @@ Search responses must not echo the raw query by default.
 
 ## Related
 
+Specification: [Retrieval](specifications/retrieval.md#related-api).
+
 `related` returns compact candidate results from a known note or chunk.
 
 Inputs:
@@ -213,6 +235,8 @@ The input note or chunk itself must be excluded from related results. The exact 
 
 ## Snippets
 
+Specification: [Retrieval](specifications/retrieval.md#snippets).
+
 Search and related results include short snippets where safe.
 
 A snippet is shorter than a chunk, is not independently retrievable, and is used only to help the user or agent decide whether to retrieve the note or chunk.
@@ -220,6 +244,8 @@ A snippet is shorter than a chunk, is not independently retrievable, and is used
 Snippets must not contain full note bodies or full chunks. If a chunk is too short to excerpt without returning the whole chunk, the snippet may be empty. Exact snippet length limits are specification concerns.
 
 ## Result Shape
+
+Specification: [Retrieval](specifications/retrieval.md#search-and-related-response-shape).
 
 Each search or related result must include:
 
@@ -246,6 +272,8 @@ Warnings must make embedding fallback visible when hybrid or related retrieval d
 
 ## Failure Modes
 
+Specification: [Server API](specifications/server-api.md#http-status-codes-and-error-codes), [Indexing](specifications/indexing.md#index-storage).
+
 Malformed frontmatter must not fail indexing for the whole vault. The note body may still be indexed, while invalid frontmatter is ignored or marked degraded with a warning.
 
 Search and related must not silently return empty results when no usable index exists. They must return an actionable error that tells the user to run index or reindex.
@@ -257,6 +285,8 @@ At minimum, the specification should define stale or incompatible index handling
 Failure messages must not include raw note content, raw chunks, raw queries, secrets, provider credentials, or private absolute paths.
 
 ## Explicit Retrieval
+
+Specification: [Retrieval](specifications/retrieval.md#note-retrieval-api), [Chunk Retrieval](specifications/retrieval.md#chunk-retrieval-api).
 
 Search and related identify candidates. Note, chunk, and attachment retrieval require explicit requests.
 
@@ -296,6 +326,8 @@ Frontmatter is available through explicit note retrieval when needed.
 
 ## Server API
 
+Specification: [Server API](specifications/server-api.md).
+
 The required Phase 1 HTTP API is:
 
 - `GET /health`
@@ -316,6 +348,8 @@ Indexing uses `POST`.
 Detailed request and response schemas are specification concerns.
 
 ## Server Access Control
+
+Specification: [Server API](specifications/server-api.md#authentication).
 
 Server defaults:
 
@@ -345,6 +379,8 @@ Failed authentication responses must not reveal expected keys, secrets, or priva
 
 ## CORS
 
+Specification: [Server API](specifications/server-api.md#cors).
+
 CORS is disabled by default.
 
 CORS is not required for CLI, `curl`, or command-based agent usage.
@@ -352,6 +388,8 @@ CORS is not required for CLI, `curl`, or command-based agent usage.
 CORS may be enabled only by explicit configuration. Allowed origins must be listed explicitly. Wildcard origins are not allowed in Phase 1.
 
 ## CLI
+
+Specification: [CLI](specifications/cli.md).
 
 Required Phase 1 CLI commands:
 
@@ -381,6 +419,8 @@ Phase 1 does not require a `status` or `doctor` command. Embedding fallback and 
 Phase 1 CLI retrieval and indexing commands are server-backed. If the server is unreachable, commands must fail with an actionable message that tells the user how to start or configure the server.
 
 ## Configuration
+
+Specification: [Configuration](specifications/configuration.md).
 
 User-local configuration uses TOML.
 
@@ -413,6 +453,8 @@ Phase 1 may include an explicit API-key reveal command for remote client setup. 
 API responses, logs, errors, search results, related results, note responses, chunk responses, and attachment responses must not return private absolute paths by default. Explicit local CLI configuration commands, such as `vault-agent config get` and `vault-agent config path`, may display configured local paths so users can inspect their own setup.
 
 ## Logging And Error Messages
+
+Specification: [Server API](specifications/server-api.md#logging).
 
 Logs and error messages must follow data minimization.
 
@@ -447,6 +489,8 @@ Errors should be actionable without dumping private content.
 
 ## Test And Fixture Requirements
 
+Specification: [Testing And CI](specifications/testing-ci.md#testing).
+
 Tests, examples, snapshots, and fixture vaults must use only synthetic public-safe Markdown content.
 
 Tests must not include:
@@ -467,6 +511,8 @@ Generated indexes, caches, logs, coverage output, build output, and local databa
 If generated files are needed for tests, they must be generated from synthetic fixtures during the test run.
 
 ## Acceptance Criteria
+
+Specification: [Testing And CI](specifications/testing-ci.md), [Tooling And Repository](specifications/tooling.md).
 
 Phase 1 is complete when:
 
