@@ -620,21 +620,30 @@ export class IndexStore {
     return rows.map((r) => r.chunk_id);
   }
 
-  getAllNoteStems(): Map<string, { title: string | null; aliases: string[] }> {
+  getAllNoteStems(): Map<
+    string,
+    Array<{ noteId: string; title: string | null; aliases: string[] }>
+  > {
     const notes = this.getAllNotes();
-    const map = new Map<string, { title: string | null; aliases: string[] }>();
+    const map = new Map<
+      string,
+      Array<{ noteId: string; title: string | null; aliases: string[] }>
+    >();
 
     for (const note of notes) {
       const path = note.path as string;
       const filename = path.split("/").pop() ?? path;
       const stem = filename.replace(/\.(md|markdown)$/i, "");
+      const noteId = note.note_id as string;
 
       const title = (note.frontmatter_title as string) ?? null;
       const aliases = JSON.parse(
         (note.aliases_json as string) ?? "[]",
       ) as string[];
 
-      map.set(stem, { title, aliases });
+      const entries = map.get(stem) ?? [];
+      entries.push({ noteId, title, aliases });
+      map.set(stem, entries);
     }
 
     return map;

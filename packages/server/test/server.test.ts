@@ -1044,6 +1044,7 @@ describe("Server startup index compatibility policy", () => {
   it("allows a compatible startup index without warnings", () => {
     const result = validateStartupIndexState(store, config);
     expect(result.usable).toBe(true);
+    expect(result.shouldBootstrap).toBe(false);
     expect(result.warnings).toEqual([]);
   });
 
@@ -1051,17 +1052,20 @@ describe("Server startup index compatibility policy", () => {
     config.vault.exclude = ["private/**"];
     const result = validateStartupIndexState(store, config);
     expect(result.usable).toBe(true);
+    expect(result.shouldBootstrap).toBe(false);
     expect(result.warnings[0]?.code).toBe("INDEX_STALE");
   });
 
-  it("rejects incompatible startup indexes", () => {
+  it("keeps startup alive for incompatible indexes so reindex stays reachable", () => {
     const otherVaultDir = createTestVault();
     const otherConfig = createTestConfig(otherVaultDir, indexDir);
 
     try {
-      expect(() => validateStartupIndexState(store, otherConfig)).toThrow(
-        "INDEX_INCOMPATIBLE",
-      );
+      const result = validateStartupIndexState(store, otherConfig);
+      expect(result.usable).toBe(false);
+      expect(result.shouldBootstrap).toBe(false);
+      expect(result.warnings[0]?.code).toBe("INDEX_INCOMPATIBLE");
+      expect(result.warnings[0]?.message).toContain("reindex");
     } finally {
       fs.rmSync(otherVaultDir, { recursive: true, force: true });
     }

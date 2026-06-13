@@ -299,20 +299,20 @@ export function resolveWikilinks(
 
   return (link: WikilinkInfo): WikilinkInfo => {
     const target = link.target;
+    const candidates = new Set<string>();
 
-    const byFileName = fileNameMap.get(target);
-    if (byFileName && byFileName.length === 1) {
-      return { ...link, resolved: byFileName[0]! };
+    for (const noteId of fileNameMap.get(target) ?? []) {
+      candidates.add(noteId);
+    }
+    for (const noteId of titleMap.get(target) ?? []) {
+      candidates.add(noteId);
+    }
+    for (const noteId of aliasMap.get(target) ?? []) {
+      candidates.add(noteId);
     }
 
-    const byTitle = titleMap.get(target);
-    if (byTitle && byTitle.length === 1) {
-      return { ...link, resolved: byTitle[0]! };
-    }
-
-    const byAlias = aliasMap.get(target);
-    if (byAlias && byAlias.length === 1) {
-      return { ...link, resolved: byAlias[0]! };
+    if (candidates.size === 1) {
+      return { ...link, resolved: Array.from(candidates)[0]! };
     }
 
     return { ...link, resolved: null };

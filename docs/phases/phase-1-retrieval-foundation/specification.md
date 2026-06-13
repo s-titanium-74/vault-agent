@@ -537,7 +537,7 @@ Recommended first-run flow:
 4. Use `vault-agent search`, `vault-agent get`, and `vault-agent related` from another shell or agent process.
 5. Run `vault-agent index` or `vault-agent reindex` later only while a server is reachable.
 
-If startup detects a stale or incompatible existing index, the server must surface an actionable warning or error and require an explicit `index` or `reindex` command as appropriate.
+If startup detects a stale or incompatible existing index, the server must surface an actionable warning or error and require an explicit `index` or `reindex` command as appropriate. An incompatible existing index must not be used for retrieval, but server startup must continue far enough to expose `POST /reindex` so users can rebuild without manually deleting local index files.
 
 `POST /index` and `POST /reindex` are synchronous in Phase 1. The request waits until indexing completes or fails, then returns an indexing summary. Phase 1 does not include background indexing jobs, job IDs, or progress polling APIs.
 

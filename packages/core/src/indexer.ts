@@ -154,10 +154,10 @@ async function performIndex(
   const discovery = new VaultDiscovery(vaultRoot, config.vault.exclude);
   const discovered = discovery.discover();
 
-  const allNoteStems = new Map<
+  const allNoteStems: Map<
     string,
     Array<{ noteId: string; title: string | null; aliases: string[] }>
-  >();
+  > = isFull ? new Map() : store.getAllNoteStems();
   const rawNotes: Note[] = [];
   const warnings: IndexWarning[] = [];
   let notesIndexed = 0;
@@ -257,7 +257,9 @@ async function performIndex(
         .split("/")
         .pop()!
         .replace(/\.(md|markdown)$/i, "");
-      const stemEntries = allNoteStems.get(stem) ?? [];
+      const stemEntries =
+        allNoteStems.get(stem)?.filter((entry) => entry.noteId !== noteId) ??
+        [];
       stemEntries.push({
         noteId,
         title: parsed.title,
@@ -270,6 +272,20 @@ async function performIndex(
         message: `Failed to read file: ${file.vaultRelativePath}`,
         path: file.vaultRelativePath,
       });
+    }
+  }
+
+  for (const deletedPath of existingPaths) {
+    const deletedNoteId = noteIdFromPath(deletedPath);
+    for (const [stem, entries] of allNoteStems) {
+      const remaining = entries.filter(
+        (entry) => entry.noteId !== deletedNoteId,
+      );
+      if (remaining.length === 0) {
+        allNoteStems.delete(stem);
+      } else if (remaining.length !== entries.length) {
+        allNoteStems.set(stem, remaining);
+      }
     }
   }
 

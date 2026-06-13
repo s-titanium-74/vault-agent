@@ -491,4 +491,129 @@ describe("getRelated", () => {
       store.close();
     }
   });
+
+  it("resolves incremental wikilinks against unchanged indexed notes", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    fs.writeFileSync(
+      path.join(vaultDir, "IncrementalSource.md"),
+      "# Incremental Source\n\nInitial content without a link.",
+    );
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    fs.writeFileSync(
+      path.join(vaultDir, "IncrementalSource.md"),
+      "# Incremental Source\n\nNow see [[Destination]] for linked context.",
+    );
+    const incremental = await indexVault(config);
+    expect(incremental.notesSkipped).toBeGreaterThan(0);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const sourceId = noteIdFromPath("IncrementalSource.md");
+      const destinationId = noteIdFromPath("Destination.md");
+      const source = store.getNote(sourceId);
+      expect(source).not.toBeNull();
+
+      const links = JSON.parse(source!.links_json as string) as Array<{
+        target: string;
+        resolved: string | null;
+      }>;
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          target: "Destination",
+          resolved: destinationId,
+        }),
+      );
+
+      const result = await getRelated(
+        store,
+        "note",
+        sourceId,
+        "lexical",
+        10,
+        config,
+      );
+      expect(result.results.some((r) => r.noteId === destinationId)).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("keeps wikilinks unresolved when stem and title matches disagree", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    fs.writeFileSync(
+      path.join(vaultDir, "Roadmap.md"),
+      "# File Stem Candidate\n\nStem-only candidate.",
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "Titled.md"),
+      `---
+title: "Roadmap"
+---
+
+# Different Title Candidate
+
+Title-only candidate.`,
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "CrossSource.md"),
+      "# Cross Source\n\nSee [[Roadmap]] for context.",
+    );
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const sourceId = noteIdFromPath("CrossSource.md");
+      const source = store.getNote(sourceId);
+      expect(source).not.toBeNull();
+
+      const links = JSON.parse(source!.links_json as string) as Array<{
+        target: string;
+        resolved: string | null;
+      }>;
+      expect(links).toContainEqual(
+        expect.objectContaining({ target: "Roadmap", resolved: null }),
+      );
+
+      const result = await getRelated(
+        store,
+        "note",
+        sourceId,
+        "lexical",
+        10,
+        config,
+      );
+      expect(
+        result.results.some(
+          (r) =>
+            r.noteId === noteIdFromPath("Roadmap.md") ||
+            r.noteId === noteIdFromPath("Titled.md"),
+        ),
+      ).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
 });
