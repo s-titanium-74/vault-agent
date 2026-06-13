@@ -194,6 +194,24 @@ describe("Server Routes", () => {
       expect(body.data.results.length).toBeGreaterThan(0);
     });
 
+    it("returns compact results without retrievable note or chunk content", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/search",
+        payload: { query: "Search Architecture", mode: "lexical" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data.results.length).toBeGreaterThan(0);
+      for (const result of body.data.results) {
+        expect(result).not.toHaveProperty("content");
+      }
+      expect(response.body).not.toContain(
+        "The search system uses a layered approach combining lexical and semantic signals.",
+      );
+    });
+
     it("returns 400 for empty query", async () => {
       const response = await app.inject({
         method: "POST",
@@ -283,6 +301,26 @@ describe("Server Routes", () => {
       const body = response.json();
       expect(body.data.input.type).toBe("note");
       expect(body.data.input.id).toBe(noteId);
+    });
+
+    it("returns compact related results without retrievable note or chunk content", async () => {
+      const notes = store.getAllNotes();
+      const noteId = notes[0]!.note_id as string;
+
+      const response = await app.inject({
+        method: "POST",
+        url: "/related",
+        payload: { type: "note", id: noteId, mode: "lexical" },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      for (const result of body.data.results) {
+        expect(result).not.toHaveProperty("content");
+      }
+      expect(response.body).not.toContain(
+        "This is a demonstration vault for vault-agent search and retrieval testing.",
+      );
     });
 
     it("returns 400 for invalid type", async () => {
@@ -379,6 +417,29 @@ describe("Server Routes", () => {
       const body = response.json();
       expect(body.error.code).toBe("NOTE_NOT_FOUND");
     });
+
+    it("returns 409 when the index is incompatible", async () => {
+      const otherVaultDir = createTestVault();
+      const otherConfig = createTestConfig(otherVaultDir, indexDir);
+      initApp(store, otherConfig);
+
+      try {
+        const notes = store.getAllNotes();
+        const noteId = notes[0]!.note_id as string;
+
+        const response = await app.inject({
+          method: "GET",
+          url: `/notes/${noteId}`,
+        });
+
+        expect(response.statusCode).toBe(409);
+        const body = response.json();
+        expect(body.error.code).toBe("INDEX_INCOMPATIBLE");
+      } finally {
+        fs.rmSync(otherVaultDir, { recursive: true, force: true });
+        initApp(store, config);
+      }
+    });
   });
 
   describe("GET /chunks/:noteId/:chunkIndex", () => {
@@ -429,6 +490,29 @@ describe("Server Routes", () => {
       const body = response.json();
       expect(body.error.code).toBe("CHUNK_NOT_FOUND");
     });
+
+    it("returns 409 when the index is incompatible", async () => {
+      const otherVaultDir = createTestVault();
+      const otherConfig = createTestConfig(otherVaultDir, indexDir);
+      initApp(store, otherConfig);
+
+      try {
+        const notes = store.getAllNotes();
+        const noteId = notes[0]!.note_id as string;
+
+        const response = await app.inject({
+          method: "GET",
+          url: `/chunks/${noteId}/0`,
+        });
+
+        expect(response.statusCode).toBe(409);
+        const body = response.json();
+        expect(body.error.code).toBe("INDEX_INCOMPATIBLE");
+      } finally {
+        fs.rmSync(otherVaultDir, { recursive: true, force: true });
+        initApp(store, config);
+      }
+    });
   });
 
   describe("GET /attachments/*", () => {
@@ -451,6 +535,8 @@ describe("Server Routes", () => {
       expect(body.data.fileName).toBe("diagram.png");
       expect(body.data.contentType).toBe("image/png");
       expect(body.data.size).toBeGreaterThan(0);
+      expect(body.data).not.toHaveProperty("bytes");
+      expect(response.body).not.toContain("fake-png-data");
     });
 
     it("returns attachment bytes with download=true", async () => {
@@ -1004,6 +1090,7 @@ describe("Server startup index compatibility policy", () => {
   it("allows a compatible startup index without warnings", () => {
     const result = validateStartupIndexState(store, config);
     expect(result.usable).toBe(true);
+    expect(result.shouldBootstrap).toBe(false);
     expect(result.warnings).toEqual([]);
   });
 
@@ -1011,17 +1098,20 @@ describe("Server startup index compatibility policy", () => {
     config.vault.exclude = ["private/**"];
     const result = validateStartupIndexState(store, config);
     expect(result.usable).toBe(true);
+    expect(result.shouldBootstrap).toBe(false);
     expect(result.warnings[0]?.code).toBe("INDEX_STALE");
   });
 
-  it("rejects incompatible startup indexes", () => {
+  it("keeps startup alive for incompatible indexes so reindex stays reachable", () => {
     const otherVaultDir = createTestVault();
     const otherConfig = createTestConfig(otherVaultDir, indexDir);
 
     try {
-      expect(() => validateStartupIndexState(store, otherConfig)).toThrow(
-        "INDEX_INCOMPATIBLE",
-      );
+      const result = validateStartupIndexState(store, otherConfig);
+      expect(result.usable).toBe(false);
+      expect(result.shouldBootstrap).toBe(false);
+      expect(result.warnings[0]?.code).toBe("INDEX_INCOMPATIBLE");
+      expect(result.warnings[0]?.message).toContain("reindex");
     } finally {
       fs.rmSync(otherVaultDir, { recursive: true, force: true });
     }

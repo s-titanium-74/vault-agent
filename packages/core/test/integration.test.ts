@@ -13,6 +13,7 @@ import { VaultDiscovery } from "../src/discovery.js";
 import { search } from "../src/search.js";
 import { getRelated } from "../src/related.js";
 import { getNote, getChunk, getAttachmentMetadata } from "../src/retrieval.js";
+import { INDEX_SCHEMA_VERSION } from "../src/schemas.js";
 
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-vault-"));
@@ -128,7 +129,7 @@ describe("IndexStore", () => {
     store = await IndexStore.open(dbPath);
 
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: INDEX_SCHEMA_VERSION,
       vaultIdentity: vaultIdentity("/test/vault"),
       indexedFileExtensions: [".md", ".markdown"],
       effectiveExcludePatterns: [".git/", ".obsidian/"],
@@ -144,7 +145,7 @@ describe("IndexStore", () => {
     store.setManifest(manifest);
     const read = store.getManifest();
     expect(read).not.toBeNull();
-    expect(read!.schemaVersion).toBe(1);
+    expect(read!.schemaVersion).toBe(INDEX_SCHEMA_VERSION);
     expect(read!.vaultIdentity).toBe(manifest.vaultIdentity);
     expect(read!.noteCount).toBe(10);
     expect(read!.chunkCount).toBe(20);
@@ -197,6 +198,68 @@ describe("Indexing and Search Integration", () => {
       const manifest = store.getManifest();
       expect(manifest?.noteCount).toBe(store.getAllNotes().length);
       expect(manifest?.chunkCount).toBe(store.getAllChunkIds().length);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("rewrites unchanged chunks when an older schema index is explicitly indexed", async () => {
+    fs.writeFileSync(
+      path.join(vaultDir, "LegacySource.md"),
+      "# Legacy Source\n\nSee [[Welcome Note]] for linked context.",
+    );
+    await indexVault(config);
+
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(path.resolve(vaultDir)),
+      "index.sqlite",
+    );
+    let store = await IndexStore.open(dbPath);
+
+    try {
+      const note = store.getNoteByPath("Welcome.md");
+      expect(note).not.toBeNull();
+      const noteId = note!.note_id as string;
+      const chunk = store.getChunk(noteId, 0);
+      expect(chunk).not.toBeNull();
+
+      store
+        .getDb()
+        .prepare("UPDATE chunks SET lexical_text = ? WHERE chunk_id = ?")
+        .run("This text simulates an older lexical source.", chunk!.chunk_id);
+
+      const oldManifest = store.getManifest()!;
+      store.setManifest({ ...oldManifest, schemaVersion: 1 });
+    } finally {
+      store.close();
+    }
+
+    const result = await indexVault(config);
+    expect(result.notesSkipped).toBe(0);
+
+    store = await IndexStore.open(dbPath);
+    try {
+      const manifest = store.getManifest();
+      expect(manifest?.schemaVersion).toBe(INDEX_SCHEMA_VERSION);
+
+      const legacySource = store.getNote(noteIdFromPath("LegacySource.md"));
+      expect(legacySource).not.toBeNull();
+      const links = JSON.parse(legacySource!.links_json as string) as Array<{
+        target: string;
+        resolved: string | null;
+      }>;
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          target: "Welcome Note",
+          resolved: noteIdFromPath("Welcome.md"),
+        }),
+      );
+
+      const searchResult = await search(store, "Home", "lexical", 10, config);
+      expect(searchResult.results.some((r) => r.path === "Welcome.md")).toBe(
+        true,
+      );
     } finally {
       store.close();
     }

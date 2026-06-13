@@ -3,11 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { vaultIdentity } from "./identifiers.js";
 import { Config } from "./config.js";
-import {
-  IndexManifest,
-  Note,
-  Chunk,
-} from "./types.js";
+import { IndexManifest, Note, Chunk } from "./types.js";
 import {
   INDEX_SCHEMA_VERSION,
   DEFAULT_EXCLUDE_PATTERNS,
@@ -370,18 +366,22 @@ export class IndexStore {
       );
 
     for (const chunk of note.chunks) {
-      this.insertChunk(chunk);
+      this.insertChunk(
+        chunk,
+        note.frontmatter?.aliases ?? [],
+        note.frontmatter?.tags ?? [],
+      );
     }
   }
 
-  private insertChunk(chunk: Chunk): void {
+  private insertChunk(chunk: Chunk, aliases: string[], tags: string[]): void {
     const headingPathJson = JSON.stringify(chunk.headingPath);
     const chunkId = `${chunk.noteId}:${chunk.chunkIndex}`;
 
     const lexicalText = generateLexicalIndexText({
       title: chunk.title,
-      aliases: [],
-      tags: [],
+      aliases,
+      tags,
       headingPath: chunk.headingPath,
       content: chunk.content,
     });
@@ -620,21 +620,30 @@ export class IndexStore {
     return rows.map((r) => r.chunk_id);
   }
 
-  getAllNoteStems(): Map<string, { title: string | null; aliases: string[] }> {
+  getAllNoteStems(): Map<
+    string,
+    Array<{ noteId: string; title: string | null; aliases: string[] }>
+  > {
     const notes = this.getAllNotes();
-    const map = new Map<string, { title: string | null; aliases: string[] }>();
+    const map = new Map<
+      string,
+      Array<{ noteId: string; title: string | null; aliases: string[] }>
+    >();
 
     for (const note of notes) {
       const path = note.path as string;
       const filename = path.split("/").pop() ?? path;
       const stem = filename.replace(/\.(md|markdown)$/i, "");
+      const noteId = note.note_id as string;
 
-      const title = (note.frontmatter_title as string) ?? null;
+      const title = (note.title as string) ?? null;
       const aliases = JSON.parse(
         (note.aliases_json as string) ?? "[]",
       ) as string[];
 
-      map.set(stem, { title, aliases });
+      const entries = map.get(stem) ?? [];
+      entries.push({ noteId, title, aliases });
+      map.set(stem, entries);
     }
 
     return map;

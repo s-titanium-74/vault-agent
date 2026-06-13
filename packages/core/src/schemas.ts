@@ -138,7 +138,7 @@ export const CHUNK_EMBEDDING_INPUT_CAP = 8000;
 export const EMBEDDING_BATCH_SIZE = 32;
 export const EMBEDDING_REQUEST_TIMEOUT_MS = 120_000;
 export const MAX_MARKDOWN_SIZE_FOR_INDEXING = 2 * 1024 * 1024;
-export const INDEX_SCHEMA_VERSION = 1;
+export const INDEX_SCHEMA_VERSION = 2;
 export const MAX_WARNING_COUNT = 100;
 
 export const INDEXED_EXTENSIONS = [".md", ".markdown"];

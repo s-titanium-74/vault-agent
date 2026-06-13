@@ -154,15 +154,20 @@ async function performIndex(
   const discovery = new VaultDiscovery(vaultRoot, config.vault.exclude);
   const discovered = discovery.discover();
 
-  const allNoteStems = new Map<
+  const allNoteStems: Map<
     string,
-    { title: string | null; aliases: string[] }
-  >();
+    Array<{ noteId: string; title: string | null; aliases: string[] }>
+  > = isFull ? new Map() : store.getAllNoteStems();
   const rawNotes: Note[] = [];
   const warnings: IndexWarning[] = [];
   let notesIndexed = 0;
   let chunksIndexed = 0;
   let notesSkipped = 0;
+
+  const existingManifest = isFull ? null : store.getManifest();
+  const forceRewriteExisting =
+    existingManifest !== null &&
+    existingManifest.schemaVersion !== INDEX_SCHEMA_VERSION;
 
   const existingPaths = new Set<string>();
   if (!isFull) {
@@ -174,6 +179,10 @@ async function performIndex(
   for (const file of discovered.files) {
     try {
       if (!isFull) {
+        existingPaths.delete(file.vaultRelativePath);
+      }
+
+      if (!isFull && !forceRewriteExisting) {
         const existing = store.getNoteByPath(file.vaultRelativePath);
         if (
           existing &&
@@ -181,10 +190,8 @@ async function performIndex(
           existing.mtime_ms === file.mtimeMs
         ) {
           notesSkipped++;
-          existingPaths.delete(file.vaultRelativePath);
           continue;
         }
-        existingPaths.delete(file.vaultRelativePath);
       }
 
       const content = new TextDecoder("utf-8", { fatal: true }).decode(
@@ -252,16 +259,35 @@ async function performIndex(
         .split("/")
         .pop()!
         .replace(/\.(md|markdown)$/i, "");
-      allNoteStems.set(stem, {
+      const stemEntries =
+        allNoteStems.get(stem)?.filter((entry) => entry.noteId !== noteId) ??
+        [];
+      stemEntries.push({
+        noteId,
         title: parsed.title,
         aliases: parsed.aliases,
       });
+      allNoteStems.set(stem, stemEntries);
     } catch {
       warnings.push({
         code: "FILE_NOT_UTF8",
         message: `Failed to read file: ${file.vaultRelativePath}`,
         path: file.vaultRelativePath,
       });
+    }
+  }
+
+  for (const deletedPath of existingPaths) {
+    const deletedNoteId = noteIdFromPath(deletedPath);
+    for (const [stem, entries] of allNoteStems) {
+      const remaining = entries.filter(
+        (entry) => entry.noteId !== deletedNoteId,
+      );
+      if (remaining.length === 0) {
+        allNoteStems.delete(stem);
+      } else if (remaining.length !== entries.length) {
+        allNoteStems.set(stem, remaining);
+      }
     }
   }
 

@@ -93,6 +93,18 @@ function indexErrorStatus(error: IndexError): number | null {
   return null;
 }
 
+function incompatibleIndexError(
+  appStore: IndexStore,
+  appConfig: Config,
+): { code: string; message: string } | null {
+  const staleness = appStore.checkStaleness(appConfig);
+  if (!staleness.incompatible) return null;
+  return {
+    code: "INDEX_INCOMPATIBLE",
+    message: `${staleness.details}. Run vault-agent reindex to rebuild the index.`,
+  };
+}
+
 export interface PrepareServerAccessOptions {
   configPath?: string;
   defaultConfigPathOverride?: string;
@@ -100,6 +112,7 @@ export interface PrepareServerAccessOptions {
 
 export interface StartupIndexState {
   usable: boolean;
+  shouldBootstrap: boolean;
   warnings: Array<{
     code: string;
     message: string;
@@ -165,19 +178,27 @@ export function validateStartupIndexState(
 ): StartupIndexState {
   const manifest = appStore.getManifest();
   if (!manifest) {
-    return { usable: false, warnings: [] };
+    return { usable: false, shouldBootstrap: true, warnings: [] };
   }
 
   const staleness = appStore.checkStaleness(appConfig);
   if (staleness.incompatible) {
-    throw new Error(
-      `INDEX_INCOMPATIBLE: Existing index is incompatible. Run vault-agent reindex. ${staleness.details}`,
-    );
+    return {
+      usable: false,
+      shouldBootstrap: false,
+      warnings: [
+        {
+          code: "INDEX_INCOMPATIBLE",
+          message: `${staleness.details}. Run vault-agent reindex to rebuild the index.`,
+        },
+      ],
+    };
   }
 
   if (staleness.stale) {
     return {
       usable: true,
+      shouldBootstrap: false,
       warnings: [
         {
           code: "INDEX_STALE",
@@ -187,7 +208,7 @@ export function validateStartupIndexState(
     };
   }
 
-  return { usable: true, warnings: [] };
+  return { usable: true, shouldBootstrap: false, warnings: [] };
 }
 
 export async function createServer(
@@ -252,7 +273,7 @@ export async function createServer(
     if (manifest && config) {
       try {
         const staleness = store!.checkStaleness(config!);
-        stale = staleness.stale;
+        stale = staleness.stale || staleness.incompatible;
       } catch {
         stale = true;
       }
@@ -568,6 +589,15 @@ export async function createServer(
         );
     }
 
+    const compatibilityError = incompatibleIndexError(store, config);
+    if (compatibilityError) {
+      return reply
+        .code(409)
+        .send(
+          err(compatibilityError.code, compatibilityError.message, request.id),
+        );
+    }
+
     const { noteId } = request.params as { noteId: string };
     const { allowLarge } = request.query as { allowLarge?: string };
 
@@ -609,7 +639,7 @@ export async function createServer(
   });
 
   app.get("/chunks/:noteId/:chunkIndex", async (request, reply) => {
-    if (!store) {
+    if (!store || !config) {
       return reply
         .code(409)
         .send(
@@ -618,6 +648,15 @@ export async function createServer(
             "No usable index. Start the server to build an initial index.",
             request.id,
           ),
+        );
+    }
+
+    const compatibilityError = incompatibleIndexError(store, config);
+    if (compatibilityError) {
+      return reply
+        .code(409)
+        .send(
+          err(compatibilityError.code, compatibilityError.message, request.id),
         );
     }
 
@@ -822,7 +861,7 @@ export async function startServer(
   let appStore = await IndexStore.open(dbPath);
 
   const startupIndexState = validateStartupIndexState(appStore, preparedConfig);
-  if (!startupIndexState.usable) {
+  if (startupIndexState.shouldBootstrap) {
     console.log(
       "No usable index found. Performing first-run bootstrap indexing...",
     );
@@ -836,7 +875,9 @@ export async function startServer(
 
     appStore.close();
     appStore = await IndexStore.open(dbPath);
-  } else if (startupIndexState.warnings.length > 0) {
+  }
+
+  if (startupIndexState.warnings.length > 0) {
     for (const warning of startupIndexState.warnings) {
       console.warn(`${warning.code}: ${warning.message}`);
     }
