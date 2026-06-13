@@ -178,6 +178,10 @@ async function performIndex(
 
   for (const file of discovered.files) {
     try {
+      if (!isFull) {
+        existingPaths.delete(file.vaultRelativePath);
+      }
+
       if (!isFull && !forceRewriteExisting) {
         const existing = store.getNoteByPath(file.vaultRelativePath);
         if (
@@ -186,10 +190,8 @@ async function performIndex(
           existing.mtime_ms === file.mtimeMs
         ) {
           notesSkipped++;
-          existingPaths.delete(file.vaultRelativePath);
           continue;
         }
-        existingPaths.delete(file.vaultRelativePath);
       }
 
       const content = new TextDecoder("utf-8", { fatal: true }).decode(

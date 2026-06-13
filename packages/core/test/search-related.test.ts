@@ -550,6 +550,58 @@ describe("getRelated", () => {
     }
   });
 
+  it("resolves incremental wikilinks against unchanged H1-derived titles", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    fs.writeFileSync(
+      path.join(vaultDir, "H1Target.md"),
+      "# Project Roadmap\n\nTarget content with a heading-derived title.",
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "H1Source.md"),
+      "# H1 Source\n\nInitial content without a link.",
+    );
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    fs.writeFileSync(
+      path.join(vaultDir, "H1Source.md"),
+      "# H1 Source\n\nNow see [[Project Roadmap]] for linked context.",
+    );
+    const incremental = await indexVault(config);
+    expect(incremental.notesSkipped).toBeGreaterThan(0);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const sourceId = noteIdFromPath("H1Source.md");
+      const targetId = noteIdFromPath("H1Target.md");
+      const source = store.getNote(sourceId);
+      expect(source).not.toBeNull();
+
+      const links = JSON.parse(source!.links_json as string) as Array<{
+        target: string;
+        resolved: string | null;
+      }>;
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          target: "Project Roadmap",
+          resolved: targetId,
+        }),
+      );
+    } finally {
+      store.close();
+    }
+  });
+
   it("keeps wikilinks unresolved when stem and title matches disagree", async () => {
     fs.rmSync(vaultDir, { recursive: true, force: true });
     vaultDir = createSpecVault();

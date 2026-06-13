@@ -417,6 +417,29 @@ describe("Server Routes", () => {
       const body = response.json();
       expect(body.error.code).toBe("NOTE_NOT_FOUND");
     });
+
+    it("returns 409 when the index is incompatible", async () => {
+      const otherVaultDir = createTestVault();
+      const otherConfig = createTestConfig(otherVaultDir, indexDir);
+      initApp(store, otherConfig);
+
+      try {
+        const notes = store.getAllNotes();
+        const noteId = notes[0]!.note_id as string;
+
+        const response = await app.inject({
+          method: "GET",
+          url: `/notes/${noteId}`,
+        });
+
+        expect(response.statusCode).toBe(409);
+        const body = response.json();
+        expect(body.error.code).toBe("INDEX_INCOMPATIBLE");
+      } finally {
+        fs.rmSync(otherVaultDir, { recursive: true, force: true });
+        initApp(store, config);
+      }
+    });
   });
 
   describe("GET /chunks/:noteId/:chunkIndex", () => {
@@ -466,6 +489,29 @@ describe("Server Routes", () => {
       expect(response.statusCode).toBe(404);
       const body = response.json();
       expect(body.error.code).toBe("CHUNK_NOT_FOUND");
+    });
+
+    it("returns 409 when the index is incompatible", async () => {
+      const otherVaultDir = createTestVault();
+      const otherConfig = createTestConfig(otherVaultDir, indexDir);
+      initApp(store, otherConfig);
+
+      try {
+        const notes = store.getAllNotes();
+        const noteId = notes[0]!.note_id as string;
+
+        const response = await app.inject({
+          method: "GET",
+          url: `/chunks/${noteId}/0`,
+        });
+
+        expect(response.statusCode).toBe(409);
+        const body = response.json();
+        expect(body.error.code).toBe("INDEX_INCOMPATIBLE");
+      } finally {
+        fs.rmSync(otherVaultDir, { recursive: true, force: true });
+        initApp(store, config);
+      }
     });
   });
 

@@ -93,6 +93,18 @@ function indexErrorStatus(error: IndexError): number | null {
   return null;
 }
 
+function incompatibleIndexError(
+  appStore: IndexStore,
+  appConfig: Config,
+): { code: string; message: string } | null {
+  const staleness = appStore.checkStaleness(appConfig);
+  if (!staleness.incompatible) return null;
+  return {
+    code: "INDEX_INCOMPATIBLE",
+    message: `${staleness.details}. Run vault-agent reindex to rebuild the index.`,
+  };
+}
+
 export interface PrepareServerAccessOptions {
   configPath?: string;
   defaultConfigPathOverride?: string;
@@ -577,6 +589,15 @@ export async function createServer(
         );
     }
 
+    const compatibilityError = incompatibleIndexError(store, config);
+    if (compatibilityError) {
+      return reply
+        .code(409)
+        .send(
+          err(compatibilityError.code, compatibilityError.message, request.id),
+        );
+    }
+
     const { noteId } = request.params as { noteId: string };
     const { allowLarge } = request.query as { allowLarge?: string };
 
@@ -618,7 +639,7 @@ export async function createServer(
   });
 
   app.get("/chunks/:noteId/:chunkIndex", async (request, reply) => {
-    if (!store) {
+    if (!store || !config) {
       return reply
         .code(409)
         .send(
@@ -627,6 +648,15 @@ export async function createServer(
             "No usable index. Start the server to build an initial index.",
             request.id,
           ),
+        );
+    }
+
+    const compatibilityError = incompatibleIndexError(store, config);
+    if (compatibilityError) {
+      return reply
+        .code(409)
+        .send(
+          err(compatibilityError.code, compatibilityError.message, request.id),
         );
     }
 

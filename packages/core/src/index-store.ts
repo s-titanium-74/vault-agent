@@ -636,7 +636,7 @@ export class IndexStore {
       const stem = filename.replace(/\.(md|markdown)$/i, "");
       const noteId = note.note_id as string;
 
-      const title = (note.frontmatter_title as string) ?? null;
+      const title = (note.title as string) ?? null;
       const aliases = JSON.parse(
         (note.aliases_json as string) ?? "[]",
       ) as string[];

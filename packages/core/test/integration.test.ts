@@ -204,6 +204,10 @@ describe("Indexing and Search Integration", () => {
   });
 
   it("rewrites unchanged chunks when an older schema index is explicitly indexed", async () => {
+    fs.writeFileSync(
+      path.join(vaultDir, "LegacySource.md"),
+      "# Legacy Source\n\nSee [[Welcome Note]] for linked context.",
+    );
     await indexVault(config);
 
     const dbPath = path.join(
@@ -238,6 +242,19 @@ describe("Indexing and Search Integration", () => {
     try {
       const manifest = store.getManifest();
       expect(manifest?.schemaVersion).toBe(INDEX_SCHEMA_VERSION);
+
+      const legacySource = store.getNote(noteIdFromPath("LegacySource.md"));
+      expect(legacySource).not.toBeNull();
+      const links = JSON.parse(legacySource!.links_json as string) as Array<{
+        target: string;
+        resolved: string | null;
+      }>;
+      expect(links).toContainEqual(
+        expect.objectContaining({
+          target: "Welcome Note",
+          resolved: noteIdFromPath("Welcome.md"),
+        }),
+      );
 
       const searchResult = await search(store, "Home", "lexical", 10, config);
       expect(searchResult.results.some((r) => r.path === "Welcome.md")).toBe(
