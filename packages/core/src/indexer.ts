@@ -156,7 +156,7 @@ async function performIndex(
 
   const allNoteStems = new Map<
     string,
-    { title: string | null; aliases: string[] }
+    { noteId: string; title: string | null; aliases: string[] }
   >();
   const rawNotes: Note[] = [];
   const warnings: IndexWarning[] = [];
@@ -253,6 +253,7 @@ async function performIndex(
         .pop()!
         .replace(/\.(md|markdown)$/i, "");
       allNoteStems.set(stem, {
+        noteId,
         title: parsed.title,
         aliases: parsed.aliases,
       });

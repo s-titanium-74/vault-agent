@@ -8,6 +8,7 @@ import { getRelated } from "../src/related.js";
 import { SearchError } from "../src/errors.js";
 import { Config, DEFAULT_CONFIG } from "../src/config.js";
 import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
+import { MAX_SNIPPET_LENGTH } from "../src/schemas.js";
 
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-search-"));
@@ -33,6 +34,63 @@ tags:
 # Beta Note
 
 Beta content about embedding retrieval and vector similarity.`);
+
+  return vaultDir;
+}
+
+function createSpecVault(): string {
+  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-spec-"));
+
+  fs.writeFileSync(
+    path.join(vaultDir, "AliasTagged.md"),
+    `---
+title: "Alias Tagged Note"
+aliases:
+  - "RareAliasTerm"
+tags:
+  - "rare-tag"
+---
+
+# Alias Tagged Note
+
+The body intentionally omits the searchable alias and tag values.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "Source.md"),
+    `# Source
+
+See [[Destination]] for linked context.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "Destination.md"),
+    `---
+title: "Remote Candidate"
+---
+
+# Remote Candidate
+
+An orbiting subject with separate vocabulary.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "ShortSecret.md"),
+    `---
+title: "Compact Result Target"
+---
+
+# Compact Result Target
+
+DO_NOT_LEAK_FULL_BODY_IN_SEARCH.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "LongSnippet.md"),
+    `# Long Snippet Note
+
+${"lexical ".repeat(80)}This body is long enough to produce a compact snippet without returning the full chunk.`,
+  );
 
   return vaultDir;
 }
@@ -105,6 +163,94 @@ describe("search", () => {
     try {
       const result = await search(store, "   ", "lexical", 10, config);
       expect(result.results).toEqual([]);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("indexes allowlisted frontmatter aliases and tags for lexical search", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const aliasResult = await search(
+        store,
+        "RareAliasTerm",
+        "lexical",
+        10,
+        config,
+      );
+      expect(aliasResult.results.some((r) => r.path === "AliasTagged.md")).toBe(
+        true,
+      );
+
+      const tagResult = await search(store, "rare-tag", "lexical", 10, config);
+      expect(tagResult.results.some((r) => r.path === "AliasTagged.md")).toBe(
+        true,
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  it("keeps search results compact and omits full retrievable content", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const shortResult = await search(
+        store,
+        "Compact Result Target",
+        "lexical",
+        10,
+        config,
+      );
+      const shortItem = shortResult.results.find(
+        (r) => r.path === "ShortSecret.md",
+      );
+      expect(shortItem).toBeDefined();
+      expect(shortItem).not.toHaveProperty("content");
+      expect(shortItem!.snippet).toBe("");
+      expect(JSON.stringify(shortItem)).not.toContain(
+        "DO_NOT_LEAK_FULL_BODY_IN_SEARCH",
+      );
+
+      const longResult = await search(store, "lexical", "lexical", 10, config);
+      const longItem = longResult.results.find(
+        (r) => r.path === "LongSnippet.md",
+      );
+      expect(longItem).toBeDefined();
+      expect(longItem).not.toHaveProperty("content");
+      expect(longItem!.snippet.length).toBeLessThanOrEqual(
+        MAX_SNIPPET_LENGTH + 3,
+      );
+
+      const chunk = store.getChunkById(longItem!.id);
+      expect(longItem!.snippet).not.toBe(chunk?.content);
     } finally {
       store.close();
     }
@@ -233,6 +379,51 @@ describe("getRelated", () => {
 
     try {
       await expect(getRelated(store, "note", "00000000000000000000000000000000", "lexical", 10, config)).rejects.toThrow(SearchError);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("excludes the input note and can return resolved wikilink candidates", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const sourceId = noteIdFromPath("Source.md");
+      const destinationId = noteIdFromPath("Destination.md");
+
+      const result = await getRelated(
+        store,
+        "note",
+        sourceId,
+        "lexical",
+        10,
+        config,
+      );
+
+      expect(result.results.every((r) => r.noteId !== sourceId)).toBe(true);
+      expect(result.results.some((r) => r.noteId === destinationId)).toBe(true);
+      expect(
+        result.results.find((r) => r.noteId === destinationId)?.reason,
+      ).toBe("related_link");
+      expect(JSON.stringify(result.results)).not.toContain(
+        "See [[Destination]]",
+      );
+      expect(JSON.stringify(result.results)).not.toContain(
+        "An orbiting subject with separate vocabulary.",
+      );
     } finally {
       store.close();
     }

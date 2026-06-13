@@ -3,11 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { vaultIdentity } from "./identifiers.js";
 import { Config } from "./config.js";
-import {
-  IndexManifest,
-  Note,
-  Chunk,
-} from "./types.js";
+import { IndexManifest, Note, Chunk } from "./types.js";
 import {
   INDEX_SCHEMA_VERSION,
   DEFAULT_EXCLUDE_PATTERNS,
@@ -370,18 +366,22 @@ export class IndexStore {
       );
 
     for (const chunk of note.chunks) {
-      this.insertChunk(chunk);
+      this.insertChunk(
+        chunk,
+        note.frontmatter?.aliases ?? [],
+        note.frontmatter?.tags ?? [],
+      );
     }
   }
 
-  private insertChunk(chunk: Chunk): void {
+  private insertChunk(chunk: Chunk, aliases: string[], tags: string[]): void {
     const headingPathJson = JSON.stringify(chunk.headingPath);
     const chunkId = `${chunk.noteId}:${chunk.chunkIndex}`;
 
     const lexicalText = generateLexicalIndexText({
       title: chunk.title,
-      aliases: [],
-      tags: [],
+      aliases,
+      tags,
       headingPath: chunk.headingPath,
       content: chunk.content,
     });
