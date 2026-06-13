@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { noteIdFromPath, vaultIdentity, parseChunkId, isValidNoteId } from "../src/identifiers.js";
+import {
+  noteIdFromPath,
+  vaultIdentity,
+  parseChunkId,
+  isValidNoteId,
+} from "../src/identifiers.js";
 
 describe("noteIdFromPath", () => {
   it("produces a 32-char hex string from a vault-relative path", () => {

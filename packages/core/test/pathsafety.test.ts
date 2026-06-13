@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { validateVaultPath, isPathInsideVault, toVaultRelative } from "../src/pathsafety.js";
+import {
+  validateVaultPath,
+  isPathInsideVault,
+  toVaultRelative,
+} from "../src/pathsafety.js";
 
 describe("validateVaultPath", () => {
   it("validates an existing directory", () => {
@@ -8,7 +12,9 @@ describe("validateVaultPath", () => {
   });
 
   it("throws for non-existent paths", () => {
-    expect(() => validateVaultPath("/nonexistent/path/that/does/not/exist")).toThrow();
+    expect(() =>
+      validateVaultPath("/nonexistent/path/that/does/not/exist"),
+    ).toThrow();
   });
 });
 
@@ -22,16 +28,22 @@ describe("isPathInsideVault", () => {
   });
 
   it("returns false for parent directory traversal", () => {
-    expect(isPathInsideVault("/tmp/vault/../etc/passwd", "/tmp/vault")).toBe(false);
+    expect(isPathInsideVault("/tmp/vault/../etc/passwd", "/tmp/vault")).toBe(
+      false,
+    );
   });
 });
 
 describe("toVaultRelative", () => {
   it("converts absolute path to vault-relative path", () => {
-    expect(toVaultRelative("/tmp/vault/Folder/Note.md", "/tmp/vault")).toBe("Folder/Note.md");
+    expect(toVaultRelative("/tmp/vault/Folder/Note.md", "/tmp/vault")).toBe(
+      "Folder/Note.md",
+    );
   });
 
   it("uses forward slashes in vault-relative paths", () => {
-    expect(toVaultRelative("/tmp/vault/Folder/Note.md", "/tmp/vault")).toBe("Folder/Note.md");
+    expect(toVaultRelative("/tmp/vault/Folder/Note.md", "/tmp/vault")).toBe(
+      "Folder/Note.md",
+    );
   });
 });

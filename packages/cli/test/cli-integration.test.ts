@@ -52,7 +52,10 @@ Gamma content about hybrid search combining lexical and embedding results.`,
   );
 
   fs.mkdirSync(path.join(vaultDir, "attachments"), { recursive: true });
-  fs.writeFileSync(path.join(vaultDir, "attachments", "data.csv"), "a,b,c\n1,2,3");
+  fs.writeFileSync(
+    path.join(vaultDir, "attachments", "data.csv"),
+    "a,b,c\n1,2,3",
+  );
 
   return vaultDir;
 }
@@ -179,7 +182,11 @@ describe("CLI integration tests with local server", () => {
       const res = await fetch(`${baseUrl}/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: "test", mode: "invalid_mode", limit: 10 }),
+        body: JSON.stringify({
+          query: "test",
+          mode: "invalid_mode",
+          limit: 10,
+        }),
       });
       expect(res.status).toBe(400);
     });
@@ -407,12 +414,9 @@ describe("CLI integration tests with local server", () => {
       const corsPort = corsMatch ? parseInt(corsMatch[1]!, 10) : 0;
 
       try {
-        const res = await fetch(
-          `http://127.0.0.1:${corsPort}/health`,
-          {
-            headers: { Origin: "http://localhost:3000" },
-          },
-        );
+        const res = await fetch(`http://127.0.0.1:${corsPort}/health`, {
+          headers: { Origin: "http://localhost:3000" },
+        });
         expect(res.status).toBe(200);
       } finally {
         await corsApp.close();

@@ -263,9 +263,7 @@ describe("CLI format output helpers", () => {
     expect(attCmd).toBeDefined();
     const outputOption = attCmd!.options.find((o) => o.long === "--output");
     expect(outputOption).toBeDefined();
-    const downloadOption = attCmd!.options.find(
-      (o) => o.long === "--download",
-    );
+    const downloadOption = attCmd!.options.find((o) => o.long === "--download");
     expect(downloadOption).toBeDefined();
   });
 

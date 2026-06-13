@@ -158,7 +158,15 @@ function applyEnvOverrides(config: Config): Config {
 
 const KNOWN_SECTIONS: Record<string, Set<string>> = {
   vault: new Set(["root", "exclude"]),
-  server: new Set(["endpoint", "host", "port", "apiKey", "api_key", "logLevel", "log_level"]),
+  server: new Set([
+    "endpoint",
+    "host",
+    "port",
+    "apiKey",
+    "api_key",
+    "logLevel",
+    "log_level",
+  ]),
   index: new Set(["dir"]),
   embedding: new Set(["enabled", "endpoint", "model", "require"]),
   cors: new Set(["enabled", "allowedOrigins", "allowed_origins"]),

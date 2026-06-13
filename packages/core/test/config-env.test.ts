@@ -2,14 +2,20 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { ConfigManager, applyEnvOverrides, DEFAULT_CONFIG } from "../src/config.js";
+import {
+  ConfigManager,
+  applyEnvOverrides,
+  DEFAULT_CONFIG,
+} from "../src/config.js";
 import { ConfigError } from "../src/errors.js";
 
 describe("applyEnvOverrides", () => {
   const originalEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
-    const keys = Object.keys(process.env).filter(k => k.startsWith("VAULT_AGENT_"));
+    const keys = Object.keys(process.env).filter((k) =>
+      k.startsWith("VAULT_AGENT_"),
+    );
     for (const k of keys) {
       originalEnv[k] = process.env[k];
       delete process.env[k];
@@ -17,7 +23,9 @@ describe("applyEnvOverrides", () => {
   });
 
   afterEach(() => {
-    const keys = Object.keys(process.env).filter(k => k.startsWith("VAULT_AGENT_"));
+    const keys = Object.keys(process.env).filter((k) =>
+      k.startsWith("VAULT_AGENT_"),
+    );
     for (const k of keys) {
       delete process.env[k];
     }
@@ -126,7 +134,9 @@ describe("ConfigManager with env overrides", () => {
 
   beforeEach(() => {
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-cfg-"));
-    const keys = Object.keys(process.env).filter(k => k.startsWith("VAULT_AGENT_"));
+    const keys = Object.keys(process.env).filter((k) =>
+      k.startsWith("VAULT_AGENT_"),
+    );
     for (const k of keys) {
       delete process.env[k];
     }

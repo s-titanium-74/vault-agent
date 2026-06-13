@@ -3,18 +3,31 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { IndexStore } from "../src/index-store.js";
-import { getNote, getChunk, getAttachmentMetadata, getAttachmentBytes } from "../src/retrieval.js";
+import {
+  getNote,
+  getChunk,
+  getAttachmentMetadata,
+  getAttachmentBytes,
+} from "../src/retrieval.js";
 import { RetrievalSizeError } from "../src/errors.js";
 import { InvalidPathError } from "../src/retrieval.js";
 import { PathSafetyError } from "../src/pathsafety.js";
-import { DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT, DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT, INDEX_SCHEMA_VERSION } from "../src/schemas.js";
+import {
+  DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT,
+  DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT,
+  INDEX_SCHEMA_VERSION,
+} from "../src/schemas.js";
 import { Config, DEFAULT_CONFIG } from "../src/config.js";
 import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
 
 function createTestVault(): string {
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-retrieval-"));
+  const vaultDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "vault-agent-retrieval-"),
+  );
 
-  fs.writeFileSync(path.join(vaultDir, "SmallNote.md"), `---
+  fs.writeFileSync(
+    path.join(vaultDir, "SmallNote.md"),
+    `---
 title: "Small Note"
 aliases:
   - "Tiny"
@@ -27,16 +40,22 @@ updated: "2025-01-16T12:00:00Z"
 
 # Small Note
 
-This is a small test note for retrieval testing.`);
+This is a small test note for retrieval testing.`,
+  );
 
   fs.mkdirSync(path.join(vaultDir, "attachments"), { recursive: true });
-  fs.writeFileSync(path.join(vaultDir, "attachments", "data.csv"), "id,name\n1,alice\n2,bob");
+  fs.writeFileSync(
+    path.join(vaultDir, "attachments", "data.csv"),
+    "id,name\n1,alice\n2,bob",
+  );
 
   return vaultDir;
 }
 
 function createLargeNote(vaultDir: string): string {
-  const largeContent = "---\ntitle: \"Large Note\"\n---\n\n" + "x".repeat(DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT + 1000);
+  const largeContent =
+    '---\ntitle: "Large Note"\n---\n\n' +
+    "x".repeat(DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT + 1000);
   fs.writeFileSync(path.join(vaultDir, "LargeNote.md"), largeContent);
   return "LargeNote.md";
 }
@@ -52,9 +71,16 @@ function createTestConfig(vaultRoot: string, indexDir: string): Config {
   };
 }
 
-async function setupStore(vaultDir: string, indexDir: string): Promise<IndexStore> {
+async function setupStore(
+  vaultDir: string,
+  indexDir: string,
+): Promise<IndexStore> {
   const resolvedVault = path.resolve(vaultDir);
-  const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+  const dbPath = path.join(
+    indexDir,
+    vaultIdentity(resolvedVault),
+    "index.sqlite",
+  );
   const store = await IndexStore.open(dbPath);
 
   const manifest = {
@@ -78,23 +104,32 @@ async function setupStore(vaultDir: string, indexDir: string): Promise<IndexStor
     vaultRelativePath: "SmallNote.md",
     title: "Small Note",
     filePath: path.join(vaultDir, "SmallNote.md"),
-    frontmatter: { title: "Small Note", aliases: ["Tiny"], tags: ["test"], date: "2025-01-15", created: "2025-01-15T10:00:00Z", updated: "2025-01-16T12:00:00Z" },
+    frontmatter: {
+      title: "Small Note",
+      aliases: ["Tiny"],
+      tags: ["test"],
+      date: "2025-01-15",
+      created: "2025-01-15T10:00:00Z",
+      updated: "2025-01-16T12:00:00Z",
+    },
     frontmatterDegraded: false,
     size: 100,
     contentHash: "abc123",
     mtimeMs: Date.now(),
-    chunks: [{
-      noteId: smallId,
-      chunkIndex: 0,
-      vaultRelativePath: "SmallNote.md",
-      title: "Small Note",
-      heading: null,
-      headingPath: [],
-      content: "This is a small test note for retrieval testing.",
-      contentHash: "def456",
-      charStart: 0,
-      charEnd: 50,
-    }],
+    chunks: [
+      {
+        noteId: smallId,
+        chunkIndex: 0,
+        vaultRelativePath: "SmallNote.md",
+        title: "Small Note",
+        heading: null,
+        headingPath: [],
+        content: "This is a small test note for retrieval testing.",
+        contentHash: "def456",
+        charStart: 0,
+        charEnd: 50,
+      },
+    ],
     links: [],
     attachmentReferences: ["attachments/data.csv"],
   });
@@ -116,7 +151,9 @@ describe("getNote", () => {
   });
 
   afterEach(() => {
-    try { store?.close(); } catch {}
+    try {
+      store?.close();
+    } catch {}
     fs.rmSync(vaultDir, { recursive: true, force: true });
     fs.rmSync(indexDir, { recursive: true, force: true });
   });
@@ -216,7 +253,9 @@ describe("getChunk", () => {
   });
 
   afterEach(() => {
-    try { store?.close(); } catch {}
+    try {
+      store?.close();
+    } catch {}
     fs.rmSync(vaultDir, { recursive: true, force: true });
     fs.rmSync(indexDir, { recursive: true, force: true });
   });
@@ -279,20 +318,30 @@ describe("getAttachmentMetadata", () => {
   });
 
   it("throws PathSafetyError for path traversal with ../", () => {
-    expect(() => getAttachmentMetadata(vaultDir, "../etc/passwd")).toThrow(PathSafetyError);
+    expect(() => getAttachmentMetadata(vaultDir, "../etc/passwd")).toThrow(
+      PathSafetyError,
+    );
   });
 
   it("returns null for non-existent path", () => {
-    const result = getAttachmentMetadata(vaultDir, "attachments/nonexistent.pdf");
+    const result = getAttachmentMetadata(
+      vaultDir,
+      "attachments/nonexistent.pdf",
+    );
     expect(result).toBeNull();
   });
 
   it("throws InvalidPathError for directory path", () => {
-    expect(() => getAttachmentMetadata(vaultDir, "attachments")).toThrow(InvalidPathError);
+    expect(() => getAttachmentMetadata(vaultDir, "attachments")).toThrow(
+      InvalidPathError,
+    );
   });
 
   it("returns metadata for PNG image", () => {
-    fs.writeFileSync(path.join(vaultDir, "photo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    fs.writeFileSync(
+      path.join(vaultDir, "photo.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    );
     const result = getAttachmentMetadata(vaultDir, "photo.png");
     expect(result).not.toBeNull();
     expect(result!.contentType).toBe("image/png");
@@ -333,7 +382,9 @@ describe("getAttachmentBytes", () => {
   });
 
   it("throws PathSafetyError for path traversal with ../", () => {
-    expect(() => getAttachmentBytes(vaultDir, "../etc/passwd")).toThrow(PathSafetyError);
+    expect(() => getAttachmentBytes(vaultDir, "../etc/passwd")).toThrow(
+      PathSafetyError,
+    );
   });
 
   it("returns null for Markdown file path", () => {
@@ -342,19 +393,29 @@ describe("getAttachmentBytes", () => {
   });
 
   it("throws RetrievalSizeError for oversized attachment (size limit exceeded)", () => {
-    const largeBuffer = Buffer.alloc(DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT + 1000, "A");
+    const largeBuffer = Buffer.alloc(
+      DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT + 1000,
+      "A",
+    );
     fs.writeFileSync(path.join(vaultDir, "huge.zip"), largeBuffer);
 
-    expect(() => getAttachmentBytes(vaultDir, "huge.zip")).toThrow(RetrievalSizeError);
+    expect(() => getAttachmentBytes(vaultDir, "huge.zip")).toThrow(
+      RetrievalSizeError,
+    );
   });
 
   it("returns oversized attachment when allowLarge is true", () => {
-    const largeBuffer = Buffer.alloc(DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT + 1000, "A");
+    const largeBuffer = Buffer.alloc(
+      DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT + 1000,
+      "A",
+    );
     fs.writeFileSync(path.join(vaultDir, "huge.zip"), largeBuffer);
 
     const result = getAttachmentBytes(vaultDir, "huge.zip", true);
     expect(result).not.toBeNull();
-    expect(result!.bytes.length).toBeGreaterThan(DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT);
+    expect(result!.bytes.length).toBeGreaterThan(
+      DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT,
+    );
   });
 
   it("returns null for hidden file", () => {

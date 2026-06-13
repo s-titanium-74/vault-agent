@@ -16,8 +16,8 @@
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "lint": "eslint packages/*/src",
-    "format": "prettier --write \"packages/*/src/**/*.ts\"",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:server": "tsx packages/server/src/main.ts"

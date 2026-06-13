@@ -11,9 +11,13 @@ import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
 import { INDEX_SCHEMA_VERSION, MAX_SNIPPET_LENGTH } from "../src/schemas.js";
 
 function createTestVault(): string {
-  const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-search-"));
+  const vaultDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "vault-agent-search-"),
+  );
 
-  fs.writeFileSync(path.join(vaultDir, "Alpha.md"), `---
+  fs.writeFileSync(
+    path.join(vaultDir, "Alpha.md"),
+    `---
 title: "Alpha Note"
 tags:
   - alpha
@@ -22,9 +26,12 @@ tags:
 
 # Alpha Note
 
-Alpha content about lexical search and indexing systems.`);
+Alpha content about lexical search and indexing systems.`,
+  );
 
-  fs.writeFileSync(path.join(vaultDir, "Beta.md"), `---
+  fs.writeFileSync(
+    path.join(vaultDir, "Beta.md"),
+    `---
 title: "Beta Note"
 tags:
   - beta
@@ -33,7 +40,8 @@ tags:
 
 # Beta Note
 
-Beta content about embedding retrieval and vector similarity.`);
+Beta content about embedding retrieval and vector similarity.`,
+  );
 
   return vaultDir;
 }
@@ -124,14 +132,19 @@ describe("search", () => {
 
   it("throws INDEX_NOT_FOUND when no manifest exists", async () => {
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
-      await expect(search(store, "test query", "lexical", 10, config)).rejects
-        .toMatchObject({
-          code: "INDEX_NOT_FOUND",
-        });
+      await expect(
+        search(store, "test query", "lexical", 10, config),
+      ).rejects.toMatchObject({
+        code: "INDEX_NOT_FOUND",
+      });
     } finally {
       store.close();
     }
@@ -139,7 +152,11 @@ describe("search", () => {
 
   it("returns empty results for whitespace-only query after indexing", async () => {
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     const manifest = {
@@ -275,14 +292,26 @@ describe("getRelated", () => {
 
   it("throws INDEX_NOT_FOUND when no manifest exists", async () => {
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
-      await expect(getRelated(store, "note", "abcd1234abcd1234abcd1234abcd1234", "lexical", 10, config)).rejects
-        .toMatchObject({
-          code: "INDEX_NOT_FOUND",
-        });
+      await expect(
+        getRelated(
+          store,
+          "note",
+          "abcd1234abcd1234abcd1234abcd1234",
+          "lexical",
+          10,
+          config,
+        ),
+      ).rejects.toMatchObject({
+        code: "INDEX_NOT_FOUND",
+      });
     } finally {
       store.close();
     }
@@ -290,7 +319,11 @@ describe("getRelated", () => {
 
   it("throws INVALID_ID for invalid note ID", async () => {
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     const manifest = {
@@ -309,10 +342,11 @@ describe("getRelated", () => {
     store.setManifest(manifest);
 
     try {
-      await expect(getRelated(store, "note", "invalid-id", "lexical", 10, config)).rejects
-        .toMatchObject({
-          code: "INVALID_ID",
-        });
+      await expect(
+        getRelated(store, "note", "invalid-id", "lexical", 10, config),
+      ).rejects.toMatchObject({
+        code: "INVALID_ID",
+      });
     } finally {
       store.close();
     }
@@ -320,7 +354,11 @@ describe("getRelated", () => {
 
   it("throws INVALID_ID for invalid chunk ID format", async () => {
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     const manifest = {
@@ -339,10 +377,18 @@ describe("getRelated", () => {
     store.setManifest(manifest);
 
     try {
-      await expect(getRelated(store, "chunk", "not-a-valid-chunk-id", "lexical", 10, config)).rejects
-        .toMatchObject({
-          code: "INVALID_ID",
-        });
+      await expect(
+        getRelated(
+          store,
+          "chunk",
+          "not-a-valid-chunk-id",
+          "lexical",
+          10,
+          config,
+        ),
+      ).rejects.toMatchObject({
+        code: "INVALID_ID",
+      });
     } finally {
       store.close();
     }
@@ -353,7 +399,11 @@ describe("getRelated", () => {
     await indexVault(config);
 
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
@@ -361,7 +411,14 @@ describe("getRelated", () => {
       const noteId = notes[0]!.note_id as string;
       const chunkId = `${noteId}:0`;
 
-      const result = await getRelated(store, "chunk", chunkId, "lexical", 10, config);
+      const result = await getRelated(
+        store,
+        "chunk",
+        chunkId,
+        "lexical",
+        10,
+        config,
+      );
       expect(result.input.type).toBe("chunk");
       expect(result.input.id).toBe(chunkId);
     } finally {
@@ -374,11 +431,24 @@ describe("getRelated", () => {
     await indexVault(config);
 
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
-      await expect(getRelated(store, "note", "00000000000000000000000000000000", "lexical", 10, config)).rejects.toThrow(SearchError);
+      await expect(
+        getRelated(
+          store,
+          "note",
+          "00000000000000000000000000000000",
+          "lexical",
+          10,
+          config,
+        ),
+      ).rejects.toThrow(SearchError);
     } finally {
       store.close();
     }

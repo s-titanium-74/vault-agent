@@ -18,7 +18,9 @@ import { INDEX_SCHEMA_VERSION } from "../src/schemas.js";
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-vault-"));
 
-  fs.writeFileSync(path.join(vaultDir, "Welcome.md"), `---
+  fs.writeFileSync(
+    path.join(vaultDir, "Welcome.md"),
+    `---
 title: "Welcome Note"
 aliases:
   - "Home"
@@ -38,10 +40,13 @@ Vault-agent provides lexical search, embedding search, hybrid search, and relate
 
 ## Getting Started
 
-Configure your vault root and start the server. Then use search and get commands.`);
+Configure your vault root and start the server. Then use search and get commands.`,
+  );
 
   fs.mkdirSync(path.join(vaultDir, "Architecture"), { recursive: true });
-  fs.writeFileSync(path.join(vaultDir, "Architecture", "Search.md"), `---
+  fs.writeFileSync(
+    path.join(vaultDir, "Architecture", "Search.md"),
+    `---
 title: "Search Architecture"
 aliases:
   - "Search System"
@@ -62,9 +67,12 @@ Lexical search uses SQLite FTS5 with the unicode61 tokenizer. A supplemental tri
 
 ## Hybrid Search
 
-Hybrid search combines lexical and embedding results using Reciprocal Rank Fusion.`);
+Hybrid search combines lexical and embedding results using Reciprocal Rank Fusion.`,
+  );
 
-  fs.writeFileSync(path.join(vaultDir, "Configuration.md"), `# Configuration Guide
+  fs.writeFileSync(
+    path.join(vaultDir, "Configuration.md"),
+    `# Configuration Guide
 
 Vault-agent uses TOML configuration files stored in user-local directories.
 
@@ -74,9 +82,12 @@ Default server endpoint is http://127.0.0.1:8787. The server binds to localhost 
 
 ## Embedding Settings
 
-Embeddings are disabled by default. Enable by setting embedding.enabled to true and configuring a local endpoint.`);
+Embeddings are disabled by default. Enable by setting embedding.enabled to true and configuring a local endpoint.`,
+  );
 
-  fs.writeFileSync(path.join(vaultDir, "Privacy.md"), `# Privacy and Security
+  fs.writeFileSync(
+    path.join(vaultDir, "Privacy.md"),
+    `# Privacy and Security
 
 Vault-agent is designed with local-first and private-by-default principles.
 
@@ -86,7 +97,8 @@ The server binds to 127.0.0.1 by default. Remote access requires explicit config
 
 ## Data Minimization
 
-Search results return only metadata and short snippets. Full note retrieval requires explicit requests.`);
+Search results return only metadata and short snippets. Full note retrieval requires explicit requests.`,
+  );
 
   return vaultDir;
 }
@@ -111,7 +123,9 @@ describe("IndexStore", () => {
   });
 
   afterEach(() => {
-    try { store?.close(); } catch {}
+    try {
+      store?.close();
+    } catch {}
     fs.rmSync(storeDir, { recursive: true, force: true });
   });
 
@@ -291,11 +305,21 @@ describe("Indexing and Search Integration", () => {
   it("performs lexical search", async () => {
     await indexVault(config);
 
-    const dbPath = path.join(indexDir, vaultIdentity(path.resolve(vaultDir)), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(path.resolve(vaultDir)),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
-      const result = await search(store, "search architecture", "lexical", 10, config);
+      const result = await search(
+        store,
+        "search architecture",
+        "lexical",
+        10,
+        config,
+      );
       expect(result.requestedMode).toBe("lexical");
       expect(result.usedMode).toBe("lexical");
       expect(result.results.length).toBeGreaterThan(0);
@@ -307,15 +331,27 @@ describe("Indexing and Search Integration", () => {
   it("performs default search", async () => {
     await indexVault(config);
 
-    const dbPath = path.join(indexDir, vaultIdentity(path.resolve(vaultDir)), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(path.resolve(vaultDir)),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
-      const result = await search(store, "configuration", undefined, 10, config);
+      const result = await search(
+        store,
+        "configuration",
+        undefined,
+        10,
+        config,
+      );
       expect(result.usedMode).toBe("lexical");
       expect(result.results.length).toBeGreaterThan(0);
 
-      const hasConfigResult = result.results.some((r) => r.path.includes("Configuration"));
+      const hasConfigResult = result.results.some((r) =>
+        r.path.includes("Configuration"),
+      );
       expect(hasConfigResult).toBe(true);
     } finally {
       store.close();
@@ -325,7 +361,11 @@ describe("Indexing and Search Integration", () => {
   it("returns snippet in search results", async () => {
     await indexVault(config);
 
-    const dbPath = path.join(indexDir, vaultIdentity(path.resolve(vaultDir)), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(path.resolve(vaultDir)),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
@@ -348,7 +388,11 @@ describe("Indexing and Search Integration", () => {
   it("finds related notes", async () => {
     await indexVault(config);
 
-    const dbPath = path.join(indexDir, vaultIdentity(path.resolve(vaultDir)), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(path.resolve(vaultDir)),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
@@ -356,7 +400,14 @@ describe("Indexing and Search Integration", () => {
       expect(notes.length).toBeGreaterThan(0);
 
       const noteId = notes[0]!.note_id as string;
-      const result = await getRelated(store, "note", noteId, "lexical", 5, config);
+      const result = await getRelated(
+        store,
+        "note",
+        noteId,
+        "lexical",
+        5,
+        config,
+      );
       expect(result.input.type).toBe("note");
       expect(result.input.id).toBe(noteId);
       expect(result.usedMode).toBe("lexical");
@@ -369,7 +420,11 @@ describe("Indexing and Search Integration", () => {
     await indexVault(config);
 
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
@@ -391,7 +446,11 @@ describe("Indexing and Search Integration", () => {
     await indexVault(config);
 
     const resolvedVault = path.resolve(vaultDir);
-    const dbPath = path.join(indexDir, vaultIdentity(resolvedVault), "index.sqlite");
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
     const store = await IndexStore.open(dbPath);
 
     try {
