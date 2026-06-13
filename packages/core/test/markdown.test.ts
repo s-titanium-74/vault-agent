@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { extractFrontmatter, parseMarkdown, extractWikilinks, extractAttachmentReferences } from "../src/markdown.js";
+import {
+  extractFrontmatter,
+  parseMarkdown,
+  extractWikilinks,
+  extractAttachmentReferences,
+} from "../src/markdown.js";
 
 describe("extractFrontmatter", () => {
   it("extracts YAML frontmatter", () => {
@@ -106,7 +111,8 @@ Body text.`;
   });
 
   it("strips code blocks from wikilink extraction", () => {
-    const content = "# Note\n\nText [[InsideCode]] here.\n\n```\n[[NotALink]]\n```\n\nMore [[RealLink]].";
+    const content =
+      "# Note\n\nText [[InsideCode]] here.\n\n```\n[[NotALink]]\n```\n\nMore [[RealLink]].";
     const result = parseMarkdown(content);
     const targets = result.wikilinks.map((l) => l.target);
     expect(targets).toContain("InsideCode");
@@ -172,7 +178,8 @@ describe("extractAttachmentReferences", () => {
   });
 
   it("excludes external URLs", () => {
-    const text = "See [external](https://example.com) and ![img](http://test.com/img.png).";
+    const text =
+      "See [external](https://example.com) and ![img](http://test.com/img.png).";
     const refs = extractAttachmentReferences(text);
     expect(refs).not.toContain("https://example.com");
   });

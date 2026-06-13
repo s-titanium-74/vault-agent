@@ -10,9 +10,18 @@ describe("VaultDiscovery", () => {
   beforeEach(() => {
     vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-test-"));
     fs.mkdirSync(path.join(vaultDir, "Folder"), { recursive: true });
-    fs.writeFileSync(path.join(vaultDir, "Note1.md"), "# Note 1\n\nContent one.");
-    fs.writeFileSync(path.join(vaultDir, "Folder", "Note2.md"), "# Note 2\n\nContent two.");
-    fs.writeFileSync(path.join(vaultDir, "Note3.markdown"), "# Note 3\n\nContent three.");
+    fs.writeFileSync(
+      path.join(vaultDir, "Note1.md"),
+      "# Note 1\n\nContent one.",
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "Folder", "Note2.md"),
+      "# Note 2\n\nContent two.",
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "Note3.markdown"),
+      "# Note 3\n\nContent three.",
+    );
   });
 
   afterEach(() => {

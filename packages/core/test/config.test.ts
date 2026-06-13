@@ -92,10 +92,18 @@ describe("TOML parsing (smol-toml)", () => {
   });
 
   it("parses a valid TOML config file", () => {
-    const keys = Object.keys(process.env).filter(k => k.startsWith("VAULT_AGENT_"));
-    for (const k of keys) { const v = process.env[k]; delete process.env[k]; if (v !== undefined) process.env[k] = v; }
+    const keys = Object.keys(process.env).filter((k) =>
+      k.startsWith("VAULT_AGENT_"),
+    );
+    for (const k of keys) {
+      const v = process.env[k];
+      delete process.env[k];
+      if (v !== undefined) process.env[k] = v;
+    }
     delete process.env.VAULT_AGENT_VAULT_ROOT;
-    const configPath = writeTOML(testDir, `[vault]
+    const configPath = writeTOML(
+      testDir,
+      `[vault]
 root = "/my/vault"
 exclude = ["node_modules", ".git"]
 
@@ -117,26 +125,29 @@ require = true
 [cors]
 enabled = true
 allowed_origins = ["http://localhost:3000"]
-`);
-      const manager = new ConfigManager(configPath);
-      const config = manager.load();
-      expect(config.vault.root).toBe("/my/vault");
-      expect(config.vault.exclude).toEqual(["node_modules", ".git"]);
-      expect(config.server.host).toBe("0.0.0.0");
-      expect(config.server.port).toBe(9999);
-      expect(config.server.apiKey).toBe("secret123");
-      expect(config.server.logLevel).toBe("debug");
-      expect(config.index.dir).toBe("/tmp/index");
-      expect(config.embedding.enabled).toBe(true);
-      expect(config.embedding.model).toBe("nomic-embed-text");
-      expect(config.embedding.require).toBe(true);
-      expect(config.cors.enabled).toBe(true);
-      expect(config.cors.allowedOrigins).toEqual(["http://localhost:3000"]);
+`,
+    );
+    const manager = new ConfigManager(configPath);
+    const config = manager.load();
+    expect(config.vault.root).toBe("/my/vault");
+    expect(config.vault.exclude).toEqual(["node_modules", ".git"]);
+    expect(config.server.host).toBe("0.0.0.0");
+    expect(config.server.port).toBe(9999);
+    expect(config.server.apiKey).toBe("secret123");
+    expect(config.server.logLevel).toBe("debug");
+    expect(config.index.dir).toBe("/tmp/index");
+    expect(config.embedding.enabled).toBe(true);
+    expect(config.embedding.model).toBe("nomic-embed-text");
+    expect(config.embedding.require).toBe(true);
+    expect(config.cors.enabled).toBe(true);
+    expect(config.cors.allowedOrigins).toEqual(["http://localhost:3000"]);
   });
 
   it("parses camelCase config keys", () => {
     delete process.env.VAULT_AGENT_VAULT_ROOT;
-    const configPath = writeTOML(testDir, `[vault]
+    const configPath = writeTOML(
+      testDir,
+      `[vault]
 root = "/tmp/vault"
 
 [server]
@@ -145,33 +156,40 @@ logLevel = "warn"
 
 [cors]
 allowedOrigins = ["http://localhost:5173"]
-`);
-      const manager = new ConfigManager(configPath);
-      const config = manager.load();
-      expect(config.server.apiKey).toBe("my-key");
-      expect(config.server.logLevel).toBe("warn");
-      expect(config.cors.allowedOrigins).toEqual(["http://localhost:5173"]);
+`,
+    );
+    const manager = new ConfigManager(configPath);
+    const config = manager.load();
+    expect(config.server.apiKey).toBe("my-key");
+    expect(config.server.logLevel).toBe("warn");
+    expect(config.cors.allowedOrigins).toEqual(["http://localhost:5173"]);
   });
 
   it("rejects unknown config sections", () => {
     delete process.env.VAULT_AGENT_VAULT_ROOT;
-    const configPath = writeTOML(testDir, `[unknown_section]
+    const configPath = writeTOML(
+      testDir,
+      `[unknown_section]
 foo = "bar"
-`);
-      const manager = new ConfigManager(configPath);
-      expect(() => manager.load()).toThrow(ConfigError);
-      expect(() => manager.load()).toThrow(/Unknown configuration section/);
+`,
+    );
+    const manager = new ConfigManager(configPath);
+    expect(() => manager.load()).toThrow(ConfigError);
+    expect(() => manager.load()).toThrow(/Unknown configuration section/);
   });
 
   it("rejects unknown config keys in known sections", () => {
     delete process.env.VAULT_AGENT_VAULT_ROOT;
-    const configPath = writeTOML(testDir, `[server]
+    const configPath = writeTOML(
+      testDir,
+      `[server]
 host = "127.0.0.1"
 unknown_key = "value"
-`);
-      const manager = new ConfigManager(configPath);
-      expect(() => manager.load()).toThrow(ConfigError);
-      expect(() => manager.load()).toThrow(/Unknown configuration key/);
+`,
+    );
+    const manager = new ConfigManager(configPath);
+    expect(() => manager.load()).toThrow(ConfigError);
+    expect(() => manager.load()).toThrow(/Unknown configuration key/);
   });
 
   it("round-trips config through set and load", () => {
@@ -192,7 +210,9 @@ unknown_key = "value"
 
   it("handles TOML multiline strings and complex values", () => {
     delete process.env.VAULT_AGENT_VAULT_ROOT;
-    const configPath = writeTOML(testDir, `[vault]
+    const configPath = writeTOML(
+      testDir,
+      `[vault]
 root = "/tmp/vault"
 exclude = []
 
@@ -214,16 +234,19 @@ require = false
 [cors]
 enabled = false
 allowed_origins = []
-`);
-      const manager = new ConfigManager(configPath);
-      const config = manager.load();
-      expect(config.vault.exclude).toEqual([]);
-      expect(config.cors.allowedOrigins).toEqual([]);
+`,
+    );
+    const manager = new ConfigManager(configPath);
+    const config = manager.load();
+    expect(config.vault.exclude).toEqual([]);
+    expect(config.cors.allowedOrigins).toEqual([]);
   });
 
   it("rejects setting unknown keys via setDottedKey", () => {
     const configPath = path.join(testDir, "config.toml");
     const manager = new ConfigManager(configPath);
-    expect(() => manager.set("server.unknownKey", "value")).toThrow(ConfigError);
+    expect(() => manager.set("server.unknownKey", "value")).toThrow(
+      ConfigError,
+    );
   });
 });

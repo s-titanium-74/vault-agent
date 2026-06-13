@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { resolveVaultRelativePath, PathSafetyError } from "../src/pathsafety.js";
+import {
+  resolveVaultRelativePath,
+  PathSafetyError,
+} from "../src/pathsafety.js";
 
 describe("resolveVaultRelativePath", () => {
   let vaultDir: string;
@@ -29,25 +32,35 @@ describe("resolveVaultRelativePath", () => {
   });
 
   it("rejects path traversal with ../", () => {
-    expect(() => resolveVaultRelativePath(vaultDir, "../etc/passwd")).toThrow(PathSafetyError);
+    expect(() => resolveVaultRelativePath(vaultDir, "../etc/passwd")).toThrow(
+      PathSafetyError,
+    );
   });
 
   it("rejects path traversal with multiple ../", () => {
-    expect(() => resolveVaultRelativePath(vaultDir, "../../etc/passwd")).toThrow(PathSafetyError);
+    expect(() =>
+      resolveVaultRelativePath(vaultDir, "../../etc/passwd"),
+    ).toThrow(PathSafetyError);
   });
 
   it("rejects path traversal that targets parent directories", () => {
-    expect(() => resolveVaultRelativePath(vaultDir, "subdir/../../../etc/passwd")).toThrow(PathSafetyError);
+    expect(() =>
+      resolveVaultRelativePath(vaultDir, "subdir/../../../etc/passwd"),
+    ).toThrow(PathSafetyError);
   });
 
   it("rejects symlink that resolves outside vault", () => {
-    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-outside-"));
+    const outsideDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vault-agent-outside-"),
+    );
     try {
       fs.writeFileSync(path.join(outsideDir, "secret.txt"), "secret");
       const linkPath = path.join(vaultDir, "evil-link");
       fs.symlinkSync(outsideDir, linkPath, "junction");
 
-      expect(() => resolveVaultRelativePath(vaultDir, "evil-link/secret.txt")).toThrow(PathSafetyError);
+      expect(() =>
+        resolveVaultRelativePath(vaultDir, "evil-link/secret.txt"),
+      ).toThrow(PathSafetyError);
     } finally {
       fs.rmSync(outsideDir, { recursive: true, force: true });
     }
@@ -60,7 +73,10 @@ describe("resolveVaultRelativePath", () => {
     const linkDir = path.join(vaultDir, "link-to-target");
     fs.symlinkSync(targetDir, linkDir, "junction");
 
-    const result = resolveVaultRelativePath(vaultDir, "link-to-target/real-note.md");
+    const result = resolveVaultRelativePath(
+      vaultDir,
+      "link-to-target/real-note.md",
+    );
     expect(result).toBeTruthy();
   });
 

@@ -10,10 +10,7 @@ import {
   DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT,
 } from "./schemas.js";
 import { isValidNoteId } from "./identifiers.js";
-import {
-  validateVaultPath,
-  resolveVaultRelativePath,
-} from "./pathsafety.js";
+import { validateVaultPath, resolveVaultRelativePath } from "./pathsafety.js";
 import { PathSafetyError } from "./pathsafety.js";
 import { VaultDiscovery } from "./discovery.js";
 import { RetrievalSizeError } from "./errors.js";

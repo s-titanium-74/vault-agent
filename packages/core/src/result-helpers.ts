@@ -18,9 +18,8 @@ export function chunkMetadataFromNote(
     date: (note?.date_value as string) ?? null,
     created: (note?.created_value as string) ?? null,
     updated: (note?.updated_value as string) ?? null,
-    attachmentCount: JSON.parse(
-      (note?.attachment_refs_json as string) ?? "[]",
-    ).length as number,
+    attachmentCount: JSON.parse((note?.attachment_refs_json as string) ?? "[]")
+      .length as number,
   };
 }
 

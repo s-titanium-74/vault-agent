@@ -99,9 +99,18 @@ docs/
     phase-1-retrieval-foundation/
       requirements.md
       specification.md
+      specifications/
+        cli.md
+        configuration.md
+        indexing.md
+        retrieval.md
+        server-api.md
+        testing-ci.md
+        tooling.md
     phase-2-automatic-index-updates/
       requirements.md
       specification.md
+      specifications/
 ```
 
 Phase workflow:

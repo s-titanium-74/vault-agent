@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+
+*.sqlite
+*.sqlite-*
+*.db
+*.log
+
+.git/
+.agents/
+.codex/
