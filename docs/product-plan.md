@@ -98,7 +98,6 @@ docs/
   phases/
     phase-1-retrieval-foundation/
       requirements.md
-      specification.md
       specifications/
         cli.md
         configuration.md
@@ -109,16 +108,17 @@ docs/
         tooling.md
     phase-2-automatic-index-updates/
       requirements.md
-      specification.md
       specifications/
 ```
+
+Each phase should be traceable from the roadmap to its requirements. Requirements link to their relevant specification files section by section.
 
 Phase workflow:
 
 ```text
 review goals and non-goals in product-plan.md
 -> create / update phase requirements
--> create / update phase specification
+-> create / update phase specifications
 -> implement
 -> update phase docs if implementation decisions change
 -> verify acceptance criteria and complete the phase
@@ -297,7 +297,17 @@ Responsibility split:
 
 The MVP is Phase 1: Retrieval Foundation. Phase 2 and later are post-MVP extensions. Detailed requirements and specifications for each phase live under `docs/phases/<phase-name>/`.
 
+Phase requirements:
+
+- Phase 1: [Retrieval Foundation requirements](phases/phase-1-retrieval-foundation/requirements.md)
+- Phase 2: planned `docs/phases/phase-2-automatic-index-updates/requirements.md`
+- Phase 3: planned `docs/phases/phase-3-mcp-bridge/requirements.md`
+- Phase 4: planned `docs/phases/phase-4-llm-integration/requirements.md`
+- Phase 5: planned `docs/phases/phase-5-obsidian-plugin/requirements.md`
+
 ### Phase 1: Retrieval Foundation
+
+Requirements: [Phase 1 Retrieval Foundation requirements](phases/phase-1-retrieval-foundation/requirements.md).
 
 - `vault-agent serve`
 - `vault-agent config`
@@ -315,6 +325,8 @@ Purpose: let Codex, opencode, Claude Code, and similar CLI-based agent workflows
 
 ### Phase 2: Automatic Index Updates
 
+Requirements: planned `docs/phases/phase-2-automatic-index-updates/requirements.md`.
+
 - File watching
 - Incremental index update
 - Stale index detection
@@ -331,6 +343,8 @@ Git sync is not a note writing or editing workflow. It is a helper that lets a r
 
 ### Phase 3: MCP Bridge
 
+Requirements: planned `docs/phases/phase-3-mcp-bridge/requirements.md`.
+
 - Expose `search`, `get`, and `related` as MCP tools.
 - Keep the bridge thin by calling the HTTP server.
 - Preserve progressive disclosure for MCP clients.
@@ -339,6 +353,8 @@ Git sync is not a note writing or editing workflow. It is a helper that lets a r
 Purpose: let MCP-compatible clients safely retrieve vault context in stages.
 
 ### Phase 4: LLM Integration
+
+Requirements: planned `docs/phases/phase-4-llm-integration/requirements.md`.
 
 - `vault-agent chat "question"` for single-shot vault-aware answers
 - `vault-agent chat` for interactive sessions
@@ -352,6 +368,8 @@ Purpose: let users ask vault-aware questions directly from the CLI without going
 `vault-agent chat "question"` returns a single-shot answer and exits. By default it does not persist conversation history. `vault-agent chat` starts an interactive session and keeps conversation history for that session. For HTTP clients, single-shot chat should not require a persistent session, while interactive chat assumes the client explicitly provides a session id. Chat does not write or edit notes.
 
 ### Phase 5: Obsidian Plugin
+
+Requirements: planned `docs/phases/phase-5-obsidian-plugin/requirements.md`.
 
 - Server status display
 - Search UI

@@ -107,4 +107,4 @@ This repository is intended to become the public `vault-agent` project: a standa
 
 - `docs/product-plan.md`: product plan covering background, goals, non-goals, design decisions, and roadmap.
 - Future phase requirements should live under `docs/phases/<phase-name>/requirements.md`.
-- Future phase specifications should live under `docs/phases/<phase-name>/specification.md`.
+- Future phase specifications should live under `docs/phases/<phase-name>/specifications/`.

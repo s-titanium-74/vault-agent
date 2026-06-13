@@ -2,7 +2,7 @@
 
 Status: Draft
 
-This file is part of the Phase 1 specification. See ../specification.md for the specification map and ../requirements.md for requirements.
+This file is part of the Phase 1 specification. See ../requirements.md for requirements and this directory for the domain specifications.
 
 ## Search And Related Limits
 

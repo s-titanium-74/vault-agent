@@ -227,5 +227,5 @@ npm run dev:server
 
 - [Product plan](docs/product-plan.md)
 - [Phase 1 requirements](docs/phases/phase-1-retrieval-foundation/requirements.md)
-- [Phase 1 specification](docs/phases/phase-1-retrieval-foundation/specification.md)
+- [Phase 1 specifications](docs/phases/phase-1-retrieval-foundation/specifications/)
 - [Agent working rules](AGENTS.md)
