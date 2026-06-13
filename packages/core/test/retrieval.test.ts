@@ -7,7 +7,7 @@ import { getNote, getChunk, getAttachmentMetadata, getAttachmentBytes } from "..
 import { RetrievalSizeError } from "../src/errors.js";
 import { InvalidPathError } from "../src/retrieval.js";
 import { PathSafetyError } from "../src/pathsafety.js";
-import { DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT, DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT } from "../src/schemas.js";
+import { DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT, DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT, INDEX_SCHEMA_VERSION } from "../src/schemas.js";
 import { Config, DEFAULT_CONFIG } from "../src/config.js";
 import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
 
@@ -58,7 +58,7 @@ async function setupStore(vaultDir: string, indexDir: string): Promise<IndexStor
   const store = await IndexStore.open(dbPath);
 
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: INDEX_SCHEMA_VERSION,
     vaultIdentity: vaultIdentity(resolvedVault),
     indexedFileExtensions: [".md", ".markdown"],
     effectiveExcludePatterns: [".obsidian/", ".git/"],

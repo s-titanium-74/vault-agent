@@ -268,28 +268,32 @@ function isAttachmentPath(href: string): string | null {
 export function resolveWikilinks(
   notes: Map<
     string,
-    { noteId: string; title: string | null; aliases: string[] }
+    Array<{ noteId: string; title: string | null; aliases: string[] }>
   >,
 ): (link: WikilinkInfo) => WikilinkInfo {
   const fileNameMap = new Map<string, string[]>();
   const titleMap = new Map<string, string[]>();
   const aliasMap = new Map<string, string[]>();
 
-  for (const [stem, info] of notes) {
+  for (const [stem, entries] of notes) {
     const arr = fileNameMap.get(stem) ?? [];
-    arr.push(info.noteId);
+    for (const info of entries) {
+      arr.push(info.noteId);
+    }
     fileNameMap.set(stem, arr);
 
-    if (info.title) {
-      const arr2 = titleMap.get(info.title) ?? [];
-      arr2.push(info.noteId);
-      titleMap.set(info.title, arr2);
-    }
+    for (const info of entries) {
+      if (info.title) {
+        const arr2 = titleMap.get(info.title) ?? [];
+        arr2.push(info.noteId);
+        titleMap.set(info.title, arr2);
+      }
 
-    for (const alias of info.aliases) {
-      const arr3 = aliasMap.get(alias) ?? [];
-      arr3.push(info.noteId);
-      aliasMap.set(alias, arr3);
+      for (const alias of info.aliases) {
+        const arr3 = aliasMap.get(alias) ?? [];
+        arr3.push(info.noteId);
+        aliasMap.set(alias, arr3);
+      }
     }
   }
 

@@ -409,7 +409,10 @@ Index database filenames:
 - Active database: `index.sqlite`
 - Temporary full rebuild database: `index.tmp.sqlite`
 
-Index schema version starts at integer `1`.
+Index schema version starts at integer `1`. The current Phase 1 schema version
+is `2`; version `2` includes allowlisted frontmatter aliases and tags in chunk
+lexical index text. Indexes from older schema versions are incompatible and must
+be rebuilt or explicitly indexed before retrieval uses them.
 
 Phase 1 does not perform automatic index migrations. Schema version mismatch requires explicit reindexing.
 

@@ -156,13 +156,18 @@ async function performIndex(
 
   const allNoteStems = new Map<
     string,
-    { noteId: string; title: string | null; aliases: string[] }
+    Array<{ noteId: string; title: string | null; aliases: string[] }>
   >();
   const rawNotes: Note[] = [];
   const warnings: IndexWarning[] = [];
   let notesIndexed = 0;
   let chunksIndexed = 0;
   let notesSkipped = 0;
+
+  const existingManifest = isFull ? null : store.getManifest();
+  const forceRewriteExisting =
+    existingManifest !== null &&
+    existingManifest.schemaVersion !== INDEX_SCHEMA_VERSION;
 
   const existingPaths = new Set<string>();
   if (!isFull) {
@@ -173,7 +178,7 @@ async function performIndex(
 
   for (const file of discovered.files) {
     try {
-      if (!isFull) {
+      if (!isFull && !forceRewriteExisting) {
         const existing = store.getNoteByPath(file.vaultRelativePath);
         if (
           existing &&
@@ -252,11 +257,13 @@ async function performIndex(
         .split("/")
         .pop()!
         .replace(/\.(md|markdown)$/i, "");
-      allNoteStems.set(stem, {
+      const stemEntries = allNoteStems.get(stem) ?? [];
+      stemEntries.push({
         noteId,
         title: parsed.title,
         aliases: parsed.aliases,
       });
+      allNoteStems.set(stem, stemEntries);
     } catch {
       warnings.push({
         code: "FILE_NOT_UTF8",

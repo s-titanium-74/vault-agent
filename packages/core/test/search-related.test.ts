@@ -8,7 +8,7 @@ import { getRelated } from "../src/related.js";
 import { SearchError } from "../src/errors.js";
 import { Config, DEFAULT_CONFIG } from "../src/config.js";
 import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
-import { MAX_SNIPPET_LENGTH } from "../src/schemas.js";
+import { INDEX_SCHEMA_VERSION, MAX_SNIPPET_LENGTH } from "../src/schemas.js";
 
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), "vault-agent-search-"));
@@ -143,7 +143,7 @@ describe("search", () => {
     const store = await IndexStore.open(dbPath);
 
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: INDEX_SCHEMA_VERSION,
       vaultIdentity: vaultIdentity(resolvedVault),
       indexedFileExtensions: [".md", ".markdown"],
       effectiveExcludePatterns: [".obsidian/", ".git/"],
@@ -294,7 +294,7 @@ describe("getRelated", () => {
     const store = await IndexStore.open(dbPath);
 
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: INDEX_SCHEMA_VERSION,
       vaultIdentity: vaultIdentity(resolvedVault),
       indexedFileExtensions: [".md", ".markdown"],
       effectiveExcludePatterns: [".obsidian/", ".git/"],
@@ -324,7 +324,7 @@ describe("getRelated", () => {
     const store = await IndexStore.open(dbPath);
 
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: INDEX_SCHEMA_VERSION,
       vaultIdentity: vaultIdentity(resolvedVault),
       indexedFileExtensions: [".md", ".markdown"],
       effectiveExcludePatterns: [".obsidian/", ".git/"],
@@ -424,6 +424,69 @@ describe("getRelated", () => {
       expect(JSON.stringify(result.results)).not.toContain(
         "An orbiting subject with separate vocabulary.",
       );
+    } finally {
+      store.close();
+    }
+  });
+
+  it("keeps duplicate filename-stem wikilinks unresolved", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createSpecVault();
+    fs.mkdirSync(path.join(vaultDir, "First"), { recursive: true });
+    fs.mkdirSync(path.join(vaultDir, "Second"), { recursive: true });
+    fs.writeFileSync(
+      path.join(vaultDir, "First", "Duplicate.md"),
+      "# First Candidate\n\nAlpha-only content.",
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "Second", "Duplicate.md"),
+      "# Second Candidate\n\nBeta-only content.",
+    );
+    fs.writeFileSync(
+      path.join(vaultDir, "Ambiguous.md"),
+      "# Ambiguous\n\nSee [[Duplicate]] for context.",
+    );
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const ambiguousId = noteIdFromPath("Ambiguous.md");
+      const ambiguous = store.getNote(ambiguousId);
+      expect(ambiguous).not.toBeNull();
+
+      const links = JSON.parse(ambiguous!.links_json as string) as Array<{
+        target: string;
+        resolved: string | null;
+      }>;
+      expect(links).toContainEqual(
+        expect.objectContaining({ target: "Duplicate", resolved: null }),
+      );
+
+      const result = await getRelated(
+        store,
+        "note",
+        ambiguousId,
+        "lexical",
+        10,
+        config,
+      );
+      expect(
+        result.results.some(
+          (r) =>
+            r.noteId === noteIdFromPath("First/Duplicate.md") ||
+            r.noteId === noteIdFromPath("Second/Duplicate.md"),
+        ),
+      ).toBe(false);
     } finally {
       store.close();
     }
