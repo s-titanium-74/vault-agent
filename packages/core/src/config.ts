@@ -30,19 +30,59 @@ export const corsConfigSchema = z.object({
   allowedOrigins: z.array(z.string()).default([]),
 });
 
-export const configSchema = z.object({
-  vault: vaultConfigSchema,
-  server: serverConfigSchema,
-  index: indexConfigSchema,
-  embedding: embeddingConfigSchema,
-  cors: corsConfigSchema,
+export const watchConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  debounce_ms: z.number().int().min(1).default(10000),
+  max_batch_delay_ms: z.number().int().min(1).default(60000),
+  ignore_initial: z.boolean().default(true),
 });
+
+export const syncConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  repo: z.string().default(""),
+  remote: z.string().default("origin"),
+  branch: z.string().default(""),
+  interval_seconds: z.number().int().min(60).default(900),
+  webhook_enabled: z.boolean().default(false),
+  webhook_secret: z.string().default(""),
+  pull_timeout_seconds: z.number().int().min(1).default(120),
+  failure_backoff_seconds: z.number().int().min(1).default(3600),
+});
+
+export const configSchema = z
+  .object({
+    vault: vaultConfigSchema,
+    server: serverConfigSchema,
+    index: indexConfigSchema,
+    embedding: embeddingConfigSchema,
+    cors: corsConfigSchema,
+    watch: watchConfigSchema,
+    sync: syncConfigSchema,
+  })
+  .superRefine((config, ctx) => {
+    if (config.watch.max_batch_delay_ms < config.watch.debounce_ms) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["watch", "max_batch_delay_ms"],
+        message: `max_batch_delay_ms (${config.watch.max_batch_delay_ms}) must be >= debounce_ms (${config.watch.debounce_ms})`,
+      });
+    }
+    if (config.sync.failure_backoff_seconds < config.sync.interval_seconds) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sync", "failure_backoff_seconds"],
+        message: `failure_backoff_seconds (${config.sync.failure_backoff_seconds}) must be >= interval_seconds (${config.sync.interval_seconds})`,
+      });
+    }
+  });
 
 export type VaultConfig = z.infer<typeof vaultConfigSchema>;
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
 export type IndexConfig = z.infer<typeof indexConfigSchema>;
 export type EmbeddingConfig = z.infer<typeof embeddingConfigSchema>;
 export type CorsConfig = z.infer<typeof corsConfigSchema>;
+export type WatchConfig = z.infer<typeof watchConfigSchema>;
+export type SyncConfig = z.infer<typeof syncConfigSchema>;
 export type Config = z.infer<typeof configSchema>;
 
 export const DEFAULT_CONFIG: Config = {
@@ -70,9 +110,26 @@ export const DEFAULT_CONFIG: Config = {
     enabled: false,
     allowedOrigins: [],
   },
+  watch: {
+    enabled: true,
+    debounce_ms: 10000,
+    max_batch_delay_ms: 60000,
+    ignore_initial: true,
+  },
+  sync: {
+    enabled: false,
+    repo: "",
+    remote: "origin",
+    branch: "",
+    interval_seconds: 900,
+    webhook_enabled: false,
+    webhook_secret: "",
+    pull_timeout_seconds: 120,
+    failure_backoff_seconds: 3600,
+  },
 };
 
-const SECRET_KEYS = new Set(["server.apiKey"]);
+const SECRET_KEYS = new Set(["server.apiKey", "sync.webhook_secret"]);
 
 function applyEnvOverrides(config: Config): Config {
   const envMapping: Record<
@@ -109,6 +166,43 @@ function applyEnvOverrides(config: Config): Config {
     VAULT_AGENT_CORS_ALLOWED_ORIGINS: {
       path: ["cors", "allowedOrigins"],
       type: "stringArray",
+    },
+    VAULT_AGENT_WATCH_ENABLED: { path: ["watch", "enabled"], type: "boolean" },
+    VAULT_AGENT_WATCH_DEBOUNCE_MS: {
+      path: ["watch", "debounce_ms"],
+      type: "number",
+    },
+    VAULT_AGENT_WATCH_MAX_BATCH_DELAY_MS: {
+      path: ["watch", "max_batch_delay_ms"],
+      type: "number",
+    },
+    VAULT_AGENT_WATCH_IGNORE_INITIAL: {
+      path: ["watch", "ignore_initial"],
+      type: "boolean",
+    },
+    VAULT_AGENT_SYNC_ENABLED: { path: ["sync", "enabled"], type: "boolean" },
+    VAULT_AGENT_SYNC_REPO: { path: ["sync", "repo"], type: "string" },
+    VAULT_AGENT_SYNC_REMOTE: { path: ["sync", "remote"], type: "string" },
+    VAULT_AGENT_SYNC_BRANCH: { path: ["sync", "branch"], type: "string" },
+    VAULT_AGENT_SYNC_INTERVAL_SECONDS: {
+      path: ["sync", "interval_seconds"],
+      type: "number",
+    },
+    VAULT_AGENT_SYNC_WEBHOOK_ENABLED: {
+      path: ["sync", "webhook_enabled"],
+      type: "boolean",
+    },
+    VAULT_AGENT_SYNC_WEBHOOK_SECRET: {
+      path: ["sync", "webhook_secret"],
+      type: "string",
+    },
+    VAULT_AGENT_SYNC_PULL_TIMEOUT_SECONDS: {
+      path: ["sync", "pull_timeout_seconds"],
+      type: "number",
+    },
+    VAULT_AGENT_SYNC_FAILURE_BACKOFF_SECONDS: {
+      path: ["sync", "failure_backoff_seconds"],
+      type: "number",
     },
   };
 
@@ -170,6 +264,23 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
   index: new Set(["dir"]),
   embedding: new Set(["enabled", "endpoint", "model", "require"]),
   cors: new Set(["enabled", "allowedOrigins", "allowed_origins"]),
+  watch: new Set([
+    "enabled",
+    "debounce_ms",
+    "max_batch_delay_ms",
+    "ignore_initial",
+  ]),
+  sync: new Set([
+    "enabled",
+    "repo",
+    "remote",
+    "branch",
+    "interval_seconds",
+    "webhook_enabled",
+    "webhook_secret",
+    "pull_timeout_seconds",
+    "failure_backoff_seconds",
+  ]),
 };
 
 function validateConfigKeys(parsed: Record<string, unknown>): void {
@@ -218,6 +329,23 @@ function toTOMLObject(config: Config): Record<string, unknown> {
     cors: {
       enabled: config.cors.enabled,
       allowed_origins: config.cors.allowedOrigins,
+    },
+    watch: {
+      enabled: config.watch.enabled,
+      debounce_ms: config.watch.debounce_ms,
+      max_batch_delay_ms: config.watch.max_batch_delay_ms,
+      ignore_initial: config.watch.ignore_initial,
+    },
+    sync: {
+      enabled: config.sync.enabled,
+      repo: config.sync.repo,
+      remote: config.sync.remote,
+      branch: config.sync.branch,
+      interval_seconds: config.sync.interval_seconds,
+      webhook_enabled: config.sync.webhook_enabled,
+      webhook_secret: config.sync.webhook_secret,
+      pull_timeout_seconds: config.sync.pull_timeout_seconds,
+      failure_backoff_seconds: config.sync.failure_backoff_seconds,
     },
   };
 }
@@ -354,6 +482,42 @@ function configFromTOMLParsed(
     };
   }
 
+  if (parsed.watch && typeof parsed.watch === "object") {
+    const w = parsed.watch as Record<string, unknown>;
+    result.watch = {
+      enabled: (w.enabled as boolean) ?? DEFAULT_CONFIG.watch.enabled,
+      debounce_ms:
+        (w.debounce_ms as number) ?? DEFAULT_CONFIG.watch.debounce_ms,
+      max_batch_delay_ms:
+        (w.max_batch_delay_ms as number) ??
+        DEFAULT_CONFIG.watch.max_batch_delay_ms,
+      ignore_initial:
+        (w.ignore_initial as boolean) ?? DEFAULT_CONFIG.watch.ignore_initial,
+    };
+  }
+
+  if (parsed.sync && typeof parsed.sync === "object") {
+    const s = parsed.sync as Record<string, unknown>;
+    result.sync = {
+      enabled: (s.enabled as boolean) ?? DEFAULT_CONFIG.sync.enabled,
+      repo: (s.repo as string) ?? DEFAULT_CONFIG.sync.repo,
+      remote: (s.remote as string) ?? DEFAULT_CONFIG.sync.remote,
+      branch: (s.branch as string) ?? DEFAULT_CONFIG.sync.branch,
+      interval_seconds:
+        (s.interval_seconds as number) ?? DEFAULT_CONFIG.sync.interval_seconds,
+      webhook_enabled:
+        (s.webhook_enabled as boolean) ?? DEFAULT_CONFIG.sync.webhook_enabled,
+      webhook_secret:
+        (s.webhook_secret as string) ?? DEFAULT_CONFIG.sync.webhook_secret,
+      pull_timeout_seconds:
+        (s.pull_timeout_seconds as number) ??
+        DEFAULT_CONFIG.sync.pull_timeout_seconds,
+      failure_backoff_seconds:
+        (s.failure_backoff_seconds as number) ??
+        DEFAULT_CONFIG.sync.failure_backoff_seconds,
+    };
+  }
+
   return result;
 }
 
@@ -364,6 +528,8 @@ function mergeWithDefaults(partial: Partial<Config>): Config {
     index: { ...DEFAULT_CONFIG.index, ...partial.index },
     embedding: { ...DEFAULT_CONFIG.embedding, ...partial.embedding },
     cors: { ...DEFAULT_CONFIG.cors, ...partial.cors },
+    watch: { ...DEFAULT_CONFIG.watch, ...partial.watch },
+    sync: { ...DEFAULT_CONFIG.sync, ...partial.sync },
   };
 }
 
@@ -383,6 +549,19 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "embedding.require": ["embedding", "require"],
     "cors.enabled": ["cors", "enabled"],
     "cors.allowedOrigins": ["cors", "allowedOrigins"],
+    "watch.enabled": ["watch", "enabled"],
+    "watch.debounce_ms": ["watch", "debounce_ms"],
+    "watch.max_batch_delay_ms": ["watch", "max_batch_delay_ms"],
+    "watch.ignore_initial": ["watch", "ignore_initial"],
+    "sync.enabled": ["sync", "enabled"],
+    "sync.repo": ["sync", "repo"],
+    "sync.remote": ["sync", "remote"],
+    "sync.branch": ["sync", "branch"],
+    "sync.interval_seconds": ["sync", "interval_seconds"],
+    "sync.webhook_enabled": ["sync", "webhook_enabled"],
+    "sync.webhook_secret": ["sync", "webhook_secret"],
+    "sync.pull_timeout_seconds": ["sync", "pull_timeout_seconds"],
+    "sync.failure_backoff_seconds": ["sync", "failure_backoff_seconds"],
   };
 
   const mapped = keyMapping[dottedKey];
@@ -402,7 +581,12 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
       throw new ConfigError("CONFIG_INVALID", `Invalid port value: ${value}`);
     }
     sectionObj[key] = num;
-  } else if (key === "enabled" || key === "require") {
+  } else if (
+    key === "enabled" ||
+    key === "require" ||
+    key === "ignore_initial" ||
+    key === "webhook_enabled"
+  ) {
     if (typeof value === "string") {
       if (value === "true" || value === "1") {
         sectionObj[key] = true;
@@ -417,6 +601,19 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     } else {
       sectionObj[key] = Boolean(value);
     }
+  } else if (
+    key === "port" ||
+    key === "debounce_ms" ||
+    key === "max_batch_delay_ms" ||
+    key === "interval_seconds" ||
+    key === "pull_timeout_seconds" ||
+    key === "failure_backoff_seconds"
+  ) {
+    const num = typeof value === "string" ? parseInt(value, 10) : Number(value);
+    if (isNaN(num) || num < 1) {
+      throw new ConfigError("CONFIG_INVALID", `Invalid number value: ${value}`);
+    }
+    sectionObj[key] = num;
   } else if (key === "exclude" || key === "allowedOrigins") {
     if (typeof value === "string") {
       sectionObj[key] = value

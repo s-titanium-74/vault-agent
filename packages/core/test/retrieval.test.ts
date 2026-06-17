@@ -239,6 +239,25 @@ describe("getNote", () => {
     const result = getNote(store, smallId, vaultDir);
     expect(result!.attachments).toEqual(["attachments/data.csv"]);
   });
+
+  it("returns note by valid ID when index is usable", () => {
+    const smallId = noteIdFromPath("SmallNote.md");
+    const result = getNote(store, smallId, vaultDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe(smallId);
+    expect(result!.path).toBe("SmallNote.md");
+  });
+
+  it("returns null for non-existent note ID even in incompatible state", () => {
+    const nonExistentId = "00000000000000000000000000000000";
+    const result = getNote(store, nonExistentId, vaultDir);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for invalid note ID format", () => {
+    const result = getNote(store, "not-a-valid-id", vaultDir);
+    expect(result).toBeNull();
+  });
 });
 
 describe("getChunk", () => {

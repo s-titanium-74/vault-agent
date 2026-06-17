@@ -154,6 +154,7 @@ export class IndexStore {
       };
     }
 
+    const incompatibleReasons: string[] = [];
     const staleReasons: string[] = [];
 
     const effectiveExclude = [
@@ -162,21 +163,44 @@ export class IndexStore {
     ].sort();
     const indexedExclude = [...manifest.effectiveExcludePatterns].sort();
     if (JSON.stringify(effectiveExclude) !== JSON.stringify(indexedExclude)) {
-      staleReasons.push("Exclude patterns have changed since indexing");
+      incompatibleReasons.push("Exclude patterns have changed since indexing");
     }
 
     if (manifest.targetChunkSize !== TARGET_CHUNK_SIZE) {
-      staleReasons.push("Target chunk size configuration has changed");
+      incompatibleReasons.push("Target chunk size configuration has changed");
     }
     if (manifest.maxChunkSize !== MAX_CHUNK_SIZE) {
-      staleReasons.push("Max chunk size configuration has changed");
+      incompatibleReasons.push("Max chunk size configuration has changed");
     }
 
     const configuredModel = config.embedding.enabled
-      ? config.embedding.model
+      ? config.embedding.model || null
       : null;
     if (manifest.embeddingModel !== configuredModel) {
-      staleReasons.push("Embedding model configuration has changed");
+      incompatibleReasons.push("Embedding model configuration has changed");
+    }
+
+    if (
+      manifest.embeddingDimension !== null &&
+      config.embedding.enabled &&
+      configuredModel !== null
+    ) {
+      const currentDimension =
+        (config.embedding as { dimension?: number | null }).dimension ?? null;
+      if (
+        currentDimension !== null &&
+        manifest.embeddingDimension !== currentDimension
+      ) {
+        incompatibleReasons.push("Embedding dimension mismatch");
+      }
+    }
+
+    if (incompatibleReasons.length > 0) {
+      return {
+        stale: false,
+        incompatible: true,
+        details: incompatibleReasons.join("; "),
+      };
     }
 
     if (staleReasons.length > 0) {

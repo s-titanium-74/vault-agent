@@ -1094,12 +1094,12 @@ describe("Server startup index compatibility policy", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("surfaces stale startup indexes with an INDEX_STALE warning", () => {
+  it("surfaces incompatible startup indexes when exclude patterns change", () => {
     config.vault.exclude = ["private/**"];
     const result = validateStartupIndexState(store, config);
-    expect(result.usable).toBe(true);
+    expect(result.usable).toBe(false);
     expect(result.shouldBootstrap).toBe(false);
-    expect(result.warnings[0]?.code).toBe("INDEX_STALE");
+    expect(result.warnings[0]?.code).toBe("INDEX_INCOMPATIBLE");
   });
 
   it("keeps startup alive for incompatible indexes so reindex stays reachable", () => {
