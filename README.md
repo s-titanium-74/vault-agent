@@ -6,22 +6,24 @@ The project is local-first and private-by-default. Search, indexing, and retriev
 
 ## Status
 
-This repository is in the Phase 1 retrieval foundation stage.
+This repository is in the Phase 2 automatic index updates stage.
 
-Phase 1 includes:
+The current implementation includes:
 
 - A local HTTP server.
 - A CLI client.
 - Markdown discovery, parsing, chunking, indexing, search, related-candidate lookup, and explicit note, chunk, and attachment retrieval.
 - Lexical search by default.
 - Optional local embedding search when explicitly configured.
+- Status surfaces for server, index, watcher, and sync state.
+- Local file watching and incremental index updates.
+- Opt-in Git checkout sync.
 
-Out of scope for Phase 1:
+Out of scope:
 
 - Hosted/public service operation.
 - Note writing or editing.
 - Chat or answer generation.
-- Automatic Git sync.
 - Multiple vault roots in one server process.
 
 ## Roadmap
@@ -55,22 +57,36 @@ npm run build
 
 Run the local CLI from the checkout with `npx --no-install vault-agent`. This uses the workspace binary created by `npm install` and does not download a package from the registry.
 
-Configure a vault root:
+### Route A: Use An Existing Local Vault
+
+Configure a vault root in user-local config:
 
 ```bash
 npx --no-install vault-agent config set vault.root "/path/to/your/vault"
 ```
 
-Start the server:
+Check the effective config:
+
+```bash
+npx --no-install vault-agent config get
+```
+
+Start the local server:
 
 ```bash
 npx --no-install vault-agent serve
 ```
 
-In another terminal, index the vault:
+On first startup, the server creates the local index if no usable index exists. In another terminal, check that the server, index, watcher, and sync state are visible:
 
 ```bash
-npx --no-install vault-agent index
+npx --no-install vault-agent status
+```
+
+If you want to rebuild the index explicitly, keep the server running and run:
+
+```bash
+npx --no-install vault-agent reindex
 ```
 
 Search:
@@ -92,9 +108,64 @@ Find related candidates from a known note or chunk:
 npx --no-install vault-agent related "<note-or-chunk-id>"
 ```
 
+### Route B: Clone A Git-Backed Vault
+
+Use this route when the vault should be checked out from a remote Git repository. Sync remains disabled unless you explicitly enable it.
+
+```bash
+npx --no-install vault-agent sync clone "https://example.com/owner/vault.git" --target "/path/to/local/vault" --index
+```
+
+Then start the server:
+
+```bash
+npx --no-install vault-agent serve
+```
+
+Check status:
+
+```bash
+npx --no-install vault-agent status
+```
+
+To configure an already-cloned Git worktree for manual sync:
+
+```bash
+npx --no-install vault-agent config set vault.root "/path/to/local/vault"
+npx --no-install vault-agent sync configure --repo "/path/to/local/vault"
+npx --no-install vault-agent sync status
+```
+
+Manual pull is available once sync is configured:
+
+```bash
+npx --no-install vault-agent sync pull
+```
+
+Scheduled sync is opt-in:
+
+```bash
+npx --no-install vault-agent sync enable
+```
+
+Git sync uses fetch plus fast-forward-only update behavior. It does not push, stash, reset, merge, or resolve conflicts automatically.
+
+### Initialization Checklist
+
+For a new local setup, the expected path is:
+
+1. Install and build: `npm install && npm run build`.
+2. Choose one vault root: either `config set vault.root ...` or `sync clone ... --target ...`.
+3. Start one server process for that vault: `vault-agent serve`.
+4. Confirm readiness: `vault-agent status`.
+5. Search compact results with `search`.
+6. Retrieve only explicit notes or chunks with `get`.
+
+`index` and `reindex` are server-backed commands. Run them from another terminal while `vault-agent serve` is running.
+
 ## CLI Commands
 
-Phase 1 commands:
+Common commands:
 
 ```bash
 vault-agent config get
@@ -102,6 +173,8 @@ vault-agent config set vault.root "/path/to/vault"
 vault-agent config path
 vault-agent config reveal-api-key
 vault-agent serve
+vault-agent status
+vault-agent watch status
 vault-agent index
 vault-agent reindex
 vault-agent search "query"
@@ -109,6 +182,12 @@ vault-agent related "<note-or-chunk-id>"
 vault-agent get note "<note-id>"
 vault-agent get chunk "<note-id>" "<chunk-index>"
 vault-agent get attachment "attachments/example.pdf"
+vault-agent sync clone "https://example.com/owner/vault.git" --target "/path/to/vault"
+vault-agent sync status
+vault-agent sync configure --repo "/path/to/vault"
+vault-agent sync pull
+vault-agent sync enable
+vault-agent sync disable
 ```
 
 Most commands support `--json` for machine-readable output.
@@ -131,11 +210,25 @@ The server binds to `127.0.0.1` by default. Non-localhost access must be explici
 
 Normal config output does not print secret values. Use `vault-agent config reveal-api-key` only when you intentionally need to copy the API key for remote client setup.
 
+File watching is enabled by default:
+
+```bash
+npx --no-install vault-agent config set watch.enabled true
+```
+
+Disable watching when you want fully manual indexing:
+
+```bash
+npx --no-install vault-agent config set watch.enabled false
+```
+
+Git sync is disabled by default and must be configured explicitly. Repository paths, remote names, branches, API keys, and webhook secrets belong in user-local config or environment variables, not in repository files.
+
 ## Embedding Setup
 
 Embedding search is disabled by default. Lexical search works without an embedding provider.
 
-Phase 1 supports local OpenAI-compatible embedding endpoints only. The endpoint host must be `127.0.0.1`, `localhost`, or `::1`. External SaaS embedding providers and provider authentication are out of scope for Phase 1.
+The current embedding implementation supports local OpenAI-compatible embedding endpoints only. The endpoint host must be `127.0.0.1`, `localhost`, or `::1`. External SaaS embedding providers and provider authentication are out of scope.
 
 One common local setup is Ollama with an embedding model:
 
@@ -228,4 +321,6 @@ npm run dev:server
 - [Product plan](docs/product-plan.md)
 - [Phase 1 requirements](docs/phases/phase-1-retrieval-foundation/requirements.md)
 - [Phase 1 specifications](docs/phases/phase-1-retrieval-foundation/specifications/)
+- [Phase 2 requirements](docs/phases/phase-2-automatic-index-updates/requirements.md)
+- [Phase 2 specifications](docs/phases/phase-2-automatic-index-updates/specifications/)
 - [Agent working rules](AGENTS.md)

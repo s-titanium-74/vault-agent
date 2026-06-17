@@ -8,6 +8,10 @@ import {
   IndexStore,
   getIndexPath,
   indexVault,
+  VaultWatcher,
+  GitSync,
+  FreshnessMachine,
+  incrementalIndexUpdate,
 } from "@vault-agent/core";
 import {
   PrepareServerAccessOptions,
@@ -21,6 +25,8 @@ import { registerHealthRoute } from "./routes/health.js";
 import { registerIndexRoutes } from "./routes/indexing.js";
 import { registerRetrievalRoutes } from "./routes/retrieval.js";
 import { registerSearchRoutes } from "./routes/search.js";
+import { registerStatusRoute } from "./routes/status.js";
+import { registerSyncRoutes } from "./routes/sync.js";
 import { initApp, resetApp } from "./state.js";
 
 export {
@@ -65,6 +71,12 @@ export async function createServer(
 
   app.addHook("onRequest", async (request, reply) => {
     if (!appConfig.server.apiKey) return;
+    if (
+      request.url === "/sync/webhook" ||
+      request.url.startsWith("/sync/webhook?")
+    ) {
+      return;
+    }
 
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith("Bearer ")) {
@@ -91,6 +103,8 @@ export async function createServer(
   registerIndexRoutes(app, appConfig);
   registerSearchRoutes(app, appConfig);
   registerRetrievalRoutes(app);
+  registerStatusRoute(app);
+  registerSyncRoutes(app);
 
   return app;
 }
@@ -134,7 +148,76 @@ export async function startServer(
     }
   }
 
-  initApp(appStore, preparedConfig);
+  const freshnessMachine = new FreshnessMachine();
+
+  const staleness = appStore.checkStaleness(preparedConfig);
+  if (staleness.incompatible) {
+    freshnessMachine.markReindexRequired([staleness.details]);
+  } else if (staleness.stale) {
+    freshnessMachine.markStale(staleness.details);
+  } else {
+    freshnessMachine.transition("fresh", "Startup check passed");
+  }
+
+  let watcher: VaultWatcher | null = null;
+  if (preparedConfig.watch.enabled) {
+    watcher = new VaultWatcher(
+      preparedConfig.vault.root,
+      preparedConfig.vault.exclude,
+      {
+        debounceMs: preparedConfig.watch.debounce_ms,
+        maxBatchDelayMs: preparedConfig.watch.max_batch_delay_ms,
+        ignoreInitial: preparedConfig.watch.ignore_initial,
+      },
+    );
+
+    watcher.setUpdateCallback(async (paths: string[]) => {
+      freshnessMachine.changesDetected(paths.length);
+      try {
+        freshnessMachine.writerStarted();
+        await incrementalIndexUpdate(appStore, preparedConfig, { paths });
+        freshnessMachine.writerSucceeded();
+      } catch (updateErr) {
+        freshnessMachine.writerFailed((updateErr as Error).message);
+        console.error(
+          `Incremental index update failed: ${(updateErr as Error).message}`,
+        );
+      }
+    });
+
+    await watcher.start();
+    console.log(`Watcher started for vault: ${preparedConfig.vault.root}`);
+  }
+
+  let gitSync: GitSync | null = null;
+  if (preparedConfig.sync.repo) {
+    gitSync = new GitSync(preparedConfig);
+    gitSync.setVaultRoot(preparedConfig.vault.root);
+
+    gitSync.setOnSyncComplete((changed: boolean) => {
+      if (changed && watcher) {
+        console.log(
+          "Git sync completed, triggering re-index of changed files...",
+        );
+        freshnessMachine.changesDetected();
+      }
+    });
+
+    if (preparedConfig.sync.enabled) {
+      gitSync.startScheduledSync();
+      console.log(
+        `Scheduled sync enabled: every ${preparedConfig.sync.interval_seconds} seconds`,
+      );
+    }
+  }
+
+  initApp(
+    appStore,
+    preparedConfig,
+    watcher ?? undefined,
+    gitSync ?? undefined,
+    freshnessMachine,
+  );
 
   try {
     await app.listen({

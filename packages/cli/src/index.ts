@@ -4,6 +4,8 @@ import { registerIndexingCommands } from "./commands/indexing.js";
 import { registerRetrievalCommands } from "./commands/retrieval.js";
 import { registerSearchCommands } from "./commands/search.js";
 import { registerServeCommand } from "./commands/serve.js";
+import { registerStatusCommands } from "./commands/status.js";
+import { registerSyncCommands } from "./commands/sync.js";
 import { createCliContext } from "./context.js";
 export {
   getCommandResultFromHttpResponse,
@@ -26,5 +28,7 @@ registerIndexingCommands(program, context);
 registerSearchCommands(program, context);
 registerRetrievalCommands(program, context);
 registerConfigCommands(program, context);
+registerStatusCommands(program, context);
+registerSyncCommands(program, context);
 
 export { program as default };

@@ -10,6 +10,8 @@ export {
   type IndexConfig,
   type EmbeddingConfig,
   type CorsConfig,
+  type WatchConfig,
+  type SyncConfig,
 } from "./config.js";
 export { envPaths, defaultConfigPath, defaultIndexDir } from "./paths.js";
 export { vaultIdentity, noteIdFromPath } from "./identifiers.js";
@@ -70,3 +72,21 @@ export {
   EmbeddingProviderError,
   validateEmbeddingEndpoint,
 } from "./embedding.js";
+export type { FreshnessState, FreshnessInfo } from "./freshness.js";
+export {
+  initialFreshness,
+  createFreshnessMachine,
+  FreshnessMachine,
+} from "./freshness.js";
+export type { WatcherState, WatcherStatus, WatcherEvent } from "./watcher.js";
+export { VaultWatcher } from "./watcher.js";
+export type { IncrementalIndexOptions } from "./incremental-indexer.js";
+export { incrementalIndexUpdate } from "./incremental-indexer.js";
+export type { SyncRunState, SyncStatus, SyncPullResult } from "./sync.js";
+export { GitSync, SyncError, isAllowedGitRemoteUrl } from "./sync.js";
+export type {
+  ServerStatusInfo,
+  IndexStatusInfo,
+  FullStatus,
+} from "./status.js";
+export { buildStatus } from "./status.js";

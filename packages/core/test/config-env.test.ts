@@ -127,6 +127,82 @@ describe("applyEnvOverrides", () => {
     process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
     expect(() => applyEnvOverrides(structuredClone(DEFAULT_CONFIG))).toThrow();
   });
+
+  it("applies VAULT_AGENT_WATCH_ENABLED with 'false'", () => {
+    process.env.VAULT_AGENT_WATCH_ENABLED = "false";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.watch.enabled).toBe(false);
+  });
+
+  it("applies VAULT_AGENT_WATCH_DEBOUNCE_MS", () => {
+    process.env.VAULT_AGENT_WATCH_DEBOUNCE_MS = "5000";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.watch.debounce_ms).toBe(5000);
+  });
+
+  it("applies VAULT_AGENT_SYNC_ENABLED with 'true'", () => {
+    process.env.VAULT_AGENT_SYNC_ENABLED = "true";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.sync.enabled).toBe(true);
+  });
+
+  it("applies VAULT_AGENT_SYNC_REPO", () => {
+    process.env.VAULT_AGENT_SYNC_REPO = "/tmp/repo";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.sync.repo).toBe("/tmp/repo");
+  });
+
+  it("applies VAULT_AGENT_SYNC_WEBHOOK_SECRET", () => {
+    process.env.VAULT_AGENT_SYNC_WEBHOOK_SECRET = "secret-value";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.sync.webhook_secret).toBe("secret-value");
+  });
+
+  it("throws ConfigError for invalid VAULT_AGENT_WATCH_ENABLED", () => {
+    process.env.VAULT_AGENT_WATCH_ENABLED = "yes";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    expect(() => applyEnvOverrides(structuredClone(DEFAULT_CONFIG))).toThrow();
+  });
+
+  it("applies VAULT_AGENT_WATCH_MAX_BATCH_DELAY_MS", () => {
+    process.env.VAULT_AGENT_WATCH_MAX_BATCH_DELAY_MS = "30000";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.watch.max_batch_delay_ms).toBe(30000);
+  });
+
+  it("applies VAULT_AGENT_WATCH_IGNORE_INITIAL with 'false'", () => {
+    process.env.VAULT_AGENT_WATCH_IGNORE_INITIAL = "false";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.watch.ignore_initial).toBe(false);
+  });
+
+  it("applies VAULT_AGENT_SYNC_INTERVAL_SECONDS", () => {
+    process.env.VAULT_AGENT_SYNC_INTERVAL_SECONDS = "600";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.sync.interval_seconds).toBe(600);
+  });
+
+  it("applies VAULT_AGENT_SYNC_PULL_TIMEOUT_SECONDS", () => {
+    process.env.VAULT_AGENT_SYNC_PULL_TIMEOUT_SECONDS = "60";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.sync.pull_timeout_seconds).toBe(60);
+  });
+
+  it("applies VAULT_AGENT_SYNC_FAILURE_BACKOFF_SECONDS", () => {
+    process.env.VAULT_AGENT_SYNC_FAILURE_BACKOFF_SECONDS = "1800";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.sync.failure_backoff_seconds).toBe(1800);
+  });
 });
 
 describe("ConfigManager with env overrides", () => {

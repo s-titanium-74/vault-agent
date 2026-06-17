@@ -42,7 +42,25 @@ export async function getRelated(
 
   const staleness = store.checkStaleness(config);
   if (staleness.incompatible) {
-    throw new SearchError("INDEX_INCOMPATIBLE", staleness.details);
+    const reasons = staleness.details;
+    let code = "INDEX_INCOMPATIBLE";
+    if (reasons.includes("Schema version")) {
+      code = "INDEX_SCHEMA_INCOMPATIBLE";
+    } else if (reasons.includes("Vault identity")) {
+      code = "INDEX_VAULT_IDENTITY_CHANGED";
+    } else if (reasons.includes("Exclude patterns")) {
+      code = "INDEX_EXCLUDES_CHANGED";
+    } else if (
+      reasons.includes("chunk size") ||
+      reasons.includes("Max chunk size")
+    ) {
+      code = "INDEX_CHUNKING_CHANGED";
+    } else if (reasons.includes("Embedding model")) {
+      code = "INDEX_EMBEDDINGS_STALE";
+    } else if (reasons.includes("Embedding dimension")) {
+      code = "INDEX_EMBEDDING_DIMENSION_MISMATCH";
+    }
+    throw new SearchError(code, reasons);
   }
   if (staleness.stale) {
     warnings.push({

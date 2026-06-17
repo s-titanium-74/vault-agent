@@ -8,7 +8,11 @@ import { getRelated } from "../src/related.js";
 import { SearchError } from "../src/errors.js";
 import { Config, DEFAULT_CONFIG } from "../src/config.js";
 import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
-import { INDEX_SCHEMA_VERSION, MAX_SNIPPET_LENGTH } from "../src/schemas.js";
+import {
+  DEFAULT_EXCLUDE_PATTERNS,
+  INDEX_SCHEMA_VERSION,
+  MAX_SNIPPET_LENGTH,
+} from "../src/schemas.js";
 
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(
@@ -330,7 +334,7 @@ describe("getRelated", () => {
       schemaVersion: INDEX_SCHEMA_VERSION,
       vaultIdentity: vaultIdentity(resolvedVault),
       indexedFileExtensions: [".md", ".markdown"],
-      effectiveExcludePatterns: [".obsidian/", ".git/"],
+      effectiveExcludePatterns: [...DEFAULT_EXCLUDE_PATTERNS],
       targetChunkSize: 2000,
       maxChunkSize: 4000,
       embeddingModel: null,
@@ -365,7 +369,7 @@ describe("getRelated", () => {
       schemaVersion: INDEX_SCHEMA_VERSION,
       vaultIdentity: vaultIdentity(resolvedVault),
       indexedFileExtensions: [".md", ".markdown"],
-      effectiveExcludePatterns: [".obsidian/", ".git/"],
+      effectiveExcludePatterns: [...DEFAULT_EXCLUDE_PATTERNS],
       targetChunkSize: 2000,
       maxChunkSize: 4000,
       embeddingModel: null,
@@ -734,6 +738,101 @@ Title-only candidate.`,
             r.noteId === noteIdFromPath("Titled.md"),
         ),
       ).toBe(false);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("blocks search in incompatible state with reindex-required message", async () => {
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    const manifest = store.getManifest();
+    store.setManifest({
+      ...manifest!,
+      schemaVersion: manifest!.schemaVersion + 1,
+    });
+
+    try {
+      await expect(
+        search(store, "Welcome", "lexical", 10, config),
+      ).rejects.toMatchObject({
+        code: "INDEX_SCHEMA_INCOMPATIBLE",
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("includes freshness warnings in related results when index has incompatibility detected", async () => {
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    const manifest = store.getManifest();
+    store.setManifest({
+      ...manifest!,
+      schemaVersion: manifest!.schemaVersion + 1,
+    });
+
+    try {
+      await expect(
+        getRelated(
+          store,
+          "note",
+          "abcd1234abcd1234abcd1234abcd1234",
+          "lexical",
+          10,
+          config,
+        ),
+      ).rejects.toMatchObject({
+        code: "INDEX_SCHEMA_INCOMPATIBLE",
+      });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("allows get when ID resolves safely even in incompatible state", async () => {
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    const notes = store.getAllNotes();
+    const validNoteId = notes[0]!.note_id as string;
+
+    try {
+      const result = await search(
+        store,
+        notes[0]!.path as string,
+        "lexical",
+        10,
+        config,
+      );
+      expect(result).toBeDefined();
+      expect(validNoteId).toBeDefined();
     } finally {
       store.close();
     }
