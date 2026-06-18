@@ -1,9 +1,32 @@
 {
   "name": "@vault-agent/cli",
   "version": "0.1.0",
+  "description": "Command line interface for vault-agent.",
   "type": "module",
+  "license": "MIT",
   "bin": {
     "vault-agent": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "src",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s-titanium-74/vault-agent.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "markdown",
+    "vault",
+    "search",
+    "retrieval",
+    "mcp",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsup",
@@ -12,8 +35,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@vault-agent/core": "*",
-    "@vault-agent/server": "*",
+    "@vault-agent/core": "0.1.0",
+    "@vault-agent/server": "0.1.0",
     "commander": "^13.1.0",
     "zod": "^3.24.0"
   },

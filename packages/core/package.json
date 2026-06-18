@@ -1,7 +1,9 @@
 {
   "name": "@vault-agent/core",
   "version": "0.1.0",
+  "description": "Core Markdown vault indexing, retrieval, and search logic for vault-agent.",
   "type": "module",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -10,6 +12,25 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "src",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s-titanium-74/vault-agent.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "markdown",
+    "vault",
+    "search",
+    "retrieval"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -17,7 +38,6 @@
   "dependencies": {
     "better-sqlite3": "^11.9.0",
     "env-paths": "^4.0.0",
-    "gray-matter": "^4.0.3",
     "ignore": "^7.0.0",
     "mime-types": "^3.0.1",
     "smol-toml": "^1.3.1",

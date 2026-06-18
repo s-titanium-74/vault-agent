@@ -397,6 +397,7 @@ For initial local use, prefer distribution options that are simple to install.
 Candidates:
 
 - npm global package
+- Docker image
 - GitHub Releases single binary
 - Docker Compose
 - systemd user service

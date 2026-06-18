@@ -56,6 +56,18 @@ tags:
     expect(result.frontmatter?.tags).toEqual(["demo", "test"]);
   });
 
+  it("handles inline string arrays", () => {
+    const content = `---
+tags: ["#demo", test]
+aliases: ["Home", "Start"]
+---
+
+# Note`;
+    const result = extractFrontmatter(content);
+    expect(result.frontmatter?.tags).toEqual(["demo", "test"]);
+    expect(result.frontmatter?.aliases).toEqual(["Home", "Start"]);
+  });
+
   it("normalizes string aliases to array", () => {
     const content = `---
 aliases: "Single Alias"

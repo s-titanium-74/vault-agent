@@ -1,7 +1,9 @@
 {
   "name": "@vault-agent/server",
   "version": "0.1.0",
+  "description": "HTTP and MCP server package for vault-agent.",
   "type": "module",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -18,6 +20,26 @@
       "import": "./dist/mcp/stdio.js"
     }
   },
+  "files": [
+    "dist",
+    "src",
+    "package.json"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/s-titanium-74/vault-agent.git",
+    "directory": "packages/server"
+  },
+  "keywords": [
+    "markdown",
+    "vault",
+    "search",
+    "retrieval",
+    "mcp"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit"
@@ -25,7 +47,7 @@
   "dependencies": {
     "@fastify/cors": "^11.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@vault-agent/core": "*",
+    "@vault-agent/core": "0.1.0",
     "fastify": "^5.3.0",
     "pino": "^9.6.0",
     "zod": "^3.24.0"

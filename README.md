@@ -6,7 +6,7 @@ The project is local-first and private-by-default. Search, indexing, and retriev
 
 ## Status
 
-This repository is in the Phase 2 automatic index updates stage.
+This repository is in the Phase 3 MCP bridge stage.
 
 The current implementation includes:
 
@@ -18,6 +18,7 @@ The current implementation includes:
 - Status surfaces for server, index, watcher, and sync state.
 - Local file watching and incremental index updates.
 - Opt-in Git checkout sync.
+- MCP tools over stdio and optional Streamable HTTP.
 
 Out of scope:
 
@@ -30,7 +31,7 @@ Out of scope:
 
 - Phase 1: Retrieval foundation with a standalone server, CLI, local indexing, compact search results, explicit retrieval, related lookup, and optional local embeddings.
 - Phase 2: Automatic index updates, file watching, stale index handling, and opt-in Git checkout sync for remote or server deployments.
-- Phase 3: Thin MCP bridge exposing `search`, `get`, and `related` through the same HTTP server.
+- Phase 3: Thin MCP bridge exposing `search`, `get`, and `related` through stdio and optional Streamable HTTP.
 - Phase 4: Optional LLM integration with `vault-agent chat` while keeping retrieval and answer generation separate.
 - Phase 5: Obsidian plugin client using the shared server and retrieval model.
 
@@ -45,6 +46,21 @@ See [docs/product-plan.md](docs/product-plan.md) for the detailed roadmap and ph
 Optional:
 
 - A local OpenAI-compatible embedding endpoint, such as Ollama, if you want semantic or hybrid search.
+
+## Installation
+
+Install the CLI from npm:
+
+```bash
+npm install -g @vault-agent/cli
+vault-agent --help
+```
+
+Or run from Docker:
+
+```bash
+docker run --rm DOCKERHUB_USER/vault-agent:0.1.0 --help
+```
 
 ## Quick Start From Source
 
@@ -193,6 +209,74 @@ vault-agent sync disable
 Most commands support `--json` for machine-readable output.
 
 After the CLI is installed or linked on your PATH, use `vault-agent ...` directly. From a source checkout, use `npx --no-install vault-agent ...`.
+
+## MCP Usage
+
+For local MCP clients, use stdio transport:
+
+```json
+{
+  "mcpServers": {
+    "vault-agent": {
+      "command": "vault-agent",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The stdio command does not start an HTTP server and does not require an API key.
+It uses the configured vault root and existing local index.
+
+For server-backed MCP with automatic indexing and file watching, enable the
+Streamable HTTP endpoint on `vault-agent serve`:
+
+```bash
+vault-agent config set mcp.enabled true
+vault-agent serve
+```
+
+When `serve` binds to localhost, `/mcp` follows the same local access behavior
+as the rest of the server. Non-localhost binds require API key protection.
+
+## Docker
+
+Build the image locally:
+
+```bash
+docker build -t vault-agent:0.1.0 .
+```
+
+Run against a mounted vault:
+
+```bash
+docker run --rm \
+  -p 8787:8787 \
+  -v "$PWD/examples/synthetic-vault:/data/vault:ro" \
+  -v vault-agent-index:/data/index \
+  -e VAULT_AGENT_VAULT_ROOT=/data/vault \
+  -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
+  vault-agent:0.1.0 serve --host 0.0.0.0
+```
+
+On first startup, `serve` creates the index automatically if no usable index
+exists. Keep the index volume to preserve the local index across container
+restarts. Because the server binds to `0.0.0.0` inside the container, configure
+an API key and send `Authorization: Bearer <key>` from clients.
+
+For Streamable HTTP MCP in Docker, keep localhost-only publishing when possible
+or configure an API key before exposing the server on a private network:
+
+```bash
+docker run --rm \
+  -p 127.0.0.1:8787:8787 \
+  -v "$PWD/examples/synthetic-vault:/data/vault:ro" \
+  -v vault-agent-index:/data/index \
+  -e VAULT_AGENT_VAULT_ROOT=/data/vault \
+  -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
+  -e VAULT_AGENT_MCP_ENABLED=true \
+  vault-agent:0.1.0 serve --host 0.0.0.0
+```
 
 ## Configuration
 

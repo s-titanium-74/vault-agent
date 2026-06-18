@@ -38,7 +38,8 @@ Path strings are not Unicode-normalized before note ID or vault identity hashing
 
 ## Markdown Parsing
 
-Phase 1 uses `gray-matter` for YAML frontmatter extraction and the `unified` / `remark` ecosystem for Markdown parsing.
+Phase 1 uses a built-in, allowlist-oriented YAML frontmatter parser for the
+metadata fields used by search and retrieval.
 
 Markdown files are read as UTF-8.
 

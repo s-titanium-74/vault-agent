@@ -1,4 +1,3 @@
-import matter from "gray-matter";
 import { Frontmatter, WikilinkInfo } from "./types.js";
 
 export interface MarkdownParseResult {
@@ -29,9 +28,11 @@ export function extractFrontmatter(content: string): {
   body: string;
 } {
   try {
-    const parsed = matter(content);
-    const data = parsed.data;
-    const body = parsed.content;
+    const parsed = parseFrontmatterBlock(content);
+    if (!parsed) {
+      return { frontmatter: null, frontmatterDegraded: false, body: content };
+    }
+    const { data, body } = parsed;
 
     if (!data || Object.keys(data).length === 0) {
       return { frontmatter: null, frontmatterDegraded: false, body };
@@ -42,34 +43,22 @@ export function extractFrontmatter(content: string): {
     if (typeof data.title === "string") frontmatter.title = data.title;
 
     if (Array.isArray(data.aliases)) {
-      frontmatter.aliases = data.aliases.filter(
-        (a: unknown) => typeof a === "string",
-      );
+      frontmatter.aliases = data.aliases;
     } else if (typeof data.aliases === "string") {
       frontmatter.aliases = [data.aliases];
     }
 
     if (Array.isArray(data.tags)) {
-      frontmatter.tags = data.tags.map((t: unknown) => {
-        const s = String(t);
-        return s.startsWith("#") ? s.slice(1) : s;
-      });
+      frontmatter.tags = data.tags.map(normalizeTag);
     } else if (typeof data.tags === "string") {
-      const s = data.tags.startsWith("#") ? data.tags.slice(1) : data.tags;
-      frontmatter.tags = [s];
+      frontmatter.tags = [normalizeTag(data.tags)];
     }
 
     if (typeof data.date === "string") frontmatter.date = data.date;
-    else if (data.date instanceof Date)
-      frontmatter.date = data.date.toISOString().slice(0, 10);
 
     if (typeof data.created === "string") frontmatter.created = data.created;
-    else if (data.created instanceof Date)
-      frontmatter.created = data.created.toISOString().slice(0, 10);
 
     if (typeof data.updated === "string") frontmatter.updated = data.updated;
-    else if (data.updated instanceof Date)
-      frontmatter.updated = data.updated.toISOString().slice(0, 10);
 
     return { frontmatter, frontmatterDegraded: false, body };
   } catch {
@@ -83,6 +72,89 @@ export function extractFrontmatter(content: string): {
     }
     return { frontmatter: null, frontmatterDegraded: true, body };
   }
+}
+
+function parseFrontmatterBlock(
+  content: string,
+): { data: Record<string, string | string[]>; body: string } | null {
+  const lines = content.split("\n");
+  if (lines[0] !== "---") return null;
+
+  const endIndex = lines.indexOf("---", 1);
+  if (endIndex <= 0) {
+    throw new Error("Missing closing frontmatter delimiter");
+  }
+
+  const rawFrontmatter = lines.slice(1, endIndex);
+  const body = lines.slice(endIndex + 1).join("\n");
+  const data: Record<string, string | string[]> = {};
+
+  let currentArrayKey: string | null = null;
+  for (const rawLine of rawFrontmatter) {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith("#")) continue;
+
+    if (currentArrayKey && line.startsWith("- ")) {
+      const existing = data[currentArrayKey];
+      if (!Array.isArray(existing)) {
+        throw new Error("Invalid frontmatter array state");
+      }
+      existing.push(parseScalar(line.slice(2).trim()));
+      continue;
+    }
+
+    currentArrayKey = null;
+    const match = /^([A-Za-z0-9_-]+):(?:\s*(.*))?$/.exec(line);
+    if (!match) {
+      throw new Error("Unsupported frontmatter syntax");
+    }
+
+    const key = match[1]!;
+    const rawValue = match[2] ?? "";
+    if (rawValue === "") {
+      data[key] = [];
+      currentArrayKey = key;
+      continue;
+    }
+
+    data[key] = parseValue(rawValue.trim());
+  }
+
+  return { data, body };
+}
+
+function parseValue(value: string): string | string[] {
+  if (value.startsWith("[") && value.endsWith("]")) {
+    const inner = value.slice(1, -1).trim();
+    if (inner === "") return [];
+    return inner.split(",").map((item) => parseScalar(item.trim()));
+  }
+
+  return parseScalar(value);
+}
+
+function parseScalar(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  if (
+    value.includes("{") ||
+    value.includes("}") ||
+    value.includes("[") ||
+    value.includes("]")
+  ) {
+    throw new Error("Unsupported frontmatter scalar");
+  }
+
+  return value;
+}
+
+function normalizeTag(tag: string): string {
+  return tag.startsWith("#") ? tag.slice(1) : tag;
 }
 
 export function parseMarkdown(content: string): MarkdownParseResult {
