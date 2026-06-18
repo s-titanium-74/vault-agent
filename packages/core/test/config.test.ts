@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { ConfigManager, DEFAULT_CONFIG } from "../src/config.js";
+import {
+  ConfigManager,
+  DEFAULT_CONFIG,
+  configSchema,
+  type Config,
+} from "../src/config.js";
 import { ConfigError } from "../src/errors.js";
 
 function writeTOML(testDir: string, content: string): string {
@@ -394,6 +399,8 @@ describe("Environment variable overrides", () => {
     "VAULT_AGENT_SYNC_WEBHOOK_SECRET",
     "VAULT_AGENT_SYNC_PULL_TIMEOUT_SECONDS",
     "VAULT_AGENT_SYNC_FAILURE_BACKOFF_SECONDS",
+    "VAULT_AGENT_MCP_ENABLED",
+    "VAULT_AGENT_MCP_HTTP_ENDPOINT",
   ];
 
   function clearEnv(): void {
@@ -570,6 +577,26 @@ describe("Environment variable overrides", () => {
     expect(config.sync.failure_backoff_seconds).toBe(7200);
   });
 
+  it("VAULT_AGENT_MCP_ENABLED sets MCP enabled", async () => {
+    process.env.VAULT_AGENT_MCP_ENABLED = "true";
+    const { applyEnvOverrides, DEFAULT_CONFIG: def } =
+      await import("../src/config.js");
+    const base = structuredClone(def);
+    base.vault.root = "/tmp/test-vault";
+    const config = applyEnvOverrides(base);
+    expect(config.mcp.enabled).toBe(true);
+  });
+
+  it("VAULT_AGENT_MCP_HTTP_ENDPOINT sets nested endpoint", async () => {
+    process.env.VAULT_AGENT_MCP_HTTP_ENDPOINT = "/agent-mcp";
+    const { applyEnvOverrides, DEFAULT_CONFIG: def } =
+      await import("../src/config.js");
+    const base = structuredClone(def);
+    base.vault.root = "/tmp/test-vault";
+    const config = applyEnvOverrides(base);
+    expect(config.mcp.http.endpoint).toBe("/agent-mcp");
+  });
+
   it("invalid boolean value for VAULT_AGENT_WATCH_ENABLED throws", async () => {
     process.env.VAULT_AGENT_WATCH_ENABLED = "maybe";
     const { applyEnvOverrides, DEFAULT_CONFIG: def } =
@@ -586,5 +613,40 @@ describe("Environment variable overrides", () => {
     const base = structuredClone(def);
     base.vault.root = "/tmp/test-vault";
     expect(() => applyEnvOverrides(base)).toThrow();
+  });
+});
+
+describe("MCP endpoint validation", () => {
+  function baseConfig(endpoint: string): Config {
+    const config = structuredClone(DEFAULT_CONFIG);
+    config.vault.root = "/tmp/test-vault";
+    config.mcp.enabled = true;
+    config.mcp.http.endpoint = endpoint;
+    return config;
+  }
+
+  it("accepts default /mcp endpoint", () => {
+    const result = configSchema.safeParse(baseConfig("/mcp"));
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects endpoint without leading slash", () => {
+    const result = configSchema.safeParse(baseConfig("mcp"));
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects endpoint with path traversal", () => {
+    const result = configSchema.safeParse(baseConfig("/mcp/../search"));
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects endpoint conflicting with reserved path", () => {
+    const result = configSchema.safeParse(baseConfig("/search"));
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects endpoint under reserved path", () => {
+    const result = configSchema.safeParse(baseConfig("/notes/mcp"));
+    expect(result.success).toBe(false);
   });
 });

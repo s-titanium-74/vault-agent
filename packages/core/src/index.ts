@@ -12,6 +12,7 @@ export {
   type CorsConfig,
   type WatchConfig,
   type SyncConfig,
+  type McpConfig,
 } from "./config.js";
 export { envPaths, defaultConfigPath, defaultIndexDir } from "./paths.js";
 export { vaultIdentity, noteIdFromPath } from "./identifiers.js";

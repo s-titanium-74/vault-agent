@@ -165,7 +165,8 @@ vault-agent
 |   |-- search
 |   |-- get
 |   |-- related
-|   `-- chat
+|   |-- chat
+|   `-- mcp
 |
 |-- server
 |   |-- HTTP API
@@ -174,9 +175,13 @@ vault-agent
 |   |-- /related
 |   `-- /reindex
 |
+|-- mcp bridge
+|   |-- stdio transport (vault-agent mcp)
+|   `-- Streamable HTTP transport (/mcp endpoint)
+|
 `-- future clients
     |-- Obsidian plugin
-    `-- MCP bridge
+    `-- MCP bridge (external)
 ```
 
 ### Core
@@ -236,9 +241,9 @@ Likely problems:
 Preferred dependency direction:
 
 ```text
-CLI -> standalone server -> vault
-Obsidian plugin -> standalone server -> vault
-MCP bridge -> standalone server -> vault
+CLI -> standalone server -> core -> vault
+Obsidian plugin -> standalone server -> core -> vault
+MCP bridge -> core -> vault
 ```
 
 ## Search Policy
@@ -346,11 +351,17 @@ Git sync is not a note writing or editing workflow. It is a helper that lets a r
 Requirements: planned `docs/phases/phase-3-mcp-bridge/requirements.md`.
 
 - Expose `search`, `get`, and `related` as MCP tools.
-- Keep the bridge thin by calling the HTTP server.
+- MCP bridge connects directly to core, bypassing the HTTP server.
 - Preserve progressive disclosure for MCP clients.
 - Keep tool responses based on compact results and explicit retrieval.
+- Maintain identical data scope and privacy guarantees as the HTTP API.
 
 Purpose: let MCP-compatible clients safely retrieve vault context in stages.
+
+Architecture note: The MCP bridge accesses core directly for efficiency and
+simplicity. stdio transport does not require an HTTP server. The bridge must
+replicate server-level guarantees (path safety, response envelope, logging,
+error sanitization) to ensure identical behavior between MCP and HTTP paths.
 
 ### Phase 4: LLM Integration
 

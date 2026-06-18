@@ -5,6 +5,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import {
   Config,
+  EmbeddingProvider,
   IndexStore,
   getIndexPath,
   indexVault,
@@ -28,6 +29,8 @@ import { registerSearchRoutes } from "./routes/search.js";
 import { registerStatusRoute } from "./routes/status.js";
 import { registerSyncRoutes } from "./routes/sync.js";
 import { initApp, resetApp } from "./state.js";
+import { createMcpServer, McpAdapterContext } from "./mcp/adapter.js";
+import { registerMcpStreamableHttpRoute } from "./mcp/streamable-http.js";
 
 export {
   initApp,
@@ -36,9 +39,12 @@ export {
   validateStartupIndexState,
 };
 export type { PrepareServerAccessOptions, StartupIndexState };
+export { createMcpServer } from "./mcp/adapter.js";
+export type { McpAdapterContext } from "./mcp/adapter.js";
 
 export async function createServer(
   appConfig: Config,
+  mcpContext?: McpAdapterContext,
 ): Promise<ReturnType<typeof Fastify>> {
   validateServerAccessConfig(appConfig);
 
@@ -77,6 +83,13 @@ export async function createServer(
     ) {
       return;
     }
+    if (
+      appConfig.mcp.enabled &&
+      (request.url === appConfig.mcp.http.endpoint ||
+        request.url.startsWith(`${appConfig.mcp.http.endpoint}?`))
+    ) {
+      return;
+    }
 
     const auth = request.headers.authorization;
     if (!auth || !auth.startsWith("Bearer ")) {
@@ -106,6 +119,14 @@ export async function createServer(
   registerStatusRoute(app);
   registerSyncRoutes(app);
 
+  if (appConfig.mcp.enabled && mcpContext) {
+    registerMcpStreamableHttpRoute(app, {
+      endpoint: appConfig.mcp.http.endpoint,
+      createMcpServer: () => createMcpServer(mcpContext),
+      apiKey: appConfig.server.apiKey,
+    });
+  }
+
   return app;
 }
 
@@ -114,7 +135,6 @@ export async function startServer(
   options: PrepareServerAccessOptions = {},
 ): Promise<void> {
   const preparedConfig = prepareServerAccessConfig(appConfig, options);
-  const app = await createServer(preparedConfig);
 
   const dbPath = getIndexPath(preparedConfig);
   const dir = path.dirname(dbPath);
@@ -158,6 +178,18 @@ export async function startServer(
   } else {
     freshnessMachine.transition("fresh", "Startup check passed");
   }
+
+  const mcpEmbeddingProvider: EmbeddingProvider | null =
+    preparedConfig.embedding.enabled && preparedConfig.embedding.model
+      ? new EmbeddingProvider(preparedConfig)
+      : null;
+
+  const app = await createServer(preparedConfig, {
+    store: appStore,
+    config: preparedConfig,
+    embeddingProvider: mcpEmbeddingProvider,
+    freshnessMachine,
+  });
 
   let watcher: VaultWatcher | null = null;
   if (preparedConfig.watch.enabled) {

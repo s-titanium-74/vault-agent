@@ -6,6 +6,7 @@ import { registerSearchCommands } from "./commands/search.js";
 import { registerServeCommand } from "./commands/serve.js";
 import { registerStatusCommands } from "./commands/status.js";
 import { registerSyncCommands } from "./commands/sync.js";
+import { registerMcpCommand } from "./commands/mcp.js";
 import { createCliContext } from "./context.js";
 export {
   getCommandResultFromHttpResponse,
@@ -30,5 +31,6 @@ registerRetrievalCommands(program, context);
 registerConfigCommands(program, context);
 registerStatusCommands(program, context);
 registerSyncCommands(program, context);
+registerMcpCommand(program, context);
 
 export { program as default };

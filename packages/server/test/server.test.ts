@@ -179,6 +179,43 @@ describe("Server Routes", () => {
     });
   });
 
+  describe("MCP access control", () => {
+    it("allows Streamable HTTP MCP without an API key on localhost", async () => {
+      const mcpConfig = structuredClone(config);
+      mcpConfig.mcp.enabled = true;
+
+      const mcpApp = await createServer(mcpConfig, {
+        store,
+        config: mcpConfig,
+        embeddingProvider: null,
+        freshnessMachine: null,
+      });
+
+      const response = await mcpApp.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        payload: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2024-11-05",
+            capabilities: {},
+            clientInfo: { name: "test", version: "0.1.0" },
+          },
+        }),
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.code).toBe(-32600);
+      await mcpApp.close();
+    });
+  });
+
   describe("POST /search", () => {
     it("returns search results for a valid query", async () => {
       const response = await app.inject({

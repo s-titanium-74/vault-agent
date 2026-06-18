@@ -49,6 +49,42 @@ export const syncConfigSchema = z.object({
   failure_backoff_seconds: z.number().int().min(1).default(3600),
 });
 
+export const mcpConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  http: z.object({
+    endpoint: z.string().default("/mcp"),
+  }),
+});
+
+const RESERVED_ENDPOINT_PATHS = new Set([
+  "/search",
+  "/notes",
+  "/chunks",
+  "/attachments",
+  "/related",
+  "/health",
+  "/index",
+  "/reindex",
+  "/status",
+  "/sync",
+]);
+
+function validateMcpEndpoint(endpoint: string): string | undefined {
+  if (!endpoint.startsWith("/")) {
+    return "MCP endpoint must start with '/'";
+  }
+  if (endpoint.includes("\0") || endpoint.includes("..")) {
+    return "MCP endpoint must not contain '..' or null bytes";
+  }
+  const normalized = endpoint.replace(/\/$/, "");
+  for (const reserved of RESERVED_ENDPOINT_PATHS) {
+    if (normalized === reserved || normalized.startsWith(`${reserved}/`)) {
+      return `MCP endpoint conflicts with reserved path: ${reserved}`;
+    }
+  }
+  return undefined;
+}
+
 export const configSchema = z
   .object({
     vault: vaultConfigSchema,
@@ -58,6 +94,7 @@ export const configSchema = z
     cors: corsConfigSchema,
     watch: watchConfigSchema,
     sync: syncConfigSchema,
+    mcp: mcpConfigSchema,
   })
   .superRefine((config, ctx) => {
     if (config.watch.max_batch_delay_ms < config.watch.debounce_ms) {
@@ -74,6 +111,14 @@ export const configSchema = z
         message: `failure_backoff_seconds (${config.sync.failure_backoff_seconds}) must be >= interval_seconds (${config.sync.interval_seconds})`,
       });
     }
+    const endpointError = validateMcpEndpoint(config.mcp.http.endpoint);
+    if (endpointError) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["mcp", "http", "endpoint"],
+        message: endpointError,
+      });
+    }
   });
 
 export type VaultConfig = z.infer<typeof vaultConfigSchema>;
@@ -83,6 +128,7 @@ export type EmbeddingConfig = z.infer<typeof embeddingConfigSchema>;
 export type CorsConfig = z.infer<typeof corsConfigSchema>;
 export type WatchConfig = z.infer<typeof watchConfigSchema>;
 export type SyncConfig = z.infer<typeof syncConfigSchema>;
+export type McpConfig = z.infer<typeof mcpConfigSchema>;
 export type Config = z.infer<typeof configSchema>;
 
 export const DEFAULT_CONFIG: Config = {
@@ -126,6 +172,12 @@ export const DEFAULT_CONFIG: Config = {
     webhook_secret: "",
     pull_timeout_seconds: 120,
     failure_backoff_seconds: 3600,
+  },
+  mcp: {
+    enabled: false,
+    http: {
+      endpoint: "/mcp",
+    },
   },
 };
 
@@ -204,6 +256,11 @@ function applyEnvOverrides(config: Config): Config {
       path: ["sync", "failure_backoff_seconds"],
       type: "number",
     },
+    VAULT_AGENT_MCP_ENABLED: { path: ["mcp", "enabled"], type: "boolean" },
+    VAULT_AGENT_MCP_HTTP_ENDPOINT: {
+      path: ["mcp", "http", "endpoint"],
+      type: "string",
+    },
   };
 
   const result = structuredClone(config) as Record<string, unknown>;
@@ -241,10 +298,16 @@ function applyEnvOverrides(config: Config): Config {
       parsed = value;
     }
 
-    const section = mapping.path[0]!;
-    const key = mapping.path[1]!;
-    const sectionObj = result[section] as Record<string, unknown>;
-    sectionObj[key] = parsed;
+    let target = result;
+    for (let i = 0; i < mapping.path.length - 1; i++) {
+      const segment = mapping.path[i]!;
+      const next = target[segment];
+      if (typeof next !== "object" || next === null) {
+        target[segment] = {};
+      }
+      target = target[segment] as Record<string, unknown>;
+    }
+    target[mapping.path[mapping.path.length - 1]!] = parsed;
   }
 
   return configSchema.parse(result);
@@ -281,6 +344,7 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
     "pull_timeout_seconds",
     "failure_backoff_seconds",
   ]),
+  mcp: new Set(["enabled", "http"]),
 };
 
 function validateConfigKeys(parsed: Record<string, unknown>): void {
@@ -346,6 +410,12 @@ function toTOMLObject(config: Config): Record<string, unknown> {
       webhook_secret: config.sync.webhook_secret,
       pull_timeout_seconds: config.sync.pull_timeout_seconds,
       failure_backoff_seconds: config.sync.failure_backoff_seconds,
+    },
+    mcp: {
+      enabled: config.mcp.enabled,
+      http: {
+        endpoint: config.mcp.http.endpoint,
+      },
     },
   };
 }
@@ -518,6 +588,20 @@ function configFromTOMLParsed(
     };
   }
 
+  if (parsed.mcp && typeof parsed.mcp === "object") {
+    const m = parsed.mcp as Record<string, unknown>;
+    const http =
+      m.http && typeof m.http === "object"
+        ? (m.http as Record<string, unknown>)
+        : {};
+    result.mcp = {
+      enabled: (m.enabled as boolean) ?? DEFAULT_CONFIG.mcp.enabled,
+      http: {
+        endpoint: (http.endpoint as string) ?? DEFAULT_CONFIG.mcp.http.endpoint,
+      },
+    };
+  }
+
   return result;
 }
 
@@ -530,11 +614,19 @@ function mergeWithDefaults(partial: Partial<Config>): Config {
     cors: { ...DEFAULT_CONFIG.cors, ...partial.cors },
     watch: { ...DEFAULT_CONFIG.watch, ...partial.watch },
     sync: { ...DEFAULT_CONFIG.sync, ...partial.sync },
+    mcp: {
+      ...DEFAULT_CONFIG.mcp,
+      ...partial.mcp,
+      http: {
+        ...DEFAULT_CONFIG.mcp.http,
+        ...partial.mcp?.http,
+      },
+    },
   };
 }
 
 function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
-  const keyMapping: Record<string, [string, string]> = {
+  const keyMapping: Record<string, [string, ...string[]]> = {
     "vault.root": ["vault", "root"],
     "vault.exclude": ["vault", "exclude"],
     "server.endpoint": ["server", "endpoint"],
@@ -562,6 +654,8 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "sync.webhook_secret": ["sync", "webhook_secret"],
     "sync.pull_timeout_seconds": ["sync", "pull_timeout_seconds"],
     "sync.failure_backoff_seconds": ["sync", "failure_backoff_seconds"],
+    "mcp.enabled": ["mcp", "enabled"],
+    "mcp.http.endpoint": ["mcp", "http", "endpoint"],
   };
 
   const mapped = keyMapping[dottedKey];
@@ -572,8 +666,12 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     );
   }
 
-  const [section, key] = mapped;
-  const sectionObj = config[section as keyof Config] as Record<string, unknown>;
+  const section = mapped[0]!;
+  const key = mapped[mapped.length - 1]!;
+  let sectionObj = config[section as keyof Config] as Record<string, unknown>;
+  for (let i = 1; i < mapped.length - 1; i++) {
+    sectionObj = sectionObj[mapped[i]!] as Record<string, unknown>;
+  }
 
   if (key === "port") {
     const num = typeof value === "string" ? parseInt(value, 10) : Number(value);

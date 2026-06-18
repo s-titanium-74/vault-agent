@@ -14,6 +14,9 @@ export function registerServeCommand(
     .option("--port <port>", "Bind port", parseInt)
     .option("--index-dir <path>", "Index directory")
     .option("--api-key <key>", "API key")
+    .option("--mcp-enabled", "Enable MCP Streamable HTTP endpoint")
+    .option("--no-mcp-enabled", "Disable MCP Streamable HTTP endpoint")
+    .option("--mcp-http-endpoint <path>", "MCP Streamable HTTP endpoint path")
     .action(async (opts) => {
       const config = loadConfig(context.resolveConfigPath());
       if (opts.vaultRoot) config.vault.root = opts.vaultRoot;
@@ -21,6 +24,8 @@ export function registerServeCommand(
       if (opts.port) config.server.port = opts.port;
       if (opts.indexDir) config.index.dir = opts.indexDir;
       if (opts.apiKey) config.server.apiKey = opts.apiKey;
+      if (opts.mcpEnabled !== undefined) config.mcp.enabled = opts.mcpEnabled;
+      if (opts.mcpHttpEndpoint) config.mcp.http.endpoint = opts.mcpHttpEndpoint;
 
       const { startServer } = await import("@vault-agent/server");
       await startServer(config, { configPath: context.resolveConfigPath() });
