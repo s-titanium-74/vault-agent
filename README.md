@@ -110,16 +110,22 @@ docker volume create vault-agent-vault
 docker volume create vault-agent-index
 ```
 
-Clone the Git repository and create the first index:
+Clone the Git repository, enable scheduled pull, and create the first index:
 
 ```bash
+export VAULT_AGENT_GIT_SSH_PRIVATE_KEY="$(cat ~/.ssh/vault-agent-deploy-key)"
+export VAULT_AGENT_GIT_SSH_KNOWN_HOSTS="$(ssh-keyscan github.com)"
+
 docker run --rm \
   -v vault-agent-vault:/data/vault \
   -v vault-agent-index:/data/index \
   -e VAULT_AGENT_INDEX_DIR=/data/index \
+  -e VAULT_AGENT_GIT_SSH_PRIVATE_KEY \
+  -e VAULT_AGENT_GIT_SSH_KNOWN_HOSTS \
   vault-agent:0.1.0 \
-  sync clone "https://example.com/owner/vault.git" \
+  sync clone "git@github.com:owner/private-vault.git" \
     --target /data/vault \
+    --enable-sync \
     --index
 ```
 
@@ -134,6 +140,8 @@ docker run --rm \
   -e VAULT_AGENT_INDEX_DIR=/data/index \
   -e VAULT_AGENT_MCP_ENABLED=true \
   -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
+  -e VAULT_AGENT_GIT_SSH_PRIVATE_KEY \
+  -e VAULT_AGENT_GIT_SSH_KNOWN_HOSTS \
   vault-agent:0.1.0 \
   serve --host 0.0.0.0
 ```
@@ -145,7 +153,8 @@ Authorization: Bearer change-this-development-key-32bytes
 ```
 
 Keep the clone and serve paths the same inside the container (`/data/vault`) so
-the first index remains usable.
+the first index remains usable. For private repositories, use a read-only deploy
+key scoped to that repository. Do not pass credentials in Git URLs.
 
 ## CLI Commands
 

@@ -117,6 +117,12 @@ Behavior:
   stored only in user-local configuration.
 - Remote URLs may use HTTPS or SSH URL forms.
 - Remote URLs containing credentials are rejected.
+- Docker deployments may pass a repository-scoped SSH deploy key through
+  `VAULT_AGENT_GIT_SSH_PRIVATE_KEY` at runtime. The Docker entrypoint writes the
+  value to a temporary SSH key file, configures `GIT_SSH_COMMAND`, and unsets
+  the key before starting the Node process.
+- `VAULT_AGENT_GIT_SSH_KNOWN_HOSTS` may provide pinned SSH host keys for Docker
+  Git operations.
 - Git output during clone is sanitized before display.
 - Failed clone does not automatically delete a partial target directory.
 - Failed clone shows short cleanup guidance.

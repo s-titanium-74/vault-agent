@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates git \
+  && apt-get install -y --no-install-recommends ca-certificates git openssh-client \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -18,6 +18,7 @@ COPY . .
 RUN npm run build \
   && npm prune --omit=dev --workspaces \
   && mkdir -p /data/vault /data/index /home/node/.config/vault-agent \
+  && chmod +x /app/docker-entrypoint.sh \
   && chown -R node:node /app /data /home/node/.config
 
 USER node
@@ -28,5 +29,5 @@ ENV VAULT_AGENT_INDEX_DIR=/data/index
 VOLUME ["/data/vault", "/data/index"]
 EXPOSE 8787
 
-ENTRYPOINT ["node", "/app/packages/cli/dist/main.js"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["serve"]

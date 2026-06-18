@@ -123,28 +123,49 @@ docker volume create vault-agent-vault
 docker volume create vault-agent-index
 ```
 
-### 3. Clone And Index
+### 3. Prepare SSH Authentication
+
+For private repositories, create a repository-scoped read-only deploy key and
+store it outside the repository. Pass it to Docker at runtime:
+
+```bash
+export VAULT_AGENT_GIT_SSH_PRIVATE_KEY="$(cat ~/.ssh/vault-agent-deploy-key)"
+export VAULT_AGENT_GIT_SSH_KNOWN_HOSTS="$(ssh-keyscan github.com)"
+```
+
+`VAULT_AGENT_GIT_SSH_PRIVATE_KEY` is written to a temporary key file inside the
+container before Git runs. `VAULT_AGENT_GIT_SSH_KNOWN_HOSTS` pins the SSH host
+key used by Git. If `VAULT_AGENT_GIT_SSH_KNOWN_HOSTS` is omitted, the container
+uses OpenSSH `accept-new` behavior.
+
+Environment variables passed to Docker can be visible to the local Docker daemon
+and operators of that host. Use a read-only deploy key with access only to the
+vault repository, rotate it if exposed, and never commit it to repository files.
+
+### 4. Clone And Index
 
 ```bash
 docker run --rm \
   -v vault-agent-vault:/data/vault \
   -v vault-agent-index:/data/index \
   -e VAULT_AGENT_INDEX_DIR=/data/index \
+  -e VAULT_AGENT_GIT_SSH_PRIVATE_KEY \
+  -e VAULT_AGENT_GIT_SSH_KNOWN_HOSTS \
   vault-agent:0.1.0 \
-  sync clone "https://example.com/owner/vault.git" \
+  sync clone "git@github.com:owner/private-vault.git" \
     --target /data/vault \
+    --enable-sync \
     --index
 ```
 
-Use an HTTPS or SSH Git URL without embedded credentials. Git authentication
-should come from Docker or Git credential setup outside committed repository
-files.
+Use an SSH Git URL without embedded credentials. `--enable-sync` turns on
+scheduled pull so the server can keep the checkout fresh while it is running.
 
 Keep `/data/vault` as the target path for both `sync clone` and `serve`. The
 index is tied to the vault identity, so changing the in-container vault path can
 make the server rebuild the index.
 
-### 4. Serve With MCP Enabled
+### 5. Serve With MCP Enabled
 
 ```bash
 docker run --rm \
@@ -155,6 +176,8 @@ docker run --rm \
   -e VAULT_AGENT_INDEX_DIR=/data/index \
   -e VAULT_AGENT_MCP_ENABLED=true \
   -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
+  -e VAULT_AGENT_GIT_SSH_PRIVATE_KEY \
+  -e VAULT_AGENT_GIT_SSH_KNOWN_HOSTS \
   vault-agent:0.1.0 \
   serve --host 0.0.0.0
 ```
@@ -163,7 +186,10 @@ The server must bind to `0.0.0.0` inside the container so Docker can publish the
 port. Non-localhost server binds require an API key, even when Docker publishes
 the port only to host localhost.
 
-### 5. Connect An Agent
+Pass the SSH key environment variables to `serve` as well as `sync clone`;
+scheduled pull runs inside the server process and needs the same Git access.
+
+### 6. Connect An Agent
 
 For Streamable HTTP MCP, use:
 
