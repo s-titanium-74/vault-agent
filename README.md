@@ -62,122 +62,90 @@ Or run from Docker:
 docker run --rm DOCKERHUB_USER/vault-agent:0.1.0 --help
 ```
 
-## Quick Start From Source
+## Quick Start
 
-Install dependencies and build the workspace:
+These examples show the two shortest paths to a running MCP-backed vault
+retrieval server. See the [setup guide](docs/setup-guide.md) for detailed
+installation, Docker, API key, and MCP client notes.
+
+### Local Vault With Automatic Indexing
+
+Use this path when the Markdown vault already exists on the same machine as the
+agent.
+
+```bash
+vault-agent config set vault.root "/path/to/your/vault"
+vault-agent config set mcp.enabled true
+vault-agent serve
+```
+
+On first startup, `serve` creates the local index automatically if no usable
+index exists. File watching is enabled by default, so later Markdown changes are
+indexed incrementally while the server is running.
+
+Connect an MCP client that supports Streamable HTTP to:
+
+```text
+http://127.0.0.1:8787/mcp
+```
+
+For source checkouts before npm publication, run:
 
 ```bash
 npm install
 npm run build
-```
-
-Run the local CLI from the checkout with `npx --no-install vault-agent`. This uses the workspace binary created by `npm install` and does not download a package from the registry.
-
-### Route A: Use An Existing Local Vault
-
-Configure a vault root in user-local config:
-
-```bash
 npx --no-install vault-agent config set vault.root "/path/to/your/vault"
-```
-
-Check the effective config:
-
-```bash
-npx --no-install vault-agent config get
-```
-
-Start the local server:
-
-```bash
+npx --no-install vault-agent config set mcp.enabled true
 npx --no-install vault-agent serve
 ```
 
-On first startup, the server creates the local index if no usable index exists. In another terminal, check that the server, index, watcher, and sync state are visible:
+### Git Repository In Docker
+
+Use this path when the vault should be cloned from Git into Docker-managed
+volumes and served from a container.
 
 ```bash
-npx --no-install vault-agent status
+docker build -t vault-agent:0.1.0 .
+docker volume create vault-agent-vault
+docker volume create vault-agent-index
 ```
 
-If you want to rebuild the index explicitly, keep the server running and run:
+Clone the Git repository and create the first index:
 
 ```bash
-npx --no-install vault-agent reindex
+docker run --rm \
+  -v vault-agent-vault:/data/vault \
+  -v vault-agent-index:/data/index \
+  -e VAULT_AGENT_INDEX_DIR=/data/index \
+  vault-agent:0.1.0 \
+  sync clone "https://example.com/owner/vault.git" \
+    --target /data/vault \
+    --index
 ```
 
-Search:
+Serve the cloned vault with MCP enabled:
 
 ```bash
-npx --no-install vault-agent search "local embedding privacy"
+docker run --rm \
+  -p 127.0.0.1:8787:8787 \
+  -v vault-agent-vault:/data/vault \
+  -v vault-agent-index:/data/index \
+  -e VAULT_AGENT_VAULT_ROOT=/data/vault \
+  -e VAULT_AGENT_INDEX_DIR=/data/index \
+  -e VAULT_AGENT_MCP_ENABLED=true \
+  -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
+  vault-agent:0.1.0 \
+  serve --host 0.0.0.0
 ```
 
-Retrieve a specific note or chunk from a search result:
+Connect an MCP client to `http://127.0.0.1:8787/mcp` and send:
 
-```bash
-npx --no-install vault-agent get note "<note-id>"
-npx --no-install vault-agent get chunk "<note-id>" "<chunk-index>"
+```text
+Authorization: Bearer change-this-development-key-32bytes
 ```
 
-Find related candidates from a known note or chunk:
-
-```bash
-npx --no-install vault-agent related "<note-or-chunk-id>"
-```
-
-### Route B: Clone A Git-Backed Vault
-
-Use this route when the vault should be checked out from a remote Git repository. Sync remains disabled unless you explicitly enable it.
-
-```bash
-npx --no-install vault-agent sync clone "https://example.com/owner/vault.git" --target "/path/to/local/vault" --index
-```
-
-Then start the server:
-
-```bash
-npx --no-install vault-agent serve
-```
-
-Check status:
-
-```bash
-npx --no-install vault-agent status
-```
-
-To configure an already-cloned Git worktree for manual sync:
-
-```bash
-npx --no-install vault-agent config set vault.root "/path/to/local/vault"
-npx --no-install vault-agent sync configure --repo "/path/to/local/vault"
-npx --no-install vault-agent sync status
-```
-
-Manual pull is available once sync is configured:
-
-```bash
-npx --no-install vault-agent sync pull
-```
-
-Scheduled sync is opt-in:
-
-```bash
-npx --no-install vault-agent sync enable
-```
-
-Git sync uses fetch plus fast-forward-only update behavior. It does not push, stash, reset, merge, or resolve conflicts automatically.
-
-### Initialization Checklist
-
-For a new local setup, the expected path is:
-
-1. Install and build: `npm install && npm run build`.
-2. Choose one vault root: either `config set vault.root ...` or `sync clone ... --target ...`.
-3. Start one server process for that vault: `vault-agent serve`.
-4. Confirm readiness: `vault-agent status`.
-5. Search compact results with `search`.
-6. Retrieve only explicit notes or chunks with `get`.
-
-`index` and `reindex` are server-backed commands. Run them from another terminal while `vault-agent serve` is running.
+Keep the clone and serve paths the same inside the container (`/data/vault`) so
+the first index remains usable.
 
 ## CLI Commands
 
@@ -402,9 +370,12 @@ npm run dev:server
 
 ## Documentation
 
+- [Setup guide](docs/setup-guide.md)
 - [Product plan](docs/product-plan.md)
 - [Phase 1 requirements](docs/phases/phase-1-retrieval-foundation/requirements.md)
 - [Phase 1 specifications](docs/phases/phase-1-retrieval-foundation/specifications/)
 - [Phase 2 requirements](docs/phases/phase-2-automatic-index-updates/requirements.md)
 - [Phase 2 specifications](docs/phases/phase-2-automatic-index-updates/specifications/)
+- [Phase 3 requirements](docs/phases/phase-3-mcp-bridge/requirements.md)
+- [Phase 3 specifications](docs/phases/phase-3-mcp-bridge/specifications/)
 - [Agent working rules](AGENTS.md)
