@@ -32,7 +32,7 @@ npm install -g @vault-agent/cli
 vault-agent --help
 ```
 
-From a source checkout before npm publication:
+For local development from a source checkout:
 
 ```bash
 npm install

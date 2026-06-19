@@ -13,13 +13,13 @@ agent.
 
 ### 1. Install
 
-After the npm package is published:
+Install from npm:
 
 ```bash
 npm install -g @vault-agent/cli
 ```
 
-From a source checkout before publishing:
+For local development from a source checkout:
 
 ```bash
 npm install
@@ -118,22 +118,15 @@ existing usable local index, so start `vault-agent serve` once first or run
 Use this path when the vault should be cloned from Git into a Docker volume and
 served from a container.
 
-### 1. Build Or Pull The Image
+### 1. Build The Image
 
-Before Docker Hub publication, build locally:
+The Docker image is not published yet. Build it locally:
 
 ```bash
 docker build -t vault-agent:0.1.0 .
 ```
 
-After Docker Hub publication:
-
-```bash
-docker pull DOCKERHUB_USER/vault-agent:0.1.0
-```
-
-The examples below use `vault-agent:0.1.0`. Replace it with the Docker Hub image
-name after publication.
+The examples below use the local image tag `vault-agent:0.1.0`.
 
 ### 2. Create Persistent Volumes
 
