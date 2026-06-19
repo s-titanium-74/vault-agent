@@ -13,13 +13,15 @@
     "node": ">=22"
   },
   "scripts": {
+    "clean": "node -e \"const fs=require('node:fs'); for (const dir of ['packages/core/dist','packages/server/dist','packages/cli/dist']) fs.rmSync(dir, { recursive: true, force: true });\"",
     "build": "npm run build --workspaces",
     "typecheck": "npm run typecheck --workspaces",
     "lint": "eslint packages/*/src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "npm run build && vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --exclude packages/cli/test/mcp-stdio.test.ts --exclude packages/cli/test/serve-mcp-flags.test.ts",
+    "test:dist": "vitest run packages/cli/test/mcp-stdio.test.ts packages/cli/test/serve-mcp-flags.test.ts",
+    "test:watch": "vitest --exclude packages/cli/test/mcp-stdio.test.ts --exclude packages/cli/test/serve-mcp-flags.test.ts",
     "dev:server": "tsx packages/server/src/main.ts"
   },
   "devDependencies": {

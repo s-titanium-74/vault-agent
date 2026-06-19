@@ -211,6 +211,10 @@ retrieval, and related functionality.
 # Run all tests
 npm test
 
+# Run build-output CLI smoke tests after building
+npm run build
+npm run test:dist
+
 # Run Phase 3 specific tests
 npm test -- --grep "MCP"
 
