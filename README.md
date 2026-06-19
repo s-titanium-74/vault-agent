@@ -40,6 +40,12 @@ npm run build
 npx --no-install vault-agent --help
 ```
 
+Docker image:
+
+```bash
+docker pull namka0703/vault-agent:0.1.0
+```
+
 Docker usage is covered in the [setup guide](docs/setup-guide.md).
 
 ## Quick Start
