@@ -5,7 +5,7 @@
   "type": "module",
   "license": "MIT",
   "bin": {
-    "vault-agent": "./dist/main.js"
+    "vault-agent": "dist/main.js"
   },
   "files": [
     "dist",

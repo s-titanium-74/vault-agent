@@ -15,7 +15,7 @@
   "scripts": {
     "clean": "node -e \"const fs=require('node:fs'); for (const dir of ['packages/core/dist','packages/server/dist','packages/cli/dist']) fs.rmSync(dir, { recursive: true, force: true });\"",
     "build": "npm run build --workspaces",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run build --workspace @vault-agent/core && npm run build --workspace @vault-agent/server && npm run typecheck --workspaces",
     "lint": "eslint packages/*/src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

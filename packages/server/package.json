@@ -8,15 +8,15 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
     "./mcp/adapter": {
-      "types": "./src/mcp/adapter.ts",
+      "types": "./dist/mcp/adapter.d.ts",
       "import": "./dist/mcp/adapter.js"
     },
     "./mcp/stdio": {
-      "types": "./src/mcp/stdio.ts",
+      "types": "./dist/mcp/stdio.d.ts",
       "import": "./dist/mcp/stdio.js"
     }
   },

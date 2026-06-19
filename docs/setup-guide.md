@@ -36,7 +36,26 @@ vault-agent config set vault.root "/path/to/your/vault"
 vault-agent config set mcp.enabled true
 ```
 
-### 3. Serve
+### 3. Optional: Enable Local Embeddings With Ollama
+
+Lexical search works without embeddings. To enable local embedding search with
+[Ollama](https://ollama.com/) (see also
+[ollama/ollama](https://github.com/ollama/ollama)), make sure Ollama is running
+locally, then pull an embedding model and point `vault-agent` at Ollama's
+OpenAI-compatible endpoint before starting the server:
+
+```bash
+ollama pull nomic-embed-text
+vault-agent config set embedding.enabled true
+vault-agent config set embedding.endpoint "http://127.0.0.1:11434/v1/embeddings"
+vault-agent config set embedding.model "nomic-embed-text"
+```
+
+When embeddings are configured before first startup, bootstrap indexing includes
+vectors. `nomic-embed-text` is an example embedding model; if you enable or
+change embeddings after an index already exists, run `vault-agent reindex`.
+
+### 4. Serve
 
 ```bash
 vault-agent serve
@@ -53,7 +72,7 @@ Check readiness from another terminal:
 vault-agent status
 ```
 
-### 4. Connect An Agent
+### 5. Connect An Agent
 
 For MCP clients that support Streamable HTTP, connect to:
 
@@ -318,7 +337,8 @@ The current embedding implementation supports local OpenAI-compatible embedding
 endpoints only. The endpoint host must be `127.0.0.1`, `localhost`, or `::1`.
 External SaaS embedding providers and provider authentication are out of scope.
 
-One common local setup is Ollama with an embedding model:
+One common local setup is [Ollama](https://ollama.com/) with
+`nomic-embed-text`, an example embedding model:
 
 ```bash
 ollama pull nomic-embed-text

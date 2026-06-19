@@ -52,10 +52,26 @@ vault-agent config set mcp.enabled true
 vault-agent serve
 ```
 
+To enable local embedding search with [Ollama](https://ollama.com/) (see also
+[ollama/ollama](https://github.com/ollama/ollama)), make sure Ollama is running
+locally, then pull an embedding model and point `vault-agent` at Ollama's
+OpenAI-compatible endpoint before starting the server:
+
+```bash
+ollama pull nomic-embed-text
+vault-agent config set embedding.enabled true
+vault-agent config set embedding.endpoint "http://127.0.0.1:11434/v1/embeddings"
+vault-agent config set embedding.model "nomic-embed-text"
+vault-agent serve
+```
+
 The server binds to `127.0.0.1:8787` by default. On first startup, it creates a
 local index automatically if no usable index exists. File watching is enabled by
 default, so Markdown changes are indexed incrementally while the server is
-running.
+running. Lexical search works without embeddings; when embeddings are indexed
+and available, search can use hybrid or embedding mode. `nomic-embed-text` is
+an example embedding model; if you enable or change embeddings after an index
+already exists, run `vault-agent reindex`.
 
 Search from another terminal:
 
