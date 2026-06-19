@@ -55,6 +55,24 @@ This repository is intended to become the public `vault-agent` project: a standa
 - `npm run test:watch`: Run tests in watch mode
 - `npm run dev:server`: Start the development server with tsx
 
+## Branch And Release Operations
+
+- Do not push routine changes directly to `main` after publication.
+- Start each change from the latest `main` and create a focused branch such as
+  `fix/<short-topic>`, `feature/<short-topic>`, `docs/<short-topic>`, or
+  `chore/<short-topic>`.
+- Keep one branch and pull request focused on one explainable change.
+- Run the relevant checks before opening or merging a pull request.
+- Delete local and remote work branches after they are merged unless there is a
+  clear reason to keep them.
+- Use version tags for public releases, such as `v0.1.0`.
+- Create a GitHub Release for each public version tag with concise release
+  notes that mention the npm package, Docker image, and user-visible changes
+  when applicable.
+- Do not include private vault content, private paths, credentials, internal
+  endpoints, or generated local data in release notes, tags, or attached
+  artifacts.
+
 ## Test And Fixture Policy
 
 - Use only synthetic Markdown content for fixtures, examples, snapshots, and test vaults.
