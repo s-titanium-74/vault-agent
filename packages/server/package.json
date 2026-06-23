@@ -1,6 +1,6 @@
 {
   "name": "@vault-agent/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "HTTP and MCP server package for vault-agent.",
   "type": "module",
   "license": "MIT",
@@ -47,7 +47,7 @@
   "dependencies": {
     "@fastify/cors": "^11.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@vault-agent/core": "0.1.0",
+    "@vault-agent/core": "0.1.1",
     "fastify": "^5.3.0",
     "pino": "^9.6.0",
     "zod": "^3.24.0"

@@ -196,7 +196,7 @@ Logs may include warning codes and warning counts. Logs must not include individ
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "index": {
     "available": true,
     "stale": false,
