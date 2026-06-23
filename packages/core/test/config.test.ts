@@ -36,6 +36,7 @@ describe("ConfigManager", () => {
       expect(config.server.host).toBe("127.0.0.1");
       expect(config.server.port).toBe(8787);
       expect(config.embedding.enabled).toBe(false);
+      expect(config.embedding.allow_private_network_endpoint).toBe(false);
       expect(config.vault.root).toBe("/tmp/test-vault");
     } finally {
       delete process.env.VAULT_AGENT_VAULT_ROOT;
@@ -50,8 +51,10 @@ describe("ConfigManager", () => {
     try {
       manager.set("server.port", "9090");
       manager.set("vault.root", "/tmp/test-vault");
+      manager.set("embedding.allow_private_network_endpoint", "true");
       const config = manager.load();
       expect(config.server.port).toBe(9090);
+      expect(config.embedding.allow_private_network_endpoint).toBe(true);
     } finally {
       delete process.env.VAULT_AGENT_VAULT_ROOT;
     }
@@ -80,6 +83,7 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.server.port).toBe(8787);
     expect(DEFAULT_CONFIG.server.apiKey).toBe("");
     expect(DEFAULT_CONFIG.embedding.enabled).toBe(false);
+    expect(DEFAULT_CONFIG.embedding.allow_private_network_endpoint).toBe(false);
     expect(DEFAULT_CONFIG.cors.enabled).toBe(false);
     expect(DEFAULT_CONFIG.index.dir).toBe("");
   });
@@ -126,6 +130,7 @@ enabled = true
 endpoint = "http://localhost:11434/v1/embeddings"
 model = "nomic-embed-text"
 require = true
+allow_private_network_endpoint = true
 
 [cors]
 enabled = true
@@ -144,6 +149,7 @@ allowed_origins = ["http://localhost:3000"]
     expect(config.embedding.enabled).toBe(true);
     expect(config.embedding.model).toBe("nomic-embed-text");
     expect(config.embedding.require).toBe(true);
+    expect(config.embedding.allow_private_network_endpoint).toBe(true);
     expect(config.cors.enabled).toBe(true);
     expect(config.cors.allowedOrigins).toEqual(["http://localhost:3000"]);
   });
@@ -235,6 +241,7 @@ enabled = false
 endpoint = "http://127.0.0.1:11434/v1/embeddings"
 model = ""
 require = false
+allow_private_network_endpoint = false
 
 [cors]
 enabled = false

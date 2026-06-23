@@ -81,6 +81,21 @@ describe("applyEnvOverrides", () => {
     expect(() => applyEnvOverrides(structuredClone(DEFAULT_CONFIG))).toThrow();
   });
 
+  it("applies VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT", () => {
+    process.env.VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT = "true";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    const result = applyEnvOverrides(structuredClone(DEFAULT_CONFIG));
+    expect(result.embedding.allow_private_network_endpoint).toBe(true);
+  });
+
+  it("rejects invalid VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT", () => {
+    process.env.VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT = "yes";
+    process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";
+    expect(() => applyEnvOverrides(structuredClone(DEFAULT_CONFIG))).toThrow(
+      ConfigError,
+    );
+  });
+
   it("applies VAULT_AGENT_API_KEY", () => {
     process.env.VAULT_AGENT_API_KEY = "test-api-key";
     process.env.VAULT_AGENT_VAULT_ROOT = "/tmp/test";

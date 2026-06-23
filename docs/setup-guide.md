@@ -340,8 +340,10 @@ Embedding search is disabled by default. Lexical search works without an
 embedding provider.
 
 The current embedding implementation supports local OpenAI-compatible embedding
-endpoints only. The endpoint host must be `127.0.0.1`, `localhost`, or `::1`.
-External SaaS embedding providers and provider authentication are out of scope.
+endpoints only. The endpoint host must be `127.0.0.1`, `localhost`, or `::1` by
+default. Docker and private-network endpoints require the explicit opt-in shown
+below. External SaaS embedding providers and provider authentication are out of
+scope.
 
 One common local setup is [Ollama](https://ollama.com/) with
 `nomic-embed-text`, an example embedding model:
@@ -358,6 +360,50 @@ vault-agent config set embedding.enabled true
 vault-agent config set embedding.endpoint "http://127.0.0.1:11434/v1/embeddings"
 vault-agent config set embedding.model "nomic-embed-text"
 ```
+
+### Docker Or Compose Ollama
+
+When `vault-agent` runs in Docker and Ollama runs on the host, opt in to a
+private-network endpoint and use Docker's host name:
+
+```bash
+docker run --rm \
+  -v "$PWD/examples/synthetic-vault:/data/vault:ro" \
+  -v vault-agent-index:/data/index \
+  -e VAULT_AGENT_VAULT_ROOT=/data/vault \
+  -e VAULT_AGENT_INDEX_DIR=/data/index \
+  -e VAULT_AGENT_EMBEDDING_ENABLED=true \
+  -e VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT=true \
+  -e VAULT_AGENT_EMBEDDING_ENDPOINT=http://host.docker.internal:11434/v1/embeddings \
+  -e VAULT_AGENT_EMBEDDING_MODEL=nomic-embed-text \
+  --add-host host.docker.internal:host-gateway \
+  namka0703/vault-agent:0.1.0 reindex --require-embeddings
+```
+
+On Docker Desktop, `host.docker.internal` is provided automatically; the
+`--add-host` option supplies it on Docker Engine installations that support the
+`host-gateway` mapping.
+
+In Docker Compose, put both services on the same private Compose network and
+use the Ollama service name instead:
+
+```yaml
+services:
+  ollama:
+    image: ollama/ollama
+  vault-agent:
+    image: namka0703/vault-agent:0.1.0
+    environment:
+      VAULT_AGENT_VAULT_ROOT: /data/vault
+      VAULT_AGENT_EMBEDDING_ENABLED: "true"
+      VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT: "true"
+      VAULT_AGENT_EMBEDDING_ENDPOINT: http://ollama:11434/v1/embeddings
+      VAULT_AGENT_EMBEDDING_MODEL: nomic-embed-text
+```
+
+The opt-in accepts Docker service names and private IP ranges, but not public
+DNS names or public IP addresses. Keep Ollama on a private Docker network; note
+content is sent to the configured endpoint for embedding.
 
 Then rebuild the index with embeddings:
 

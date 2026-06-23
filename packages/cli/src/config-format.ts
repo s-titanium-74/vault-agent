@@ -49,6 +49,9 @@ export function printConfig(config: Config): void {
   console.log(`  endpoint = ${config.embedding.endpoint}`);
   console.log(`  model = ${config.embedding.model || "(not set)"}`);
   console.log(`  require = ${config.embedding.require}`);
+  console.log(
+    `  allow_private_network_endpoint = ${config.embedding.allow_private_network_endpoint}`,
+  );
   console.log();
   console.log("[cors]");
   console.log(`  enabled = ${config.cors.enabled}`);

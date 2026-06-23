@@ -440,6 +440,42 @@ describe("Embedding provider integration", () => {
       ).not.toBeNull();
     });
 
+    it("accepts Docker and private-network endpoints only with opt-in", () => {
+      const endpoints = [
+        "http://host.docker.internal:11434/v1/embeddings",
+        "http://ollama:11434/v1/embeddings",
+        "http://embedding-service:11434/v1/embeddings",
+        "http://ollama.internal:11434/v1/embeddings",
+        "http://10.0.0.2:11434/v1/embeddings",
+        "http://172.16.0.2:11434/v1/embeddings",
+        "http://192.168.1.2:11434/v1/embeddings",
+        "http://[fd00::2]:11434/v1/embeddings",
+      ];
+
+      for (const endpoint of endpoints) {
+        expect(validateEmbeddingEndpoint(endpoint)).not.toBeNull();
+        expect(validateEmbeddingEndpoint(endpoint, true)).toBeNull();
+      }
+    });
+
+    it("still rejects public endpoints with private-network opt-in", () => {
+      expect(
+        validateEmbeddingEndpoint(
+          "http://example.com:11434/v1/embeddings",
+          true,
+        ),
+      ).not.toBeNull();
+      expect(
+        validateEmbeddingEndpoint("http://8.8.8.8:11434/v1/embeddings", true),
+      ).not.toBeNull();
+      expect(
+        validateEmbeddingEndpoint(
+          "http://169.254.169.254:11434/v1/embeddings",
+          true,
+        ),
+      ).not.toBeNull();
+    });
+
     it("rejects invalid URLs", () => {
       expect(validateEmbeddingEndpoint("not-a-url")).not.toBeNull();
     });

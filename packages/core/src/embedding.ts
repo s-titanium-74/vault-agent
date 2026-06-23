@@ -1,4 +1,5 @@
 import { Config } from "./config.js";
+import { isIP } from "node:net";
 import {
   EMBEDDING_BATCH_SIZE,
   EMBEDDING_REQUEST_TIMEOUT_MS,
@@ -25,13 +26,65 @@ function isLocalhostHost(host: string): boolean {
   );
 }
 
-export function validateEmbeddingEndpoint(endpoint: string): string | null {
+function isPrivateIPv4(host: string): boolean {
+  if (isIP(host) !== 4) return false;
+  const [first, second] = host.split(".").map(Number);
+  return (
+    first === 10 ||
+    (first === 172 && second! >= 16 && second! <= 31) ||
+    (first === 192 && second === 168)
+  );
+}
+
+function isUniqueLocalIPv6(host: string): boolean {
+  if (isIP(host) !== 6) return false;
+  const firstHextet = Number.parseInt(host.split(":", 1)[0]!, 16);
+  const firstByte = firstHextet >>> 8;
+  return firstByte === 0xfc || firstByte === 0xfd;
+}
+
+function isPrivateNetworkHostname(host: string): boolean {
+  if (host === "host.docker.internal") return true;
+
+  const labels = host.split(".");
+  const validLabels = labels.every((label) =>
+    /^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/i.test(label),
+  );
+  if (!validLabels) return false;
+
+  if (labels.length === 1) return true;
+  return (
+    host.endsWith(".internal") ||
+    host.endsWith(".local") ||
+    host.endsWith(".home.arpa")
+  );
+}
+
+function isPrivateNetworkHost(host: string): boolean {
+  const unbracketedHost = host.replace(/^\[|\]$/g, "").toLowerCase();
+  return (
+    isPrivateIPv4(unbracketedHost) ||
+    isUniqueLocalIPv6(unbracketedHost) ||
+    isPrivateNetworkHostname(unbracketedHost)
+  );
+}
+
+export function validateEmbeddingEndpoint(
+  endpoint: string,
+  allowPrivateNetworkEndpoint = false,
+): string | null {
   try {
     const url = new URL(endpoint);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       return "Embedding endpoint must be an HTTP or HTTPS URL";
     }
-    if (!isLocalhostHost(url.hostname)) {
+    if (
+      !isLocalhostHost(url.hostname) &&
+      (!allowPrivateNetworkEndpoint || !isPrivateNetworkHost(url.hostname))
+    ) {
+      if (allowPrivateNetworkEndpoint) {
+        return "Embedding endpoint must use localhost or an allowed private-network host";
+      }
       return "Embedding endpoint must use a localhost address (127.0.0.1, localhost, or ::1)";
     }
     return null;
