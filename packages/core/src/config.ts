@@ -23,6 +23,7 @@ export const embeddingConfigSchema = z.object({
   endpoint: z.string().default("http://127.0.0.1:11434/v1/embeddings"),
   model: z.string().default(""),
   require: z.boolean().default(false),
+  allow_private_network_endpoint: z.boolean().default(false),
 });
 
 export const corsConfigSchema = z.object({
@@ -151,6 +152,7 @@ export const DEFAULT_CONFIG: Config = {
     endpoint: "http://127.0.0.1:11434/v1/embeddings",
     model: "",
     require: false,
+    allow_private_network_endpoint: false,
   },
   cors: {
     enabled: false,
@@ -212,6 +214,10 @@ function applyEnvOverrides(config: Config): Config {
     },
     VAULT_AGENT_EMBEDDING_REQUIRE: {
       path: ["embedding", "require"],
+      type: "boolean",
+    },
+    VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT: {
+      path: ["embedding", "allow_private_network_endpoint"],
       type: "boolean",
     },
     VAULT_AGENT_CORS_ENABLED: { path: ["cors", "enabled"], type: "boolean" },
@@ -325,7 +331,13 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
     "log_level",
   ]),
   index: new Set(["dir"]),
-  embedding: new Set(["enabled", "endpoint", "model", "require"]),
+  embedding: new Set([
+    "enabled",
+    "endpoint",
+    "model",
+    "require",
+    "allow_private_network_endpoint",
+  ]),
   cors: new Set(["enabled", "allowedOrigins", "allowed_origins"]),
   watch: new Set([
     "enabled",
@@ -389,6 +401,8 @@ function toTOMLObject(config: Config): Record<string, unknown> {
       endpoint: config.embedding.endpoint,
       model: config.embedding.model,
       require: config.embedding.require,
+      allow_private_network_endpoint:
+        config.embedding.allow_private_network_endpoint,
     },
     cors: {
       enabled: config.cors.enabled,
@@ -538,6 +552,9 @@ function configFromTOMLParsed(
       endpoint: (e.endpoint as string) ?? DEFAULT_CONFIG.embedding.endpoint,
       model: (e.model as string) ?? DEFAULT_CONFIG.embedding.model,
       require: (e.require as boolean) ?? DEFAULT_CONFIG.embedding.require,
+      allow_private_network_endpoint:
+        (e.allow_private_network_endpoint as boolean) ??
+        DEFAULT_CONFIG.embedding.allow_private_network_endpoint,
     };
   }
 
@@ -639,6 +656,10 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "embedding.endpoint": ["embedding", "endpoint"],
     "embedding.model": ["embedding", "model"],
     "embedding.require": ["embedding", "require"],
+    "embedding.allow_private_network_endpoint": [
+      "embedding",
+      "allow_private_network_endpoint",
+    ],
     "cors.enabled": ["cors", "enabled"],
     "cors.allowedOrigins": ["cors", "allowedOrigins"],
     "watch.enabled": ["watch", "enabled"],
@@ -682,6 +703,7 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
   } else if (
     key === "enabled" ||
     key === "require" ||
+    key === "allow_private_network_endpoint" ||
     key === "ignore_initial" ||
     key === "webhook_enabled"
   ) {

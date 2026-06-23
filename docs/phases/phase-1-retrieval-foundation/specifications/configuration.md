@@ -45,6 +45,7 @@ enabled = false
 endpoint = "http://127.0.0.1:11434/v1/embeddings"
 model = ""
 require = false
+allow_private_network_endpoint = false
 
 [cors]
 enabled = false
@@ -68,6 +69,7 @@ Supported environment variables:
 - `VAULT_AGENT_EMBEDDING_ENDPOINT`
 - `VAULT_AGENT_EMBEDDING_MODEL`
 - `VAULT_AGENT_EMBEDDING_REQUIRE`
+- `VAULT_AGENT_EMBEDDING_ALLOW_PRIVATE_NETWORK_ENDPOINT`
 - `VAULT_AGENT_CORS_ENABLED`
 - `VAULT_AGENT_CORS_ALLOWED_ORIGINS`
 
@@ -99,5 +101,14 @@ Default port: `8787`.
 An empty `index.dir` means the env-paths default index directory.
 
 When `embedding.enabled` is false, `embedding.endpoint` and `embedding.model` are ignored. When `embedding.enabled` is true, `embedding.model` is required.
+
+Embedding endpoints are localhost-only by default. Setting
+`embedding.allow_private_network_endpoint` to `true` explicitly permits Docker
+and private-network endpoints: `host.docker.internal`, single-label Docker
+service names, hostnames ending in `.internal`, `.local`, or `.home.arpa`,
+RFC1918 IPv4 addresses, and RFC4193 unique-local IPv6 addresses. Public IP
+addresses and public DNS names remain invalid. This setting changes only the
+embedding provider boundary; it does not change the server bind or access
+control configuration.
 
 Phase 1 server binds HTTP only. TLS termination is out of scope.

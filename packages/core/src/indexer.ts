@@ -355,6 +355,7 @@ async function performIndex(
       } else {
         const endpointError = validateEmbeddingEndpoint(
           config.embedding.endpoint,
+          config.embedding.allow_private_network_endpoint,
         );
         if (endpointError) {
           if (effectiveRequireEmbeddings) {
