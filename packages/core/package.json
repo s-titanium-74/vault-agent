@@ -1,6 +1,6 @@
 {
   "name": "@vault-agent/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Core Markdown vault indexing, retrieval, and search logic for vault-agent.",
   "type": "module",
   "license": "MIT",

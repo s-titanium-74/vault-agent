@@ -1,6 +1,6 @@
 {
   "name": "@vault-agent/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Command line interface for vault-agent.",
   "type": "module",
   "license": "MIT",
@@ -35,8 +35,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@vault-agent/core": "0.1.0",
-    "@vault-agent/server": "0.1.0",
+    "@vault-agent/core": "0.1.1",
+    "@vault-agent/server": "0.1.1",
     "commander": "^13.1.0",
     "zod": "^3.24.0"
   },
