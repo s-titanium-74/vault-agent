@@ -45,6 +45,32 @@ export { indexVault, reindexVault, type IndexOptions } from "./indexer.js";
 export { search } from "./search.js";
 export { getRelated } from "./related.js";
 export {
+  getOverview,
+  getTree,
+  getTags,
+  getFacets,
+  type OrientationContext,
+} from "./orientation.js";
+export type {
+  OverviewResult,
+  TreeResult,
+  TagsResult,
+  FacetsResult,
+  FolderNode,
+  TopLevelFolderEntry,
+  TagEntry,
+  FrontmatterFieldEntry,
+  FacetField,
+  FacetFieldValue,
+  OrientationParams,
+} from "./schemas.js";
+export {
+  overviewQuerySchema,
+  treeQuerySchema,
+  tagsQuerySchema,
+  facetsQuerySchema,
+} from "./schemas.js";
+export {
   getNote,
   getChunk,
   getAttachmentMetadata,

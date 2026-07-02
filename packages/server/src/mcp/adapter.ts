@@ -22,6 +22,11 @@ import {
   getNote,
   getRelated,
   search,
+  getOverview,
+  getTree,
+  getTags,
+  getFacets,
+  type OrientationContext,
 } from "@vault-agent/core";
 import {
   createMcpError,
@@ -163,6 +168,77 @@ const tools: Tool[] = [
     },
     annotations: readOnlyAnnotations,
   },
+  {
+    name: "vault_overview",
+    description:
+      "Get compact vault-level metadata: note count, chunk count, top folders, top tags, frontmatter fields, and index freshness.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_tree",
+    description:
+      "Get a bounded directory tree of the vault with note counts per folder. Use depth, limit, and direct_only to control response size.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        depth: {
+          type: "integer",
+          minimum: 1,
+          maximum: 10,
+          description: "Maximum folder depth",
+        },
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 500,
+          description: "Maximum tree nodes",
+        },
+        direct_only: {
+          type: "boolean",
+          description: "Count only notes directly in each folder",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_tags",
+    description:
+      "Get tag names and note-level usage counts from frontmatter tags.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          description: "Maximum number of tags",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_facets",
+    description:
+      "Get frontmatter field names and note counts. Values are included only for allowlisted fields (type, status).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 200,
+          description: "Maximum number of fields",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
 ];
 
 export function createMcpServer(context: McpAdapterContext): Server {
@@ -229,6 +305,14 @@ async function dispatchTool(
       return handleGetAttachment(context, arguments_);
     case "related":
       return handleRelated(context, arguments_);
+    case "vault_overview":
+      return handleVaultOverview(context, arguments_);
+    case "vault_tree":
+      return handleVaultTree(context, arguments_);
+    case "vault_tags":
+      return handleVaultTags(context, arguments_);
+    case "vault_facets":
+      return handleVaultFacets(context, arguments_);
     default:
       throw createMcpError("INTERNAL_ERROR", `Unknown tool: ${name}`);
   }
@@ -284,11 +368,12 @@ function getStringArg(
 function getNumberArg(
   args: Record<string, unknown>,
   key: string,
+  errorCode: Phase1ErrorCode = "INVALID_LIMIT",
 ): number | undefined {
   const value = args[key];
   if (value === undefined) return undefined;
   if (typeof value !== "number") {
-    throw createMcpError("INVALID_LIMIT", `${key} must be a number`);
+    throw createMcpError(errorCode, `${key} must be a number`);
   }
   return value;
 }
@@ -599,6 +684,164 @@ function checkIncompatibleIndex(
     };
   }
   return null;
+}
+
+async function handleVaultOverview(
+  context: McpAdapterContext,
+  _args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { store, config, freshnessMachine } = ensureContext(context);
+
+  const incompatible = checkIncompatibleIndex(store, config);
+  if (incompatible) {
+    throw createMcpError("INDEX_INCOMPATIBLE", incompatible.message);
+  }
+
+  const ctx: OrientationContext = {
+    store,
+    config,
+    freshnessMachine,
+  };
+
+  try {
+    const result = getOverview(ctx);
+    return {
+      ...result.data,
+      warnings: result.warnings,
+    };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultTree(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { store, config, freshnessMachine } = ensureContext(context);
+
+  const incompatible = checkIncompatibleIndex(store, config);
+  if (incompatible) {
+    throw createMcpError("INDEX_INCOMPATIBLE", incompatible.message);
+  }
+
+  const depth = getNumberArg(args, "depth", "INVALID_PARAMETER");
+  if (
+    depth !== undefined &&
+    (depth < 1 || depth > 10 || !Number.isInteger(depth))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "depth must be an integer between 1 and 10.",
+    );
+  }
+
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 500 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 500.",
+    );
+  }
+
+  const directOnly = getBooleanArg(args, "direct_only") ?? false;
+
+  const ctx: OrientationContext = {
+    store,
+    config,
+    freshnessMachine,
+  };
+
+  try {
+    const result = getTree(ctx, { depth, limit, directOnly });
+    return {
+      ...result.data,
+      warnings: result.warnings,
+    };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultTags(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { store, config, freshnessMachine } = ensureContext(context);
+
+  const incompatible = checkIncompatibleIndex(store, config);
+  if (incompatible) {
+    throw createMcpError("INDEX_INCOMPATIBLE", incompatible.message);
+  }
+
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 200 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 200.",
+    );
+  }
+
+  const ctx: OrientationContext = {
+    store,
+    config,
+    freshnessMachine,
+  };
+
+  try {
+    const result = getTags(ctx, { limit });
+    return {
+      ...result.data,
+      warnings: result.warnings,
+    };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultFacets(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const { store, config, freshnessMachine } = ensureContext(context);
+
+  const incompatible = checkIncompatibleIndex(store, config);
+  if (incompatible) {
+    throw createMcpError("INDEX_INCOMPATIBLE", incompatible.message);
+  }
+
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 200 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 200.",
+    );
+  }
+
+  const ctx: OrientationContext = {
+    store,
+    config,
+    freshnessMachine,
+  };
+
+  try {
+    const result = getFacets(ctx, { limit });
+    return {
+      ...result.data,
+      warnings: result.warnings,
+    };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
 }
 
 function checkSafeResolution(

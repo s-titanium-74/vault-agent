@@ -28,6 +28,7 @@ import { registerRetrievalRoutes } from "./routes/retrieval.js";
 import { registerSearchRoutes } from "./routes/search.js";
 import { registerStatusRoute } from "./routes/status.js";
 import { registerSyncRoutes } from "./routes/sync.js";
+import { registerOrientationRoutes } from "./routes/orientation.js";
 import { initApp, resetApp } from "./state.js";
 import { createMcpServer, McpAdapterContext } from "./mcp/adapter.js";
 import { registerMcpStreamableHttpRoute } from "./mcp/streamable-http.js";
@@ -118,6 +119,7 @@ export async function createServer(
   registerRetrievalRoutes(app);
   registerStatusRoute(app);
   registerSyncRoutes(app);
+  registerOrientationRoutes(app);
 
   if (appConfig.mcp.enabled && mcpContext) {
     registerMcpStreamableHttpRoute(app, {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { FreshnessState } from "./freshness.js";
 
 export const searchModeSchema = z.enum(["lexical", "embedding", "hybrid"]);
 export type SearchMode = z.infer<typeof searchModeSchema>;
@@ -126,6 +127,69 @@ export interface WarningItem {
   details?: Record<string, unknown>;
 }
 
+export interface TopLevelFolderEntry {
+  path: string;
+  noteCount: number;
+}
+
+export interface TagEntry {
+  tag: string;
+  noteCount: number;
+}
+
+export interface FrontmatterFieldEntry {
+  name: string;
+  noteCount: number;
+}
+
+export interface FacetFieldValue {
+  value: string;
+  noteCount: number;
+}
+
+export interface FacetField {
+  name: string;
+  noteCount: number;
+  values?: FacetFieldValue[];
+}
+
+export interface FolderNode {
+  path: string;
+  noteCount: number;
+  childFolders: number;
+  children: FolderNode[];
+}
+
+export interface OverviewResult {
+  noteCount: number;
+  chunkCount: number;
+  topLevelFolders: TopLevelFolderEntry[];
+  topTags: TagEntry[];
+  frontmatterFields: FrontmatterFieldEntry[];
+  indexFreshness: FreshnessState;
+}
+
+export interface TreeResult {
+  tree: FolderNode;
+  indexFreshness: FreshnessState;
+}
+
+export interface TagsResult {
+  tags: TagEntry[];
+  indexFreshness: FreshnessState;
+}
+
+export interface FacetsResult {
+  fields: FacetField[];
+  indexFreshness: FreshnessState;
+}
+
+export interface OrientationParams {
+  depth?: number;
+  limit?: number;
+  directOnly?: boolean;
+}
+
 export const DEFAULT_RESULT_LIMIT = 10;
 export const MAX_RESULT_LIMIT = 50;
 export const MAX_SNIPPET_LENGTH = 240;
@@ -138,8 +202,46 @@ export const CHUNK_EMBEDDING_INPUT_CAP = 8000;
 export const EMBEDDING_BATCH_SIZE = 32;
 export const EMBEDDING_REQUEST_TIMEOUT_MS = 120_000;
 export const MAX_MARKDOWN_SIZE_FOR_INDEXING = 2 * 1024 * 1024;
-export const INDEX_SCHEMA_VERSION = 2;
+export const INDEX_SCHEMA_VERSION = 3;
 export const MAX_WARNING_COUNT = 100;
+
+export const DEFAULT_OVERVIEW_TOP_FOLDERS_LIMIT = 20;
+export const DEFAULT_OVERVIEW_TOP_TAGS_LIMIT = 50;
+export const DEFAULT_OVERVIEW_FRONTMATTER_FIELDS_LIMIT = 50;
+export const DEFAULT_TREE_DEPTH = 2;
+export const DEFAULT_TREE_LIMIT = 50;
+export const MAX_TREE_DEPTH = 10;
+export const MAX_TREE_LIMIT = 500;
+export const DEFAULT_TAGS_LIMIT = 50;
+export const MAX_TAGS_LIMIT = 200;
+export const DEFAULT_FACETS_LIMIT = 50;
+export const MAX_FACETS_LIMIT = 200;
+
+export const FACET_VALUE_ALLOWLIST = ["type", "status"] as const;
+export type FacetValueAllowlist = (typeof FACET_VALUE_ALLOWLIST)[number];
+
+export const overviewQuerySchema = z.object({});
+
+export const treeQuerySchema = z.object({
+  depth: z.coerce.number().int().min(1).max(MAX_TREE_DEPTH).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_TREE_LIMIT).optional(),
+  directOnly: z
+    .union([z.enum(["true", "false"]), z.literal("")])
+    .optional()
+    .transform((val) => {
+      if (val === undefined) return false;
+      if (val === "") return true;
+      return val === "true";
+    }),
+});
+
+export const tagsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_TAGS_LIMIT).optional(),
+});
+
+export const facetsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_FACETS_LIMIT).optional(),
+});
 
 export const INDEXED_EXTENSIONS = [".md", ".markdown"];
 

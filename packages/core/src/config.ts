@@ -68,6 +68,10 @@ const RESERVED_ENDPOINT_PATHS = new Set([
   "/reindex",
   "/status",
   "/sync",
+  "/overview",
+  "/tree",
+  "/tags",
+  "/facets",
 ]);
 
 function validateMcpEndpoint(endpoint: string): string | undefined {

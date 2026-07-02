@@ -22,6 +22,7 @@ export type Phase1ErrorCode =
   | "INVALID_PARAMETER"
   | "NOTE_TOO_LARGE"
   | "ATTACHMENT_TOO_LARGE"
+  | "SERVER_UNAVAILABLE"
   | "AUTH_REQUIRED"
   | "AUTH_FAILED";
 
@@ -47,6 +48,7 @@ const APPLICATION_ERROR_CODES: Record<Phase1ErrorCode, number> = {
   INVALID_PARAMETER: -32000,
   NOTE_TOO_LARGE: -32008,
   ATTACHMENT_TOO_LARGE: -32008,
+  SERVER_UNAVAILABLE: -32014,
   AUTH_REQUIRED: -32020,
   AUTH_FAILED: -32021,
 };
@@ -74,6 +76,7 @@ export const ERROR_MESSAGES: Record<Phase1ErrorCode, string> = {
   INVALID_PARAMETER: "Invalid parameter.",
   NOTE_TOO_LARGE: "Note exceeds size limit.",
   ATTACHMENT_TOO_LARGE: "Attachment exceeds size limit.",
+  SERVER_UNAVAILABLE: "Server or core is temporarily unavailable.",
   AUTH_REQUIRED: "Authentication required.",
   AUTH_FAILED: "Authentication failed.",
 };

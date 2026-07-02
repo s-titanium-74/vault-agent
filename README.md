@@ -8,6 +8,8 @@ It is local-first and private-by-default:
 - Search a Markdown vault through a CLI, HTTP server, or MCP tools.
 - Return compact search results with snippets, scores, and stable note or chunk
   IDs.
+- Get oriented with compact vault metadata: top folders, tags, and frontmatter
+  fields.
 - Retrieve full notes, chunks, or attachments only through explicit `get`
   commands.
 - Keep indexing, search, related lookup, file watching, and optional Git sync on
@@ -43,7 +45,7 @@ npx --no-install vault-agent --help
 Docker image:
 
 ```bash
-docker pull namka0703/vault-agent:0.1.1
+docker pull namka0703/vault-agent:0.1.2
 ```
 
 Docker usage is covered in the [setup guide](docs/setup-guide.md).
@@ -87,6 +89,15 @@ vault-agent get note "<note-id>"
 vault-agent status
 ```
 
+Orient yourself before searching:
+
+```bash
+vault-agent overview
+vault-agent tree --depth 2
+vault-agent tags --limit 20
+vault-agent facets --limit 20
+```
+
 Connect an MCP client that supports Streamable HTTP to:
 
 ```text
@@ -118,6 +129,10 @@ vault-agent serve
 vault-agent status
 vault-agent index
 vault-agent reindex
+vault-agent overview
+vault-agent tree --depth 2 --limit 50
+vault-agent tags --limit 50
+vault-agent facets --limit 50
 vault-agent search "query"
 vault-agent related "<note-or-chunk-id>"
 vault-agent get note "<note-id>"
@@ -142,6 +157,9 @@ Most commands support `--json` for machine-readable output.
   [specifications](docs/phases/phase-2-automatic-index-updates/specifications/)
 - [Phase 3 requirements](docs/phases/phase-3-mcp-bridge/requirements.md) and
   [specifications](docs/phases/phase-3-mcp-bridge/specifications/)
+- [Phase 3.1 requirements](docs/phases/phase-3.1-vault-orientation/requirements.md)
+  and
+  [specifications](docs/phases/phase-3.1-vault-orientation/specifications/)
 - [Agent working rules](AGENTS.md)
 
 ## Development

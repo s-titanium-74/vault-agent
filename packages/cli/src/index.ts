@@ -3,6 +3,7 @@ import { registerConfigCommands } from "./commands/config.js";
 import { registerIndexingCommands } from "./commands/indexing.js";
 import { registerRetrievalCommands } from "./commands/retrieval.js";
 import { registerSearchCommands } from "./commands/search.js";
+import { registerOrientationCommands } from "./commands/orientation.js";
 import { registerServeCommand } from "./commands/serve.js";
 import { registerStatusCommands } from "./commands/status.js";
 import { registerSyncCommands } from "./commands/sync.js";
@@ -27,6 +28,7 @@ program
 registerServeCommand(program, context);
 registerIndexingCommands(program, context);
 registerSearchCommands(program, context);
+registerOrientationCommands(program, context);
 registerRetrievalCommands(program, context);
 registerConfigCommands(program, context);
 registerStatusCommands(program, context);
