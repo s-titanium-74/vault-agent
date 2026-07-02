@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_value TEXT,
   has_frontmatter INTEGER NOT NULL DEFAULT 0,
   frontmatter_degraded INTEGER NOT NULL DEFAULT 0,
+  frontmatter_fields_json TEXT,
   links_json TEXT,
   attachment_refs_json TEXT,
   body_text TEXT,

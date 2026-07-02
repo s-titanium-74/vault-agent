@@ -154,6 +154,10 @@ describe("MCP Adapter", () => {
       "get_note",
       "related",
       "search",
+      "vault_facets",
+      "vault_overview",
+      "vault_tags",
+      "vault_tree",
     ]);
 
     await client.close();
@@ -588,6 +592,10 @@ describe("MCP Adapter", () => {
       "get_note",
       "related",
       "search",
+      "vault_facets",
+      "vault_overview",
+      "vault_tags",
+      "vault_tree",
     ]);
 
     for (const tool of result.tools) {

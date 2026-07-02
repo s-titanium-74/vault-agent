@@ -13,11 +13,7 @@ export interface ServerStatusInfo {
 export interface IndexStatusInfo {
   freshness: FreshnessInfo;
   embeddingState:
-    | "disabled"
-    | "ready"
-    | "unavailable"
-    | "stale"
-    | "incompatible";
+    "disabled" | "ready" | "unavailable" | "stale" | "incompatible";
 }
 
 export interface FullStatus {

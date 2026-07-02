@@ -5,12 +5,7 @@ import fs from "node:fs";
 import ignore from "ignore";
 
 export type WatcherState =
-  | "disabled"
-  | "starting"
-  | "running"
-  | "degraded"
-  | "stopped"
-  | "unavailable";
+  "disabled" | "starting" | "running" | "degraded" | "stopped" | "unavailable";
 
 export interface WatcherStatus {
   enabled: boolean;

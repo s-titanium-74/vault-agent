@@ -37,8 +37,7 @@ export function registerSyncRoutes(app: FastifyInstance): void {
     }
 
     const body = request.body as
-      | { wait?: boolean; timeoutSeconds?: number }
-      | undefined;
+      { wait?: boolean; timeoutSeconds?: number } | undefined;
     const wait = body?.wait ?? false;
     const timeoutSeconds =
       body?.timeoutSeconds ?? config.sync.pull_timeout_seconds;

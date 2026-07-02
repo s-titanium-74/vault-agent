@@ -29,9 +29,7 @@ function createTestVault(): string {
 function patchMockSocketDestroySoon(app: ReturnType<typeof Fastify>): void {
   app.addHook("onRequest", async (request) => {
     const socket = request.raw.socket as
-      | import("node:net").Socket
-      | undefined
-      | null;
+      import("node:net").Socket | undefined | null;
     if (socket && typeof socket.destroySoon !== "function") {
       (socket as { destroySoon?: () => void }).destroySoon = () => {
         if (typeof socket.destroy === "function") {
@@ -387,8 +385,8 @@ describe("MCP Streamable HTTP Route", () => {
 
     expect(listBodyA.id).toBe(11);
     expect(listBodyB.id).toBe(21);
-    expect(listBodyA.result.tools).toHaveLength(5);
-    expect(listBodyB.result.tools).toHaveLength(5);
+    expect(listBodyA.result.tools).toHaveLength(9);
+    expect(listBodyB.result.tools).toHaveLength(9);
 
     const namesA = listBodyA.result.tools
       .map((tool: { name: string }) => tool.name)
@@ -403,6 +401,10 @@ describe("MCP Streamable HTTP Route", () => {
       "get_note",
       "related",
       "search",
+      "vault_facets",
+      "vault_overview",
+      "vault_tags",
+      "vault_tree",
     ]);
   });
 
@@ -457,9 +459,9 @@ describe("MCP Streamable HTTP Route", () => {
     expect(Array.isArray(body)).toBe(true);
     expect(body).toHaveLength(2);
     expect(body[0].id).toBe(2);
-    expect(body[0].result.tools).toHaveLength(5);
+    expect(body[0].result.tools).toHaveLength(9);
     expect(body[1].id).toBe(3);
-    expect(body[1].result.tools).toHaveLength(5);
+    expect(body[1].result.tools).toHaveLength(9);
   });
 
   it("opens SSE stream via GET", async () => {

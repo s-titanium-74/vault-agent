@@ -50,6 +50,13 @@ export class IndexStore {
     const store = new IndexStore(db, dbPath);
     db.exec(SCHEMA_SQL);
 
+    // Schema migration: add frontmatter_fields_json column to existing notes tables.
+    try {
+      db.exec("ALTER TABLE notes ADD COLUMN frontmatter_fields_json TEXT");
+    } catch {
+      // Column already exists; ignore.
+    }
+
     try {
       const vecModule = await import("sqlite-vec");
       const loadablePath = vecModule.getLoadablePath();
@@ -100,8 +107,7 @@ export class IndexStore {
 
   getManifest(): IndexManifest | null {
     const row = this.db.prepare("SELECT * FROM manifest WHERE id = 1").get() as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     if (!row) return null;
 
     return {
@@ -264,14 +270,33 @@ export class IndexStore {
     const aliasesJson = JSON.stringify(note.frontmatter?.aliases ?? []);
     const tagsJson = JSON.stringify(note.frontmatter?.tags ?? []);
 
+    const knownFrontmatterKeys = new Set([
+      "title",
+      "aliases",
+      "tags",
+      "date",
+      "created",
+      "updated",
+    ]);
+    const extraFields: Record<string, unknown> = {};
+    if (note.frontmatter) {
+      for (const [key, value] of Object.entries(note.frontmatter)) {
+        if (!knownFrontmatterKeys.has(key)) {
+          extraFields[key] = value;
+        }
+      }
+    }
+    const frontmatterFieldsJson =
+      Object.keys(extraFields).length > 0 ? JSON.stringify(extraFields) : null;
+
     this.db
       .prepare(
         `
       INSERT OR REPLACE INTO notes (note_id, path, title, file_size, content_hash, mtime_ms,
         frontmatter_title, aliases_json, tags_json, date_value, created_value, updated_value,
-        has_frontmatter, frontmatter_degraded, links_json, attachment_refs_json, body_text,
+        has_frontmatter, frontmatter_degraded, frontmatter_fields_json, links_json, attachment_refs_json, body_text,
         oversized, empty)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
       )
       .run(
@@ -289,6 +314,7 @@ export class IndexStore {
         note.frontmatter?.updated ?? null,
         note.frontmatter ? 1 : 0,
         note.frontmatterDegraded ? 1 : 0,
+        frontmatterFieldsJson,
         linksJson,
         attachmentRefsJson,
         note.chunks.map((c) => c.content).join("\n"),

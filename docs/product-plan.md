@@ -274,6 +274,10 @@ vault-agent config reveal-api-key
 vault-agent serve
 vault-agent index
 vault-agent reindex
+vault-agent overview
+vault-agent tree --depth 2
+vault-agent tags --limit 50
+vault-agent facets --limit 50
 vault-agent search "local embedding privacy"
 vault-agent related "<note-or-chunk-id>"
 vault-agent get note "<note-id>"
@@ -305,8 +309,9 @@ The MVP is Phase 1: Retrieval Foundation. Phase 2 and later are post-MVP extensi
 Phase requirements:
 
 - Phase 1: [Retrieval Foundation requirements](phases/phase-1-retrieval-foundation/requirements.md)
-- Phase 2: planned `docs/phases/phase-2-automatic-index-updates/requirements.md`
-- Phase 3: planned `docs/phases/phase-3-mcp-bridge/requirements.md`
+- Phase 2: [Automatic Index Updates requirements](phases/phase-2-automatic-index-updates/requirements.md)
+- Phase 3: [MCP Bridge requirements](phases/phase-3-mcp-bridge/requirements.md)
+- Phase 3.1: [Vault Orientation requirements](phases/phase-3.1-vault-orientation/requirements.md)
 - Phase 4: planned `docs/phases/phase-4-llm-integration/requirements.md`
 - Phase 5: planned `docs/phases/phase-5-obsidian-plugin/requirements.md`
 
@@ -362,6 +367,20 @@ Architecture note: The MCP bridge accesses core directly for efficiency and
 simplicity. stdio transport does not require an HTTP server. The bridge must
 replicate server-level guarantees (path safety, response envelope, logging,
 error sanitization) to ensure identical behavior between MCP and HTTP paths.
+
+### Phase 3.1: Vault Orientation
+
+Requirements: [Phase 3.1 Vault Orientation requirements](phases/phase-3.1-vault-orientation/requirements.md).
+
+- `vault-agent overview` for compact vault-level metadata.
+- `vault-agent tree` for bounded directory tree with note counts.
+- `vault-agent tags` for tag names and note-level usage counts.
+- `vault-agent facets` for frontmatter field names, counts, and allowlisted field values.
+- HTTP endpoints for all orientation surfaces.
+- MCP tools for all orientation surfaces through Phase 3 MCP bridge.
+- Index freshness warnings in orientation responses.
+
+Purpose: help agents understand the shape of a vault before running targeted search or explicit retrieval. A new agent often needs lightweight orientation—what top-level areas exist, which tags are common, what frontmatter fields are used—before it knows what to search for. Orientation surfaces return deterministic index metadata, not LLM-generated interpretation.
 
 ### Phase 4: LLM Integration
 

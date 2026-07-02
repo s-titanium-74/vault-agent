@@ -1,10 +1,5 @@
 export type FreshnessState =
-  | "fresh"
-  | "pending"
-  | "updating"
-  | "stale"
-  | "incompatible"
-  | "unknown";
+  "fresh" | "pending" | "updating" | "stale" | "incompatible" | "unknown";
 
 export interface FreshnessInfo {
   state: FreshnessState;

@@ -60,6 +60,21 @@ export function extractFrontmatter(content: string): {
 
     if (typeof data.updated === "string") frontmatter.updated = data.updated;
 
+    // Preserve arbitrary frontmatter fields for orientation surfaces.
+    const knownKeys = new Set([
+      "title",
+      "aliases",
+      "tags",
+      "date",
+      "created",
+      "updated",
+    ]);
+    for (const [key, value] of Object.entries(data)) {
+      if (!knownKeys.has(key)) {
+        frontmatter[key] = value;
+      }
+    }
+
     return { frontmatter, frontmatterDegraded: false, body };
   } catch {
     const lines = content.split("\n");
