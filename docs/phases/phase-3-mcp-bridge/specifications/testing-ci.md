@@ -122,7 +122,8 @@ MCP protocol compliance tests verify adherence to the MCP specification.
 - Initialization handshake (initialize, capabilities, initialized):
   - Server responds with protocol version `2025-03-26`.
   - Server advertises `tools` capability only.
-  - Server rejects unsupported protocol versions.
+  - Server negotiates unsupported protocol versions to the latest supported
+    version.
 - Capabilities advertisement (tools only, no resources/prompts).
 - JSON-RPC message format validation:
   - Requests and responses follow JSON-RPC 2.0.
@@ -174,7 +175,8 @@ Streamable HTTP transport tests:
 - Verify malformed JSON input returns JSON-RPC parse error (`-32700`).
 - Verify missing `protocolVersion` in initialize returns Invalid Request
   (`-32600`).
-- Verify unsupported protocol version returns Invalid Request (`-32600`).
+- Verify unsupported protocol version is negotiated to the latest supported
+  version (`2025-03-26`).
 
 ## Test Fixtures
 

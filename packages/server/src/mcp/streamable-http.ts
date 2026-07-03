@@ -52,13 +52,13 @@ function validateProtocolVersion(body: unknown):
 
   if (isInitializeRequest(body)) {
     const requestedVersion = body.params?.protocolVersion;
-    if (requestedVersion !== "2025-03-26") {
+    if (!requestedVersion) {
       return {
         valid: false,
         code: -32600,
-        message: `Unsupported MCP protocol version: ${requestedVersion ?? "missing"}`,
+        message: "Missing MCP protocol version",
         id: body.id ?? null,
-        data: requestedVersion ? { protocolVersion: requestedVersion } : {},
+        data: {},
       };
     }
   }

@@ -1,6 +1,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
+  InitializeRequestSchema,
   ListToolsRequestSchema,
   Tool,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -44,6 +45,9 @@ export interface McpAdapterContext {
 
 const MCP_MAX_RESULT_PAYLOAD_BYTES = 50 * 1024 * 1024;
 let MCP_TOOL_TIMEOUT_MS = 60_000;
+
+const SUPPORTED_PROTOCOL_VERSIONS: readonly string[] = ["2025-03-26"];
+const LATEST_PROTOCOL_VERSION: string = "2025-03-26";
 
 export function setMcpToolTimeoutMs(ms: number): void {
   MCP_TOOL_TIMEOUT_MS = ms;
@@ -253,6 +257,31 @@ export function createMcpServer(context: McpAdapterContext): Server {
       },
     },
   );
+
+  server.setRequestHandler(InitializeRequestSchema, async (request) => {
+    const requestedVersion = request.params.protocolVersion;
+    if (!requestedVersion) {
+      throw new McpError(-32600, "Missing MCP protocol version");
+    }
+    // Delegate to the SDK's default initialize handler so that client
+    // capabilities and version are recorded, then override only the negotiated
+    // protocol version to enforce vault-agent's supported-version contract.
+    const sdkResult = await (
+      server as unknown as {
+        _oninitialize(request: unknown): Promise<{
+          protocolVersion: string;
+          capabilities: Record<string, unknown>;
+          serverInfo: { name: string; version: string };
+        }>;
+      }
+    )._oninitialize(request);
+    const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(
+      requestedVersion,
+    )
+      ? requestedVersion
+      : LATEST_PROTOCOL_VERSION;
+    return { ...sdkResult, protocolVersion };
+  });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return { tools };

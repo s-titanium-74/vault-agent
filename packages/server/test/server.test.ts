@@ -19,6 +19,7 @@ import {
   vaultIdentity,
   noteIdFromPath,
 } from "@vault-agent/core";
+import { patchMockSocketDestroySoon } from "./test-utils.js";
 
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(
@@ -190,6 +191,7 @@ describe("Server Routes", () => {
         embeddingProvider: null,
         freshnessMachine: null,
       });
+      patchMockSocketDestroySoon(mcpApp);
 
       const response = await mcpApp.inject({
         method: "POST",
@@ -210,8 +212,8 @@ describe("Server Routes", () => {
         }),
       });
 
-      expect(response.statusCode).toBe(400);
-      expect(response.json().error.code).toBe(-32600);
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toMatch(/text\/event-stream/);
       await mcpApp.close();
     });
   });
