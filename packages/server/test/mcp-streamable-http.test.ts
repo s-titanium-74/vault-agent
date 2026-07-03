@@ -14,6 +14,7 @@ import {
 } from "@vault-agent/core";
 import { createMcpServer, McpAdapterContext } from "../src/mcp/adapter.js";
 import { registerMcpStreamableHttpRoute } from "../src/mcp/streamable-http.js";
+import { patchMockSocketDestroySoon } from "./test-utils.js";
 
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(
@@ -24,20 +25,6 @@ function createTestVault(): string {
     `# Welcome Note\n\nThis is a demonstration vault for MCP Streamable HTTP testing.`,
   );
   return vaultDir;
-}
-
-function patchMockSocketDestroySoon(app: ReturnType<typeof Fastify>): void {
-  app.addHook("onRequest", async (request) => {
-    const socket = request.raw.socket as
-      import("node:net").Socket | undefined | null;
-    if (socket && typeof socket.destroySoon !== "function") {
-      (socket as { destroySoon?: () => void }).destroySoon = () => {
-        if (typeof socket.destroy === "function") {
-          socket.destroy();
-        }
-      };
-    }
-  });
 }
 
 function createTestConfig(vaultRoot: string, indexDir: string): Config {
@@ -225,7 +212,7 @@ describe("MCP Streamable HTTP Route", () => {
     await authApp.close();
   });
 
-  it("rejects unsupported protocol version with JSON-RPC -32600", async () => {
+  it("negotiates unsupported protocol version to the latest supported version", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/mcp",
@@ -245,9 +232,34 @@ describe("MCP Streamable HTTP Route", () => {
       }),
     });
 
-    expect(response.statusCode).toBe(400);
+    expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.payload);
-    expect(body.error.code).toBe(-32600);
+    expect(body.jsonrpc).toBe("2.0");
+    expect(body.id).toBe(1);
+    expect(body.result.protocolVersion).toBe("2025-03-26");
+    expect(body.result.serverInfo.name).toBe("vault-agent");
+
+    const sessionId = response.headers["mcp-session-id"];
+    const followUp = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-session-id": String(sessionId),
+        "mcp-protocol-version": "2025-03-26",
+      },
+      payload: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+      }),
+    });
+
+    expect(followUp.statusCode).toBe(200);
+    const followUpBody = JSON.parse(followUp.payload);
+    expect(followUpBody.id).toBe(2);
+    expect(followUpBody.result.tools).toHaveLength(9);
   });
 
   it("rejects missing protocolVersion with JSON-RPC -32600", async () => {
@@ -263,6 +275,31 @@ describe("MCP Streamable HTTP Route", () => {
         id: 3,
         method: "initialize",
         params: {
+          capabilities: {},
+          clientInfo: { name: "test", version: "0.1.0" },
+        },
+      }),
+    });
+
+    expect(response.statusCode).toBe(400);
+    const body = JSON.parse(response.payload);
+    expect(body.error.code).toBe(-32600);
+  });
+
+  it("rejects null protocolVersion with JSON-RPC -32600", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      payload: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: null,
           capabilities: {},
           clientInfo: { name: "test", version: "0.1.0" },
         },

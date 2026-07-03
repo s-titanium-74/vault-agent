@@ -105,16 +105,12 @@ Streamable HTTP transport is available through the `vault-agent serve` server.
 The server supports MCP protocol version `2025-03-26`.
 
 - If the client requests a supported protocol version, the server responds with
-  the negotiated version.
+  the same version.
 - If the client requests an unsupported protocol version, the server responds
-  with a JSON-RPC error:
-  - `code`: `-32600` (Invalid Request)
-  - `message`: `"Unsupported MCP protocol version: <version>"`
-  - `data`: `{ "protocolVersion": "<requested-version>" }`
+  with the latest protocol version it supports (`2025-03-26`) and continues the
+  initialization handshake, per the MCP specification.
 - If the client omits `protocolVersion`, the server treats the request as
   invalid and responds with `-32600`.
-
-The server must not accept protocol versions older than `2025-03-26`.
 
 The Streamable HTTP transport follows the MCP specification pattern:
 
