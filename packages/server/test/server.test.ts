@@ -323,6 +323,48 @@ describe("Server Routes", () => {
       expect(body.data.usedMode).toBe("lexical");
       expect(body.warnings.length).toBeGreaterThan(0);
     });
+
+    it("supports structured search filters", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/search",
+        payload: {
+          query: "search",
+          mode: "lexical",
+          filters: {
+            pathPrefix: ["Architecture"],
+            tags: ["architecture"],
+          },
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data.results.length).toBeGreaterThan(0);
+      expect(
+        body.data.results.every(
+          (result: { path: string }) =>
+            result.path === "Architecture/Search.md",
+        ),
+      ).toBe(true);
+    });
+
+    it("returns 400 for unknown search filter fields", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/search",
+        payload: {
+          query: "search",
+          filters: {
+            unknown: ["value"],
+          },
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = response.json();
+      expect(body.error.code).toBe("INVALID_FILTER");
+    });
   });
 
   describe("POST /related", () => {

@@ -108,6 +108,121 @@ ${"lexical ".repeat(80)}This body is long enough to produce a compact snippet wi
   return vaultDir;
 }
 
+function createFilterVault(): string {
+  const vaultDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "vault-agent-filter-"),
+  );
+  fs.mkdirSync(path.join(vaultDir, "Projects", "Active"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(vaultDir, "Projects", "Archive"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(vaultDir, "ProjectsOld"), { recursive: true });
+
+  fs.writeFileSync(
+    path.join(vaultDir, "Projects", "Active", "Privacy.md"),
+    `---
+title: "Active Privacy"
+tags:
+  - privacy
+  - meeting
+type: note
+status: active
+---
+
+# Active Privacy
+
+Shared filtered topic about local embedding privacy.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "Projects", "Archive", "OldPrivacy.md"),
+    `---
+title: "Archived Privacy"
+tags:
+  - privacy
+  - archive
+type: note
+status: archived
+---
+
+# Archived Privacy
+
+Shared filtered topic about local embedding privacy.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "ProjectsOld", "LegacyPrivacy.md"),
+    `---
+title: "Legacy Privacy"
+tags:
+  - privacy
+type: note
+status: active
+---
+
+# Legacy Privacy
+
+Shared filtered topic about local embedding privacy.`,
+  );
+
+  fs.writeFileSync(
+    path.join(vaultDir, "Root.md"),
+    `---
+title: "Root Privacy"
+tags:
+  - root
+type: memo
+status: active
+---
+
+# Root Privacy
+
+Shared filtered topic about local embedding privacy.`,
+  );
+
+  return vaultDir;
+}
+
+function createDeepFilteredVault(): string {
+  const vaultDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "vault-agent-deep-filter-"),
+  );
+  fs.mkdirSync(path.join(vaultDir, "Projects"), { recursive: true });
+
+  for (let i = 0; i < 140; i++) {
+    fs.writeFileSync(
+      path.join(vaultDir, `Distractor-${String(i).padStart(3, "0")}.md`),
+      `---
+title: "Distractor ${i}"
+tags:
+  - general
+---
+
+# Distractor ${i}
+
+needleterm needleterm needleterm needleterm needleterm common ranking text.`,
+    );
+  }
+
+  fs.writeFileSync(
+    path.join(vaultDir, "Projects", "Target.md"),
+    `---
+title: "Filtered Target"
+tags:
+  - target
+status: active
+---
+
+# Filtered Target
+
+needleterm appears here once.`,
+  );
+
+  return vaultDir;
+}
+
 function createTestConfig(vaultRoot: string, indexDir: string): Config {
   return {
     ...structuredClone(DEFAULT_CONFIG),
@@ -295,6 +410,186 @@ describe("search", () => {
 
       expect(result.results.length).toBeGreaterThan(0);
       expect(result.results.every((r) => r.score > 0)).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("filters search results by path, tags, excluded tags, and frontmatter", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createFilterVault();
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const pathResult = await search(
+        store,
+        "filtered topic privacy",
+        "lexical",
+        10,
+        config,
+        undefined,
+        { pathPrefix: ["Projects"] },
+      );
+      expect(pathResult.results.map((r) => r.path).sort()).toEqual([
+        "Projects/Active/Privacy.md",
+        "Projects/Archive/OldPrivacy.md",
+      ]);
+
+      const excludeResult = await search(
+        store,
+        "filtered topic privacy",
+        "lexical",
+        10,
+        config,
+        undefined,
+        {
+          pathPrefix: ["Projects"],
+          excludePathPrefix: ["Projects/Archive"],
+          tags: ["privacy"],
+          excludeTags: ["archive"],
+          frontmatter: { type: ["note"], status: ["active"] },
+        },
+      );
+      expect(excludeResult.results.map((r) => r.path)).toEqual([
+        "Projects/Active/Privacy.md",
+      ]);
+    } finally {
+      store.close();
+    }
+  });
+
+  it("validates structured search filters with stable error codes", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createFilterVault();
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      await expect(
+        search(
+          store,
+          "filtered topic privacy",
+          "lexical",
+          10,
+          config,
+          undefined,
+          { pathPrefix: ["../private"] },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_PATH_FILTER" });
+
+      await expect(
+        search(
+          store,
+          "filtered topic privacy",
+          "lexical",
+          10,
+          config,
+          undefined,
+          { pathPrefix: ["%2Fprivate"] },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_PATH_FILTER" });
+
+      await expect(
+        search(
+          store,
+          "filtered topic privacy",
+          "lexical",
+          10,
+          config,
+          undefined,
+          { pathPrefix: ["%5Cprivate"] },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_PATH_FILTER" });
+
+      await expect(
+        search(
+          store,
+          "filtered topic privacy",
+          "lexical",
+          10,
+          config,
+          undefined,
+          { pathPrefix: ["file%3Aprivate"] },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_PATH_FILTER" });
+
+      await expect(
+        search(
+          store,
+          "filtered topic privacy",
+          "lexical",
+          10,
+          config,
+          undefined,
+          { tags: ["#"] },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_TAG_FILTER" });
+
+      await expect(
+        search(
+          store,
+          "filtered topic privacy",
+          "lexical",
+          10,
+          config,
+          undefined,
+          { frontmatter: { type: [""] } },
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_FRONTMATTER_FILTER" });
+    } finally {
+      store.close();
+    }
+  });
+
+  it("applies filters before result limiting", async () => {
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    vaultDir = createDeepFilteredVault();
+    config = createTestConfig(vaultDir, indexDir);
+
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const result = await search(
+        store,
+        "needleterm",
+        "lexical",
+        1,
+        config,
+        undefined,
+        { pathPrefix: ["Projects"] },
+      );
+
+      expect(result.results.map((r) => r.path)).toEqual(["Projects/Target.md"]);
     } finally {
       store.close();
     }

@@ -17,6 +17,7 @@ import {
   ChunkRetrieveResult,
   AttachmentMetadataResult,
   WarningItem,
+  SearchFiltersInput,
   getAttachmentBytes,
   getAttachmentMetadata,
   getChunk,
@@ -63,7 +64,7 @@ const tools: Tool[] = [
   {
     name: "search",
     description:
-      "Search the vault for notes matching a query. Returns compact ranked results with titles, paths, snippets, and scores. Use this first to find relevant candidates before retrieving full note content.",
+      "Search the vault for notes matching a query. Optional filters can narrow results by vault-relative path prefixes, frontmatter tags, excluded tags, excluded path prefixes, and allowlisted frontmatter fields. Returns compact ranked results with titles, paths, snippets, and scores. Use this first to find relevant candidates before retrieving full note content.",
     inputSchema: {
       type: "object",
       properties: {
@@ -78,6 +79,40 @@ const tools: Tool[] = [
           minimum: 1,
           maximum: 50,
           description: "Maximum number of results",
+        },
+        filters: {
+          type: "object",
+          description: "Structured search filters",
+          properties: {
+            path_prefix: {
+              type: "array",
+              items: { type: "string" },
+              description: "Include vault-relative path prefixes",
+            },
+            exclude_path_prefix: {
+              type: "array",
+              items: { type: "string" },
+              description: "Exclude vault-relative path prefixes",
+            },
+            tags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Include frontmatter tags",
+            },
+            exclude_tags: {
+              type: "array",
+              items: { type: "string" },
+              description: "Exclude frontmatter tags",
+            },
+            frontmatter: {
+              type: "object",
+              description: "Allowlisted frontmatter filters",
+              properties: {
+                type: { type: "array", items: { type: "string" } },
+                status: { type: "array", items: { type: "string" } },
+              },
+            },
+          },
         },
       },
       required: ["query"],
@@ -435,6 +470,101 @@ function getEnumArg<T extends string>(
   return value as T;
 }
 
+function getSearchFiltersArg(
+  args: Record<string, unknown>,
+): SearchFiltersInput | undefined {
+  const raw = args.filters;
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw createMcpError("INVALID_FILTER", "filters must be an object.");
+  }
+
+  const filters = raw as Record<string, unknown>;
+  const allowed = new Set([
+    "path_prefix",
+    "exclude_path_prefix",
+    "tags",
+    "exclude_tags",
+    "frontmatter",
+  ]);
+  for (const key of Object.keys(filters)) {
+    if (!allowed.has(key)) {
+      throw createMcpError("INVALID_FILTER", `Unknown filter: ${key}`);
+    }
+  }
+
+  const result: SearchFiltersInput = {};
+  const pathPrefix = getStringArrayFilter(filters, "path_prefix");
+  const excludePathPrefix = getStringArrayFilter(
+    filters,
+    "exclude_path_prefix",
+  );
+  const tags = getStringArrayFilter(filters, "tags");
+  const excludeTags = getStringArrayFilter(filters, "exclude_tags");
+
+  if (pathPrefix) result.pathPrefix = pathPrefix;
+  if (excludePathPrefix) result.excludePathPrefix = excludePathPrefix;
+  if (tags) result.tags = tags;
+  if (excludeTags) result.excludeTags = excludeTags;
+
+  if (filters.frontmatter !== undefined) {
+    const rawFrontmatter = filters.frontmatter;
+    if (
+      !rawFrontmatter ||
+      typeof rawFrontmatter !== "object" ||
+      Array.isArray(rawFrontmatter)
+    ) {
+      throw createMcpError(
+        "INVALID_FRONTMATTER_FILTER",
+        "frontmatter must be an object.",
+      );
+    }
+    const frontmatter = rawFrontmatter as Record<string, unknown>;
+    for (const key of Object.keys(frontmatter)) {
+      if (key !== "type" && key !== "status") {
+        throw createMcpError(
+          "INVALID_FRONTMATTER_FILTER",
+          "Frontmatter filters support only type and status.",
+        );
+      }
+    }
+    const type = getStringArrayFilter(frontmatter, "type");
+    const status = getStringArrayFilter(frontmatter, "status");
+    if (!type && !status) {
+      throw createMcpError(
+        "INVALID_FRONTMATTER_FILTER",
+        "frontmatter must include type or status.",
+      );
+    }
+    result.frontmatter = {};
+    if (type) result.frontmatter.type = type;
+    if (status) result.frontmatter.status = status;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function getStringArrayFilter(
+  args: Record<string, unknown>,
+  key: string,
+): string[] | undefined {
+  const value = args[key];
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    !value.every((item) => typeof item === "string")
+  ) {
+    throw createMcpError(
+      key === "type" || key === "status"
+        ? "INVALID_FRONTMATTER_FILTER"
+        : "INVALID_FILTER",
+      `${key} must be a non-empty string array.`,
+    );
+  }
+  return value as string[];
+}
+
 async function handleSearch(
   context: McpAdapterContext,
   args: Record<string, unknown>,
@@ -464,6 +594,7 @@ async function handleSearch(
       "limit must be an integer between 1 and 50.",
     );
   }
+  const filters = getSearchFiltersArg(args);
 
   const incompatible = checkIncompatibleIndex(store, config);
   if (incompatible) {
@@ -480,6 +611,7 @@ async function handleSearch(
       limit ?? 10,
       config,
       embeddingProvider ?? undefined,
+      filters,
     );
     return {
       requestedMode: result.requestedMode,

@@ -6,11 +6,18 @@ import {
   WarningItem,
   MAX_RESULT_LIMIT,
   CHUNK_EMBEDDING_INPUT_CAP,
+  SearchFiltersInput,
 } from "./schemas.js";
 import { Config } from "./config.js";
 import { SearchError } from "./errors.js";
 import { EmbeddingProvider, EmbeddingProviderError } from "./embedding.js";
 import { chunkToResultItem, noteRowToResultItem } from "./result-helpers.js";
+import {
+  matchesSearchFilters,
+  noteMatchesSearchFilters,
+  normalizeSearchFilters,
+  NormalizedSearchFilters,
+} from "./search-filters.js";
 
 const MIN_RESULT_SCORE = 0.000001;
 const MIN_EMBEDDING_DISTANCE_SCORE = 0.5;
@@ -22,6 +29,7 @@ export async function search(
   limit: number,
   config: Config,
   embeddingProvider?: EmbeddingProvider,
+  filters?: SearchFiltersInput,
 ): Promise<SearchResult> {
   const manifest = store.getManifest();
   if (!manifest) {
@@ -39,6 +47,7 @@ export async function search(
   }
 
   const effectiveLimit = limit;
+  const normalizedFilters = normalizeSearchFilters(filters);
   const warnings: WarningItem[] = [];
 
   const staleness = store.checkStaleness(config);
@@ -112,8 +121,28 @@ export async function search(
     usedMode = "lexical";
   }
 
+  const allowedNoteIds = normalizedFilters
+    ? matchingNoteIds(store, normalizedFilters)
+    : undefined;
+
+  if (allowedNoteIds && allowedNoteIds.length === 0) {
+    return {
+      requestedMode,
+      usedMode,
+      limit: effectiveLimit,
+      results: [],
+      warnings,
+    };
+  }
+
   if (usedMode === "lexical" || usedMode === "hybrid") {
-    const lexicalResults = searchLexical(store, query, effectiveLimit);
+    const lexicalResults = searchLexical(
+      store,
+      query,
+      effectiveLimit,
+      normalizedFilters,
+      allowedNoteIds,
+    );
     if (usedMode === "lexical") {
       return {
         requestedMode,
@@ -132,6 +161,8 @@ export async function search(
           query,
           effectiveLimit,
           embeddingProvider,
+          normalizedFilters,
+          allowedNoteIds,
         );
       } catch (error) {
         if (!(error instanceof EmbeddingProviderError)) throw error;
@@ -174,6 +205,8 @@ export async function search(
         query,
         effectiveLimit,
         embeddingProvider,
+        normalizedFilters,
+        allowedNoteIds,
       );
     } catch (error) {
       if (!(error instanceof EmbeddingProviderError)) throw error;
@@ -204,9 +237,11 @@ function searchLexical(
   store: IndexStore,
   query: string,
   limit: number,
+  filters?: NormalizedSearchFilters,
+  allowedNoteIds?: readonly string[],
 ): SearchResultItem[] {
-  const ftsRows = store.searchLexical(query, limit);
-  const trigramRows = store.searchTrigrams(query, limit);
+  const ftsRows = store.searchLexical(query, limit, allowedNoteIds);
+  const trigramRows = store.searchTrigrams(query, limit, allowedNoteIds);
 
   const ftsScores = new Map<string, number>();
   const allChunkIds = new Set<string>();
@@ -259,11 +294,21 @@ function searchLexical(
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit);
 
-  const chunkResults = sorted.map(([chunkId, score]) =>
-    chunkToResultItem(store, chunkId, score, "lexical_match"),
-  );
+  const chunkResults = filterResults(
+    store,
+    sorted.map(([chunkId, score]) =>
+      chunkToResultItem(store, chunkId, score, "lexical_match"),
+    ),
+    filters,
+  ).slice(0, limit);
 
-  const noteResults = searchNoteTypeResults(store, query, limit);
+  const noteResults = searchNoteTypeResults(
+    store,
+    query,
+    limit,
+    filters,
+    allowedNoteIds,
+  );
   const chunkNoteIds = new Set(chunkResults.map((r) => r.noteId));
   const filteredNoteResults = noteResults.filter(
     (r) => !chunkNoteIds.has(r.noteId),
@@ -289,6 +334,8 @@ async function searchEmbedding(
   query: string,
   limit: number,
   embeddingProvider?: EmbeddingProvider,
+  filters?: NormalizedSearchFilters,
+  allowedNoteIds?: readonly string[],
 ): Promise<SearchResultItem[]> {
   if (!embeddingProvider) return [];
 
@@ -297,19 +344,27 @@ async function searchEmbedding(
   const queryEmbedding = response.embeddings[0];
   if (!queryEmbedding) return [];
 
-  const vecResults = store.searchEmbeddingVectors(queryEmbedding, limit * 3);
+  const vecResults = store.searchEmbeddingVectors(
+    queryEmbedding,
+    limit * 3,
+    allowedNoteIds ? matchingChunkIds(store, allowedNoteIds) : undefined,
+  );
 
   if (vecResults.length === 0) return [];
 
-  return vecResults
-    .map(({ chunk_id, distance }) => {
-      const score = distanceToScore(distance);
-      return { chunk_id, score };
-    })
-    .filter(({ score }) => score >= MIN_EMBEDDING_DISTANCE_SCORE)
-    .map(({ chunk_id, score }) =>
-      chunkToResultItem(store, chunk_id, score, "embedding_match"),
-    );
+  return filterResults(
+    store,
+    vecResults
+      .map(({ chunk_id, distance }) => {
+        const score = distanceToScore(distance);
+        return { chunk_id, score };
+      })
+      .filter(({ score }) => score >= MIN_EMBEDDING_DISTANCE_SCORE)
+      .map(({ chunk_id, score }) =>
+        chunkToResultItem(store, chunk_id, score, "embedding_match"),
+      ),
+    filters,
+  ).slice(0, limit);
 }
 
 function rrf(leftScores: number[], rightScores: number[], k: number): number {
@@ -416,7 +471,44 @@ function searchNoteTypeResults(
   store: IndexStore,
   query: string,
   limit: number,
+  filters?: NormalizedSearchFilters,
+  allowedNoteIds?: readonly string[],
 ): SearchResultItem[] {
-  const noteRows = store.searchNotes(query, limit);
-  return noteRows.map((row) => noteRowToResultItem(row, "lexical_match"));
+  const noteRows = store.searchNotes(query, limit, allowedNoteIds);
+  return noteRows
+    .map((row) => noteRowToResultItem(row, "lexical_match"))
+    .filter((item) =>
+      matchesSearchFilters(item, store.getNote(item.noteId), filters),
+    );
+}
+
+function filterResults(
+  store: IndexStore,
+  results: SearchResultItem[],
+  filters?: NormalizedSearchFilters,
+): SearchResultItem[] {
+  if (!filters) return results;
+  return results.filter((item) =>
+    matchesSearchFilters(item, store.getNote(item.noteId), filters),
+  );
+}
+
+function matchingNoteIds(
+  store: IndexStore,
+  filters?: NormalizedSearchFilters,
+): string[] {
+  if (!filters) return [];
+  return store
+    .getAllNotes()
+    .filter((note) => noteMatchesSearchFilters(note, filters))
+    .map((note) => note.note_id as string);
+}
+
+function matchingChunkIds(
+  store: IndexStore,
+  noteIds: readonly string[],
+): string[] {
+  return noteIds.flatMap((noteId) =>
+    store.getChunks(noteId).map((chunk) => chunk.chunk_id as string),
+  );
 }

@@ -312,6 +312,7 @@ Phase requirements:
 - Phase 2: [Automatic Index Updates requirements](phases/phase-2-automatic-index-updates/requirements.md)
 - Phase 3: [MCP Bridge requirements](phases/phase-3-mcp-bridge/requirements.md)
 - Phase 3.1: [Vault Orientation requirements](phases/phase-3.1-vault-orientation/requirements.md)
+- Phase 3.2: [Structured Search Filters requirements](phases/phase-3.2-structured-search-filters/requirements.md)
 - Phase 4: planned `docs/phases/phase-4-llm-integration/requirements.md`
 - Phase 5: planned `docs/phases/phase-5-obsidian-plugin/requirements.md`
 
@@ -381,6 +382,18 @@ Requirements: [Phase 3.1 Vault Orientation requirements](phases/phase-3.1-vault-
 - Index freshness warnings in orientation responses.
 
 Purpose: help agents understand the shape of a vault before running targeted search or explicit retrieval. A new agent often needs lightweight orientation—what top-level areas exist, which tags are common, what frontmatter fields are used—before it knows what to search for. Orientation surfaces return deterministic index metadata, not LLM-generated interpretation.
+
+### Phase 3.2: Structured Search Filters
+
+Requirements: [Phase 3.2 Structured Search Filters requirements](phases/phase-3.2-structured-search-filters/requirements.md).
+
+- Structured filters for `search` by path prefix, excluded path prefix, and tags.
+- Allowlisted frontmatter filters for `type` and `status`.
+- HTTP, CLI, and MCP search surfaces expose equivalent filter behavior.
+- Filter evaluation lives in core and uses vault-relative, note-level metadata.
+- Search results remain compact and do not include full note or chunk bodies.
+
+Purpose: let agents apply the compact orientation data from Phase 3.1 to deterministic search. Instead of relying on query-text hacks such as putting folder names or tags into the query string, agents can narrow search candidates with explicit structured filters while preserving progressive disclosure and privacy guarantees.
 
 ### Phase 4: LLM Integration
 

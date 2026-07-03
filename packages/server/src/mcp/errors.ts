@@ -16,6 +16,10 @@ export type Phase1ErrorCode =
   | "INVALID_QUERY"
   | "INVALID_MODE"
   | "INVALID_LIMIT"
+  | "INVALID_FILTER"
+  | "INVALID_PATH_FILTER"
+  | "INVALID_TAG_FILTER"
+  | "INVALID_FRONTMATTER_FILTER"
   | "INVALID_ID"
   | "INVALID_TYPE"
   | "INVALID_PATH"
@@ -42,6 +46,10 @@ const APPLICATION_ERROR_CODES: Record<Phase1ErrorCode, number> = {
   INVALID_QUERY: -32000,
   INVALID_MODE: -32000,
   INVALID_LIMIT: -32000,
+  INVALID_FILTER: -32000,
+  INVALID_PATH_FILTER: -32000,
+  INVALID_TAG_FILTER: -32000,
+  INVALID_FRONTMATTER_FILTER: -32000,
   INVALID_ID: -32000,
   INVALID_TYPE: -32000,
   INVALID_PATH: -32000,
@@ -70,6 +78,10 @@ export const ERROR_MESSAGES: Record<Phase1ErrorCode, string> = {
   INVALID_QUERY: "Invalid query.",
   INVALID_MODE: "Invalid search mode.",
   INVALID_LIMIT: "Invalid result limit.",
+  INVALID_FILTER: "Invalid search filter.",
+  INVALID_PATH_FILTER: "Invalid path filter.",
+  INVALID_TAG_FILTER: "Invalid tag filter.",
+  INVALID_FRONTMATTER_FILTER: "Invalid frontmatter filter.",
   INVALID_ID: "Invalid ID.",
   INVALID_TYPE: "Invalid type.",
   INVALID_PATH: "Invalid path.",

@@ -42,7 +42,7 @@ export function registerSearchRoutes(
         );
     }
 
-    const { query, mode, limit } = parseResult.data;
+    const { query, mode, limit, filters } = parseResult.data;
 
     try {
       const result = await search(
@@ -52,6 +52,7 @@ export function registerSearchRoutes(
         limit ?? 10,
         appConfig,
         embeddingProvider ?? undefined,
+        filters,
       );
 
       return {
@@ -78,6 +79,15 @@ export function registerSearchRoutes(
         return reply
           .code(400)
           .send(err("INVALID_LIMIT", error.message, request.id));
+      }
+      if (
+        error instanceof SearchError &&
+        (error.code === "INVALID_FILTER" ||
+          error.code === "INVALID_PATH_FILTER" ||
+          error.code === "INVALID_TAG_FILTER" ||
+          error.code === "INVALID_FRONTMATTER_FILTER")
+      ) {
+        return reply.code(400).send(err(error.code, error.message, request.id));
       }
       if (
         error instanceof SearchError &&
