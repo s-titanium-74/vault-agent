@@ -30,9 +30,11 @@ export type {
   ChunkRetrieveResult,
   AttachmentMetadataResult,
   WarningItem,
+  SearchFiltersInput,
 } from "./schemas.js";
 export {
   searchModeSchema,
+  searchFiltersSchema,
   searchRequestSchema,
   relatedRequestSchema,
   noteRetrieveQuerySchema,

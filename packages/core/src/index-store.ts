@@ -454,9 +454,16 @@ export class IndexStore {
     );
   }
 
-  searchLexical(query: string, limit: number): Array<Record<string, unknown>> {
+  searchLexical(
+    query: string,
+    limit: number,
+    allowedNoteIds?: readonly string[],
+  ): Array<Record<string, unknown>> {
     const escapedQuery = escapeFTSQuery(query);
     if (!escapedQuery) return [];
+    if (allowedNoteIds && allowedNoteIds.length === 0) return [];
+
+    const noteFilter = sqlInFilter("c.note_id", allowedNoteIds);
 
     const ftsResults = this.db
       .prepare(
@@ -468,31 +475,42 @@ export class IndexStore {
       FROM fts_chunks f
       JOIN chunks c ON f.chunk_id = c.chunk_id
       WHERE fts_chunks MATCH ?
+        ${noteFilter.sql}
       ORDER BY rank
       LIMIT ?
     `,
       )
-      .all(escapedQuery, limit * 3) as Array<Record<string, unknown>>;
+      .all(escapedQuery, ...noteFilter.params, limit * 3) as Array<
+      Record<string, unknown>
+    >;
 
     return ftsResults;
   }
 
-  searchTrigrams(query: string, limit: number): Array<Record<string, unknown>> {
+  searchTrigrams(
+    query: string,
+    limit: number,
+    allowedNoteIds?: readonly string[],
+  ): Array<Record<string, unknown>> {
     const gramsArray = textToTrigrams(query);
     if (gramsArray.length === 0) return [];
+    if (allowedNoteIds && allowedNoteIds.length === 0) return [];
 
     const placeholders = gramsArray.map(() => "?").join(",");
+    const noteFilter = sqlInFilter("c.note_id", allowedNoteIds);
 
     const results = this.db
       .prepare(
         `
-      SELECT chunk_id,
+      SELECT t.chunk_id,
         COUNT(DISTINCT gram) as matched_grams,
         ? as total_query_grams,
         CAST(COUNT(DISTINCT gram) AS REAL) / ? as coverage
-      FROM trigrams
+      FROM trigrams t
+      JOIN chunks c ON t.chunk_id = c.chunk_id
       WHERE gram IN (${placeholders})
-      GROUP BY chunk_id
+        ${noteFilter.sql}
+      GROUP BY t.chunk_id
       HAVING coverage >= 0.3
       ORDER BY coverage DESC
       LIMIT ?
@@ -502,6 +520,7 @@ export class IndexStore {
         gramsArray.length,
         gramsArray.length,
         ...gramsArray,
+        ...noteFilter.params,
         limit * 3,
       ) as Array<Record<string, unknown>>;
 
@@ -513,7 +532,13 @@ export class IndexStore {
     }));
   }
 
-  searchNotes(query: string, limit: number): Array<Record<string, unknown>> {
+  searchNotes(
+    query: string,
+    limit: number,
+    allowedNoteIds?: readonly string[],
+  ): Array<Record<string, unknown>> {
+    if (allowedNoteIds && allowedNoteIds.length === 0) return [];
+    const allowed = allowedNoteIds ? new Set(allowedNoteIds) : undefined;
     const rows = this.db
       .prepare("SELECT * FROM notes WHERE oversized = 1 OR empty = 1")
       .all() as Array<Record<string, unknown>>;
@@ -524,6 +549,8 @@ export class IndexStore {
       .filter((t) => t.length > 0);
 
     const matched = rows.filter((row) => {
+      if (allowed && !allowed.has(row.note_id as string)) return false;
+
       const title = ((row.title as string) ?? "").toLowerCase();
       const path = ((row.path as string) ?? "").toLowerCase();
       const aliases = JSON.parse(
@@ -627,10 +654,35 @@ export class IndexStore {
   searchEmbeddingVectors(
     queryEmbedding: Float32Array,
     limit: number,
+    allowedChunkIds?: readonly string[],
   ): Array<{ chunk_id: string; distance: number }> {
     if (!this.vecLoaded) return [];
+    if (allowedChunkIds && allowedChunkIds.length === 0) return [];
 
     try {
+      if (allowedChunkIds) {
+        const chunkFilter = sqlInFilter("chunk_id", allowedChunkIds);
+        const rows = this.db
+          .prepare(
+            `SELECT chunk_id, distance
+             FROM vec_chunks
+             WHERE embedding MATCH ?
+              ${chunkFilter.sql}
+             ORDER BY distance
+             LIMIT ?`,
+          )
+          .all(
+            float32ArrayToBuffer(queryEmbedding),
+            ...chunkFilter.params,
+            limit,
+          ) as Array<{
+          chunk_id: string;
+          distance: number;
+        }>;
+
+        return rows;
+      }
+
       const rows = this.db
         .prepare(
           `SELECT chunk_id, distance
@@ -645,6 +697,40 @@ export class IndexStore {
       }>;
 
       return rows;
+    } catch {
+      if (allowedChunkIds) {
+        const allowed = new Set(allowedChunkIds);
+        return this.searchAllEmbeddingVectors(
+          queryEmbedding,
+          this.getAllChunkIds().length,
+        )
+          .filter(({ chunk_id }) => allowed.has(chunk_id))
+          .slice(0, limit);
+      }
+      return [];
+    }
+  }
+
+  private searchAllEmbeddingVectors(
+    queryEmbedding: Float32Array,
+    limit: number,
+  ): Array<{ chunk_id: string; distance: number }> {
+    try {
+      const fullLimit = Math.max(limit, this.getAllChunkIds().length);
+      const rows = this.db
+        .prepare(
+          `SELECT chunk_id, distance
+           FROM vec_chunks
+           WHERE embedding MATCH ?
+           ORDER BY distance
+           LIMIT ?`,
+        )
+        .all(float32ArrayToBuffer(queryEmbedding), fullLimit) as Array<{
+        chunk_id: string;
+        distance: number;
+      }>;
+
+      return rows.slice(0, limit);
     } catch {
       return [];
     }
@@ -697,4 +783,16 @@ export function getIndexPath(config: Config): string {
   const indexDir = resolveIndexDir(config.index.dir || undefined);
 
   return path.join(indexDir, vid, "index.sqlite");
+}
+
+function sqlInFilter(
+  column: string,
+  values?: readonly string[],
+): { sql: string; params: string[] } {
+  if (!values) return { sql: "", params: [] };
+  if (values.length === 0) return { sql: "AND 1 = 0", params: [] };
+  return {
+    sql: `AND ${column} IN (${values.map(() => "?").join(",")})`,
+    params: [...values],
+  };
 }

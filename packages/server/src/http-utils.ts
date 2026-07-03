@@ -20,6 +20,13 @@ export function validationErrorCode(
   const fields = new Set(error.issues.map((issue) => String(issue.path[0])));
   if (fields.has("limit")) return "INVALID_LIMIT";
   if (fields.has("mode")) return "INVALID_MODE";
+  if (fields.has("filters")) {
+    const hasFrontmatter = error.issues.some(
+      (issue) => String(issue.path[1]) === "frontmatter",
+    );
+    if (hasFrontmatter) return "INVALID_FRONTMATTER_FILTER";
+    return "INVALID_FILTER";
+  }
   return fallbackCode;
 }
 

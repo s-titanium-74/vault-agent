@@ -188,6 +188,40 @@ describe("MCP Adapter", () => {
     await server.close();
   });
 
+  it("search tool accepts structured filters", async () => {
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.1.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const result = await client.callTool({
+      name: "search",
+      arguments: {
+        query: "search",
+        mode: "lexical",
+        filters: {
+          path_prefix: ["Architecture"],
+          tags: ["architecture"],
+        },
+      },
+    });
+
+    const textContent = result.content.find((c) => c.type === "text");
+    const parsed = JSON.parse((textContent as { text: string }).text);
+    expect(parsed.results.length).toBeGreaterThan(0);
+    expect(
+      parsed.results.every(
+        (item: { path: string }) => item.path === "Architecture/Search.md",
+      ),
+    ).toBe(true);
+
+    await client.close();
+    await server.close();
+  });
+
   it("get_note tool returns note content", async () => {
     const server = createMcpServer(context);
     const [clientTransport, serverTransport] =

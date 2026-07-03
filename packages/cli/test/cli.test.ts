@@ -250,6 +250,17 @@ describe("CLI format output helpers", () => {
     expect(limitOption).toBeDefined();
   });
 
+  it("search command supports structured filter flags", () => {
+    const searchCmd = program.commands.find((c) => c.name() === "search");
+    expect(searchCmd).toBeDefined();
+    const optionNames = searchCmd!.options.map((o) => o.long);
+    expect(optionNames).toContain("--path");
+    expect(optionNames).toContain("--exclude-path");
+    expect(optionNames).toContain("--tag");
+    expect(optionNames).toContain("--exclude-tag");
+    expect(optionNames).toContain("--frontmatter");
+  });
+
   it("related command supports --type flag", () => {
     const relatedCmd = program.commands.find((c) => c.name() === "related");
     expect(relatedCmd).toBeDefined();

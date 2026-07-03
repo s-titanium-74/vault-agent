@@ -4,6 +4,28 @@ import type { FreshnessState } from "./freshness.js";
 export const searchModeSchema = z.enum(["lexical", "embedding", "hybrid"]);
 export type SearchMode = z.infer<typeof searchModeSchema>;
 
+const nonEmptyStringArraySchema = z.array(z.string()).min(1);
+
+export const searchFiltersSchema = z
+  .object({
+    pathPrefix: nonEmptyStringArraySchema.optional(),
+    excludePathPrefix: nonEmptyStringArraySchema.optional(),
+    tags: nonEmptyStringArraySchema.optional(),
+    excludeTags: nonEmptyStringArraySchema.optional(),
+    frontmatter: z
+      .object({
+        type: nonEmptyStringArraySchema.optional(),
+        status: nonEmptyStringArraySchema.optional(),
+      })
+      .strict()
+      .refine((val) => val.type !== undefined || val.status !== undefined, {
+        message: "frontmatter must include type or status",
+      })
+      .optional(),
+  })
+  .strict();
+export type SearchFiltersInput = z.infer<typeof searchFiltersSchema>;
+
 export const searchRequestSchema = z.object({
   query: z
     .string()
@@ -14,6 +36,7 @@ export const searchRequestSchema = z.object({
     }),
   mode: searchModeSchema.optional(),
   limit: z.number().int().min(1).max(50).optional(),
+  filters: searchFiltersSchema.optional(),
 });
 
 export const relatedRequestSchema = z.object({
