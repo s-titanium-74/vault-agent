@@ -41,7 +41,7 @@ MCP tool parameters use snake_case to align with Phase 3 MCP tool conventions:
 
 ### `vault_overview`
 
-Description: "Get compact vault-level metadata: note count, chunk count, top folders, top tags, frontmatter fields, and index freshness."
+Description: "Get compact vault-level metadata: note count, chunk count, top folders, top tags, frontmatter fields, and index freshness. Use this first when the user asks what is in the vault or needs a high-level overview."
 
 Parameters: none.
 
@@ -49,7 +49,7 @@ Returns: same inner payload as `GET /overview` response `data`.
 
 ### `vault_tree`
 
-Description: "Get a bounded directory tree of the vault with note counts per folder. Use depth, limit, and direct_only to control response size."
+Description: "Get a bounded directory tree of the vault with note counts per folder. Use this when the user asks how the vault is organized by folder. Use depth, limit, and direct_only to control response size."
 
 Parameters:
 
@@ -61,7 +61,7 @@ Returns: same inner payload as `GET /tree` response `data`.
 
 ### `vault_tags`
 
-Description: "Get tag names and note-level usage counts from frontmatter tags."
+Description: "Get tag names and note-level usage counts from frontmatter tags. Use this when the user asks about topics, categories, or tag-based organization."
 
 Parameters:
 
@@ -71,7 +71,7 @@ Returns: same inner payload as `GET /tags` response `data`.
 
 ### `vault_facets`
 
-Description: "Get frontmatter field names and note counts. Values are included only for allowlisted fields (type, status)."
+Description: "Get frontmatter field names and note counts. Values are included only for allowlisted fields (type, status). Use this when the user asks about note metadata, types, statuses, or available filters."
 
 Parameters:
 
