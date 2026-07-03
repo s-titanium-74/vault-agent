@@ -12,6 +12,9 @@ import { SearchError } from "./errors.js";
 import { EmbeddingProvider, EmbeddingProviderError } from "./embedding.js";
 import { chunkToResultItem, noteRowToResultItem } from "./result-helpers.js";
 
+const MIN_RESULT_SCORE = 0.000001;
+const MIN_EMBEDDING_DISTANCE_SCORE = 0.5;
+
 export async function search(
   store: IndexStore,
   query: string,
@@ -235,7 +238,7 @@ function searchLexical(
     let ftsNorm = 0;
     const ftsRaw = ftsScores.get(chunkId);
     if (ftsRaw !== undefined) {
-      ftsNorm = 1 - (ftsRaw - minFts) / ftsRange;
+      ftsNorm = Math.max(1 - (ftsRaw - minFts) / ftsRange, MIN_RESULT_SCORE);
     }
 
     let trigramNorm = 0;
@@ -274,7 +277,11 @@ function searchLexical(
     filteredNoteResults[i]!.score = noteBaseScore * (1 - i * 0.05);
   }
 
-  return [...chunkResults, ...filteredNoteResults].slice(0, limit);
+  const scoredNoteResults = filteredNoteResults.filter(
+    (item) => item.score > 0,
+  );
+
+  return [...chunkResults, ...scoredNoteResults].slice(0, limit);
 }
 
 async function searchEmbedding(
@@ -294,16 +301,15 @@ async function searchEmbedding(
 
   if (vecResults.length === 0) return [];
 
-  const maxDist =
-    vecResults.length > 0 ? Math.max(...vecResults.map((r) => r.distance)) : 1;
-  const minDist =
-    vecResults.length > 0 ? Math.min(...vecResults.map((r) => r.distance)) : 0;
-  const distRange = maxDist - minDist || 1;
-
-  return vecResults.map(({ chunk_id, distance }) => {
-    const score = 1 - (distance - minDist) / distRange;
-    return chunkToResultItem(store, chunk_id, score, "embedding_match");
-  });
+  return vecResults
+    .map(({ chunk_id, distance }) => {
+      const score = distanceToScore(distance);
+      return { chunk_id, score };
+    })
+    .filter(({ score }) => score >= MIN_EMBEDDING_DISTANCE_SCORE)
+    .map(({ chunk_id, score }) =>
+      chunkToResultItem(store, chunk_id, score, "embedding_match"),
+    );
 }
 
 function rrf(leftScores: number[], rightScores: number[], k: number): number {
@@ -351,37 +357,43 @@ function fuseResults(
     resultMap.set(item.id, item);
   }
 
-  return sorted.map(([id, score]) => {
-    const existing = resultMap.get(id);
-    if (existing) {
+  return sorted
+    .map(([id, score]) => {
+      const normalizedScore = normalizeScore(score, sorted);
+      return { id, score: normalizedScore };
+    })
+    .filter(({ score }) => score > 0)
+    .map(({ id, score }) => {
+      const existing = resultMap.get(id);
+      if (existing) {
+        return {
+          ...existing,
+          score,
+          reason: "hybrid_match",
+        };
+      }
       return {
-        ...existing,
-        score: normalizeScore(score, sorted),
+        id,
+        type: "chunk" as const,
+        noteId: id.split(":")[0] ?? id,
+        chunkIndex: parseInt(id.split(":")[1] ?? "0"),
+        path: "",
+        title: null,
+        heading: null,
+        headingPath: [],
+        snippet: "",
+        score,
         reason: "hybrid_match",
+        metadata: {
+          aliases: [],
+          tags: [],
+          date: null,
+          created: null,
+          updated: null,
+          attachmentCount: 0,
+        },
       };
-    }
-    return {
-      id,
-      type: "chunk" as const,
-      noteId: id.split(":")[0] ?? id,
-      chunkIndex: parseInt(id.split(":")[1] ?? "0"),
-      path: "",
-      title: null,
-      heading: null,
-      headingPath: [],
-      snippet: "",
-      score: normalizeScore(score, sorted),
-      reason: "hybrid_match",
-      metadata: {
-        aliases: [],
-        tags: [],
-        date: null,
-        created: null,
-        updated: null,
-        attachmentCount: 0,
-      },
-    };
-  });
+    });
 }
 
 function normalizeScore(
@@ -392,7 +404,12 @@ function normalizeScore(
   const maxScore = allScores[0]![1];
   const minScore = allScores[allScores.length - 1]![1];
   const range = maxScore - minScore || 1;
-  return (rawScore - minScore) / range;
+  return Math.max((rawScore - minScore) / range, MIN_RESULT_SCORE);
+}
+
+function distanceToScore(distance: number): number {
+  if (!Number.isFinite(distance) || distance < 0) return 0;
+  return 1 / (1 + distance);
 }
 
 function searchNoteTypeResults(

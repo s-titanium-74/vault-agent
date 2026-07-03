@@ -13,6 +13,8 @@ import { SearchError } from "./errors.js";
 import { EmbeddingProvider, EmbeddingProviderError } from "./embedding.js";
 import { chunkToResultItem } from "./result-helpers.js";
 
+const MIN_EMBEDDING_DISTANCE_SCORE = 0.5;
+
 export async function getRelated(
   store: IndexStore,
   type: "note" | "chunk",
@@ -223,10 +225,15 @@ export async function getRelated(
               ? chunk_id.startsWith(noteId + ":")
               : chunk_id === id;
           if (isExcluded) continue;
-          seenIds.add(chunk_id);
-          items.push(
-            chunkIdToResultItem(store, chunk_id, distance, "related_embedding"),
+          const item = chunkIdToResultItem(
+            store,
+            chunk_id,
+            distance,
+            "related_embedding",
           );
+          if (!item) continue;
+          seenIds.add(chunk_id);
+          items.push(item);
         }
       }
     } catch (error) {
@@ -275,14 +282,15 @@ export async function getRelated(
     }
   }
 
-  items.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const relevantItems = items.filter((item) => item.score > 0);
+  relevantItems.sort((a, b) => b.score - a.score);
 
   return {
     input: { type, id },
     requestedMode,
     usedMode,
     limit: effectiveLimit,
-    results: items.slice(0, effectiveLimit),
+    results: relevantItems.slice(0, effectiveLimit),
     warnings,
   };
 }
@@ -301,8 +309,13 @@ function chunkIdToResultItem(
   chunkId: string,
   distance: number,
   reason: string,
-): SearchResultItem {
-  const item = chunkToResultItem(store, chunkId, 1 - distance, reason);
-  if (item.score === 0) item.score = 1 - distance;
-  return item;
+): SearchResultItem | null {
+  const score = distanceToScore(distance);
+  if (score < MIN_EMBEDDING_DISTANCE_SCORE) return null;
+  return chunkToResultItem(store, chunkId, score, reason);
+}
+
+function distanceToScore(distance: number): number {
+  if (!Number.isFinite(distance) || distance < 0) return 0;
+  return 1 / (1 + distance);
 }
