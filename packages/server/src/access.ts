@@ -49,6 +49,12 @@ export function prepareServerAccessConfig(
   const manager = new ConfigManager(resolvedDefaultConfigPath);
   manager.set("server.apiKey", generatedKey);
   prepared.server.apiKey = generatedKey;
+  console.log(
+    "Non-localhost bind detected. An API key was generated and saved to the config file.",
+  );
+  console.log(
+    "Run `vault-agent config reveal-api-key` to view it for client setup.",
+  );
   return prepared;
 }
 
