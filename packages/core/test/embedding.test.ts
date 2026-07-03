@@ -206,6 +206,99 @@ async function openStoreForConfig(
 }
 
 describe("Embedding provider integration", () => {
+  describe("embedding relevance floor", () => {
+    function createSearchStore(
+      vectorResults: Array<{ chunk_id: string; distance: number }>,
+    ): IndexStore {
+      return {
+        getManifest: () => ({
+          schemaVersion: 3,
+          vaultIdentity: vaultIdentity("/synthetic/vault"),
+          indexedFileExtensions: [".md", ".markdown"],
+          effectiveExcludePatterns: [],
+          targetChunkSize: 2000,
+          maxChunkSize: 4000,
+          embeddingModel: "test-model",
+          embeddingDimension: EMBEDDING_DIMENSION,
+          noteCount: 1,
+          chunkCount: vectorResults.length,
+          indexedAt: Date.now(),
+        }),
+        checkStaleness: () => ({
+          stale: false,
+          incompatible: false,
+          details: "",
+        }),
+        isVecAvailable: () => true,
+        searchEmbeddingVectors: () => vectorResults,
+        getChunkById: (chunkId: string) => ({
+          chunk_id: chunkId,
+          note_id: chunkId.split(":")[0]!,
+          chunk_index: Number.parseInt(chunkId.split(":")[1] ?? "0", 10),
+          path: `${chunkId}.md`,
+          title: "Synthetic",
+          heading: null,
+          heading_path_json: "[]",
+          content: "Synthetic content long enough to be a chunk.",
+        }),
+        getNote: () => ({
+          aliases_json: "[]",
+          tags_json: "[]",
+          attachment_refs_json: "[]",
+        }),
+      } as unknown as IndexStore;
+    }
+
+    const provider = {
+      embed: async () => ({
+        embeddings: [new Float32Array(EMBEDDING_DIMENSION).fill(1)],
+        model: "test-model",
+        dimension: EMBEDDING_DIMENSION,
+      }),
+    } as unknown as EmbeddingProvider;
+
+    it("omits weak embedding candidates even when only one neighbor is returned", async () => {
+      const config = createTestConfig("/synthetic/vault", "/synthetic/index", {
+        enabled: true,
+        model: "test-model",
+      });
+      const store = createSearchStore([{ chunk_id: "a:0", distance: 2 }]);
+
+      const result = await search(
+        store,
+        "rare term",
+        "embedding",
+        10,
+        config,
+        provider,
+      );
+
+      expect(result.results).toEqual([]);
+    });
+
+    it("omits equal-distance weak embedding candidates instead of normalizing them to top scores", async () => {
+      const config = createTestConfig("/synthetic/vault", "/synthetic/index", {
+        enabled: true,
+        model: "test-model",
+      });
+      const store = createSearchStore([
+        { chunk_id: "a:0", distance: 2 },
+        { chunk_id: "b:0", distance: 2 },
+      ]);
+
+      const result = await search(
+        store,
+        "rare term",
+        "embedding",
+        10,
+        config,
+        provider,
+      );
+
+      expect(result.results).toEqual([]);
+    });
+  });
+
   describe("search with mode=embedding when embeddings unavailable", () => {
     let vaultDir: string;
     let indexDir: string;
@@ -671,7 +764,7 @@ describe("Embedding provider integration", () => {
 
         for (const r of result.results) {
           expect(r.reason).toBe("embedding_match");
-          expect(r.score).toBeGreaterThanOrEqual(0);
+          expect(r.score).toBeGreaterThan(0);
           expect(r.score).toBeLessThanOrEqual(1);
         }
       } finally {
@@ -706,6 +799,7 @@ describe("Embedding provider integration", () => {
           (r) => r.reason === "hybrid_match",
         );
         expect(hasHybrid).toBe(true);
+        expect(result.results.every((r) => r.score > 0)).toBe(true);
       } finally {
         store.close();
       }

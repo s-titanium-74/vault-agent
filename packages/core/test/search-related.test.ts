@@ -7,6 +7,7 @@ import { search } from "../src/search.js";
 import { getRelated } from "../src/related.js";
 import { SearchError } from "../src/errors.js";
 import { Config, DEFAULT_CONFIG } from "../src/config.js";
+import { EmbeddingProvider } from "../src/embedding.js";
 import { noteIdFromPath, vaultIdentity } from "../src/identifiers.js";
 import {
   DEFAULT_EXCLUDE_PATTERNS,
@@ -276,6 +277,28 @@ describe("search", () => {
       store.close();
     }
   });
+
+  it("does not return zero-score lexical results", async () => {
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+
+    const resolvedVault = path.resolve(vaultDir);
+    const dbPath = path.join(
+      indexDir,
+      vaultIdentity(resolvedVault),
+      "index.sqlite",
+    );
+    const store = await IndexStore.open(dbPath);
+
+    try {
+      const result = await search(store, "search", "lexical", 10, config);
+
+      expect(result.results.length).toBeGreaterThan(0);
+      expect(result.results.every((r) => r.score > 0)).toBe(true);
+    } finally {
+      store.close();
+    }
+  });
 });
 
 describe("getRelated", () => {
@@ -319,6 +342,70 @@ describe("getRelated", () => {
     } finally {
       store.close();
     }
+  });
+
+  it("does not return weak positive-score embedding related candidates", async () => {
+    const sourceId = "11111111111111111111111111111111";
+    const configWithEmbedding = createTestConfig(vaultDir, indexDir);
+    configWithEmbedding.embedding.enabled = true;
+    configWithEmbedding.embedding.model = "test-model";
+
+    const store = {
+      getManifest: () => ({
+        schemaVersion: INDEX_SCHEMA_VERSION,
+        vaultIdentity: vaultIdentity(path.resolve(vaultDir)),
+        indexedFileExtensions: [".md", ".markdown"],
+        effectiveExcludePatterns: [],
+        targetChunkSize: 2000,
+        maxChunkSize: 4000,
+        embeddingModel: "test-model",
+        embeddingDimension: 8,
+        noteCount: 2,
+        chunkCount: 2,
+        indexedAt: Date.now(),
+      }),
+      checkStaleness: () => ({
+        stale: false,
+        incompatible: false,
+        details: "",
+      }),
+      isVecAvailable: () => true,
+      getNote: () => ({ links_json: "[]" }),
+      getChunks: (noteId: string) =>
+        noteId === sourceId
+          ? [
+              {
+                note_id: sourceId,
+                chunk_index: 0,
+                embedding_input_text: "source context",
+              },
+            ]
+          : [],
+      searchLexical: () => [],
+      searchTrigrams: () => [],
+      searchEmbeddingVectors: () => [
+        { chunk_id: "22222222222222222222222222222222:0", distance: 2 },
+      ],
+    } as unknown as IndexStore;
+    const provider = {
+      embed: async () => ({
+        embeddings: [new Float32Array(8).fill(1)],
+        model: "test-model",
+        dimension: 8,
+      }),
+    } as unknown as EmbeddingProvider;
+
+    const result = await getRelated(
+      store,
+      "note",
+      sourceId,
+      "embedding",
+      10,
+      configWithEmbedding,
+      provider,
+    );
+
+    expect(result.results).toEqual([]);
   });
 
   it("throws INVALID_ID for invalid note ID", async () => {
@@ -488,6 +575,7 @@ describe("getRelated", () => {
       );
 
       expect(result.results.every((r) => r.noteId !== sourceId)).toBe(true);
+      expect(result.results.every((r) => r.score > 0)).toBe(true);
       expect(result.results.some((r) => r.noteId === destinationId)).toBe(true);
       expect(
         result.results.find((r) => r.noteId === destinationId)?.reason,

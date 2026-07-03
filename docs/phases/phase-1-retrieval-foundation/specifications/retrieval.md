@@ -34,7 +34,10 @@ The default gram size is 3. For 2-character queries, the implementation may use 
 
 Trigram candidate ranking uses query gram coverage, such as matched query grams divided by total query grams, rather than raw matched gram count. Trigram candidates are fused with FTS5 candidates using RRF.
 
-Embedding search uses `sqlite-vec` nearest-neighbor results.
+Embedding search uses `sqlite-vec` nearest-neighbor results. Embedding
+candidate filtering should use the raw vector distance signal before display
+score normalization, so a weak candidate is not kept only because it is the best
+or only returned neighbor.
 
 Hybrid search uses Reciprocal Rank Fusion to merge lexical and embedding result lists. Hybrid ranking must not directly add raw BM25 scores and raw vector distances.
 
@@ -188,6 +191,9 @@ Result items must not include full note bodies or full chunk bodies.
 For note-type results, `id` is the note ID, `type` is `note`, `chunkIndex` is `null`, `heading` is `null`, and `headingPath` is an empty array.
 
 `score` is a normalized display score from 0 to 1, where higher is better.
+Returned result items should have a score greater than 0. A score of 0 means
+there is no meaningful match and should be filtered from search and related
+result lists.
 
 Raw BM25 scores, vector distances, and RRF internals are not included in Phase 1 responses.
 
