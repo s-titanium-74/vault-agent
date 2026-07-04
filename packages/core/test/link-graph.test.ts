@@ -25,7 +25,9 @@ function createLinkVault(): string {
     path.join(vaultDir, "Index.md"),
     `# Index
 
-See [[Plan]] and [[Missing Note]].`,
+See [[Plan]] and [[Missing Note]].
+
+Embedded attachment: ![[diagram.pdf]].`,
   );
 
   fs.writeFileSync(
@@ -37,6 +39,22 @@ See [[Architecture|Architecture doc]] and [Architecture again](Architecture.md).
 
   fs.writeFileSync(path.join(vaultDir, "Architecture.md"), "# Architecture\n");
   fs.writeFileSync(path.join(vaultDir, "Orphan.md"), "# Orphan\n");
+  fs.mkdirSync(path.join(vaultDir, "Projects"), { recursive: true });
+  fs.mkdirSync(path.join(vaultDir, "Archive"), { recursive: true });
+  fs.writeFileSync(
+    path.join(vaultDir, "Projects", "Project Plan.md"),
+    "# Project Plan\n",
+  );
+  fs.writeFileSync(
+    path.join(vaultDir, "Archive", "Project Plan.md"),
+    "# Archived Project Plan\n",
+  );
+  fs.writeFileSync(
+    path.join(vaultDir, "Projects", "Source.md"),
+    `# Source
+
+[Current plan](Project%20Plan.md) and [Archived plan](../Archive/Project%20Plan.md).`,
+  );
 
   return vaultDir;
 }
@@ -128,6 +146,7 @@ describe("link graph discovery", () => {
       resolved: false,
     });
     expect(JSON.stringify(result)).not.toContain("See [[");
+    expect(JSON.stringify(result)).not.toContain("diagram.pdf");
   });
 
   it("lists orphan notes based on resolved note links", () => {
@@ -137,10 +156,42 @@ describe("link graph discovery", () => {
 
   it("returns compact graph summary", () => {
     const result = getLinkSummary({ store, config }, { limit: 2 });
-    expect(result.data.noteCount).toBe(4);
-    expect(result.data.resolvedLinkCount).toBe(3);
+    expect(result.data.noteCount).toBe(7);
+    expect(result.data.resolvedLinkCount).toBe(5);
     expect(result.data.unresolvedLinkCount).toBe(1);
     expect(result.data.orphanNoteCount).toBe(1);
     expect(result.data.topLinkedNotes.length).toBeLessThanOrEqual(2);
+  });
+
+  it("resolves encoded and path-qualified Markdown note links", () => {
+    const sourceId = noteIdFromPath("Projects/Source.md");
+    const currentId = noteIdFromPath("Projects/Project Plan.md");
+    const archivedId = noteIdFromPath("Archive/Project Plan.md");
+    const result = getNoteLinks({ store, config }, sourceId);
+
+    expect(result.data.outlinks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          targetNoteId: currentId,
+          targetPath: "Projects/Project Plan.md",
+          rawTarget: "Project Plan",
+          kind: "markdown",
+          resolved: true,
+        }),
+        expect.objectContaining({
+          targetNoteId: archivedId,
+          targetPath: "Archive/Project Plan.md",
+          rawTarget: "Project Plan",
+          kind: "markdown",
+          resolved: true,
+        }),
+      ]),
+    );
+  });
+
+  it("rejects unsafe summary path prefixes", () => {
+    expect(() =>
+      getLinkSummary({ store, config }, { pathPrefix: "../Private" }),
+    ).toThrow("Path filters must not contain traversal segments.");
   });
 });

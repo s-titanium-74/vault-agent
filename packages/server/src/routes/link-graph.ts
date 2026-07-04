@@ -180,5 +180,10 @@ function handleLinkGraphError(
       .code(404)
       .send(err("NOTE_NOT_FOUND", error.message, requestId));
   }
+  if (error instanceof SearchError && error.code === "INVALID_PATH_FILTER") {
+    return reply
+      .code(400)
+      .send(err("INVALID_PATH_FILTER", error.message, requestId));
+  }
   throw error;
 }

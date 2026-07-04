@@ -1,7 +1,7 @@
 import { Config } from "./config.js";
 import { IndexStore } from "./index-store.js";
 import { IndexResult, IndexWarning, Note } from "./types.js";
-import { parseMarkdown } from "./markdown.js";
+import { parseMarkdown, resolveWikilinks } from "./markdown.js";
 import { chunkNote } from "./chunking.js";
 import { noteIdFromPath } from "./identifiers.js";
 import { IndexError } from "./errors.js";
@@ -212,6 +212,18 @@ export async function incrementalIndexUpdate(
           });
         }
 
+        const filename = vaultRelativePath.split("/").pop() ?? "";
+        const stem = filename.replace(/\.(md|markdown)$/i, "");
+        const stemEntries =
+          existingNoteStems.get(stem)?.filter((e) => e.noteId !== noteId) ?? [];
+        stemEntries.push({
+          noteId,
+          title: parsed.title,
+          aliases: parsed.aliases,
+        });
+        existingNoteStems.set(stem, stemEntries);
+
+        const resolver = resolveWikilinks(existingNoteStems);
         const note: Note = {
           noteId,
           vaultRelativePath,
@@ -223,7 +235,9 @@ export async function incrementalIndexUpdate(
           contentHash,
           mtimeMs: stat.mtimeMs,
           chunks: chunkResult.chunks,
-          links: parsed.wikilinks,
+          links: parsed.wikilinks.map((link) =>
+            resolver(link, vaultRelativePath),
+          ),
           attachmentReferences: parsed.attachmentReferences,
         };
 
@@ -231,17 +245,6 @@ export async function incrementalIndexUpdate(
         notesIndexed++;
         chunksIndexed += note.chunks.length;
         affectedNoteIds.add(noteId);
-
-        const filename = vaultRelativePath.split("/").pop() ?? "";
-        const stem = filename.replace(/\.(md|markdown)$/i, "");
-        const stemEntries =
-          existingNoteStems.get(stem)?.filter((e) => e.noteId !== noteId) ?? [];
-        stemEntries.push({
-          noteId,
-          title: parsed.title,
-          aliases: parsed.aliases,
-        });
-        existingNoteStems.set(stem, stemEntries);
       } catch (err) {
         if (err instanceof Error && err.message.includes("encoding")) {
           warnings.push({

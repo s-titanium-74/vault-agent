@@ -38,6 +38,7 @@ export interface Chunk {
 
 export interface WikilinkInfo {
   target: string;
+  targetPath?: string | null;
   heading: string | null;
   display: string | null;
   resolved: string | null;

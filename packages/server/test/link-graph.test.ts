@@ -123,4 +123,13 @@ describe("Link graph routes", () => {
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe("INVALID_ID");
   });
+
+  it("rejects unsafe summary path prefixes", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/links/summary?pathPrefix=../Private",
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("INVALID_PATH_FILTER");
+  });
 });

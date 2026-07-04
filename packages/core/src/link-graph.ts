@@ -1,8 +1,8 @@
-import path from "node:path";
 import { Config } from "./config.js";
 import { SearchError } from "./errors.js";
 import { FreshnessMachine, type FreshnessState } from "./freshness.js";
 import { IndexStore } from "./index-store.js";
+import { normalizePathFilter } from "./search-filters.js";
 import {
   BacklinksResult,
   BrokenLinksResult,
@@ -420,11 +420,7 @@ function compareLinkedNotes(
 
 function normalizePathPrefix(value: string | undefined): string | null {
   if (!value) return null;
-  const normalized = value
-    .split(path.sep)
-    .join("/")
-    .replace(/^\/+|\/+$/g, "");
-  return normalized.length > 0 ? normalized : null;
+  return normalizePathFilter(value);
 }
 
 function isUnderPathPrefix(notePath: string, prefix: string): boolean {
