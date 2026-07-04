@@ -78,6 +78,8 @@ title: "Common"
 Vault-agent`,
   );
 
+  fs.writeFileSync(path.join(vaultDir, "AGENTS.md"), "# Agent guidance\n");
+
   fs.mkdirSync(path.join(vaultDir, "attachments"), { recursive: true });
   fs.writeFileSync(
     path.join(vaultDir, "attachments", "data.csv"),
@@ -155,10 +157,50 @@ describe("MCP Adapter", () => {
       "related",
       "search",
       "vault_facets",
+      "vault_guidance_get",
+      "vault_guidance_list",
       "vault_overview",
       "vault_tags",
       "vault_tree",
     ]);
+
+    await client.close();
+    await server.close();
+  });
+
+  it("guidance tools list metadata and retrieve explicit content", async () => {
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.1.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const listResult = await client.callTool({
+      name: "vault_guidance_list",
+      arguments: {},
+    });
+    const listText = listResult.content.find((c) => c.type === "text") as {
+      text: string;
+    };
+    const listParsed = JSON.parse(listText.text);
+    expect(
+      listParsed.guidance.map((item: { path: string }) => item.path),
+    ).toContain("AGENTS.md");
+    expect(JSON.stringify(listParsed)).not.toContain("Agent guidance");
+
+    const getResult = await client.callTool({
+      name: "vault_guidance_get",
+      arguments: { path: "AGENTS.md" },
+    });
+    const getText = getResult.content.find((c) => c.type === "text") as {
+      text: string;
+    };
+    const getParsed = JSON.parse(getText.text);
+    expect(getParsed.path).toBe("AGENTS.md");
+    expect(getParsed.content).toBe("# Agent guidance\n");
+    expect(getParsed.warnings).toEqual([]);
 
     await client.close();
     await server.close();
@@ -627,6 +669,8 @@ describe("MCP Adapter", () => {
       "related",
       "search",
       "vault_facets",
+      "vault_guidance_get",
+      "vault_guidance_list",
       "vault_overview",
       "vault_tags",
       "vault_tree",

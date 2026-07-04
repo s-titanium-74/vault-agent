@@ -78,6 +78,14 @@ export {
   getAttachmentMetadata,
   getAttachmentBytes,
 } from "./retrieval.js";
+export {
+  listAgentGuidance,
+  getAgentGuidance,
+  type AgentGuidanceCandidate,
+  type AgentGuidanceListResult,
+  type AgentGuidanceRetrieveResult,
+  type GuidanceKind,
+} from "./guidance.js";
 export type { Note, Chunk, IndexManifest } from "./types.js";
 export { VaultDiscovery } from "./discovery.js";
 export {
