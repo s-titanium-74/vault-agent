@@ -100,6 +100,13 @@ Vault-agent is designed with local-first and private-by-default principles.
 The server binds to 127.0.0.1 by default.`,
   );
 
+  fs.writeFileSync(path.join(vaultDir, "AGENTS.md"), "# Agent guidance\n");
+  fs.mkdirSync(path.join(vaultDir, ".cursor", "rules"), { recursive: true });
+  fs.writeFileSync(
+    path.join(vaultDir, ".cursor", "rules", "style.mdc"),
+    "# Style rule\n",
+  );
+
   return vaultDir;
 }
 
@@ -177,6 +184,36 @@ describe("Server Routes", () => {
       expect(body.data.index.available).toBe(true);
       expect(body.data.index.embeddingAvailable).toBe(false);
       expect(body.warnings).toEqual([]);
+    });
+  });
+
+  describe("GET /agent-guidance", () => {
+    it("lists guidance candidates without content", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/agent-guidance",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(
+        body.data.guidance.map((item: { path: string }) => item.path),
+      ).toContain("AGENTS.md");
+      expect(JSON.stringify(body)).not.toContain("Agent guidance");
+      expect(body.warnings).toEqual([]);
+    });
+
+    it("retrieves one guidance file explicitly", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/agent-guidance/AGENTS.md",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body.data.path).toBe("AGENTS.md");
+      expect(body.data.kind).toBe("agents");
+      expect(body.data.content).toBe("# Agent guidance\n");
     });
   });
 
