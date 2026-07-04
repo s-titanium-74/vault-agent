@@ -168,6 +168,13 @@ describe("extractWikilinks", () => {
     const links = extractWikilinks(text);
     expect(links.length).toBe(1);
   });
+
+  it("does not treat embedded attachment wikilinks as note links", () => {
+    const text =
+      "Embedded attachment: ![[attachment.pdf]] and note: ![[Target]]";
+    const links = extractWikilinks(text);
+    expect(links.map((link) => link.target)).toEqual(["Target"]);
+  });
 });
 
 describe("extractAttachmentReferences", () => {

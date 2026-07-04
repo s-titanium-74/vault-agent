@@ -293,7 +293,9 @@ async function performIndex(
 
   const resolver = resolveWikilinks(allNoteStems);
   for (const note of rawNotes) {
-    note.links = note.links.map(resolver);
+    note.links = note.links.map((link) =>
+      resolver(link, note.vaultRelativePath),
+    );
   }
 
   const deletedPaths = Array.from(existingPaths);

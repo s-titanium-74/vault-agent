@@ -30,6 +30,7 @@ import { registerStatusRoute } from "./routes/status.js";
 import { registerSyncRoutes } from "./routes/sync.js";
 import { registerOrientationRoutes } from "./routes/orientation.js";
 import { registerGuidanceRoutes } from "./routes/guidance.js";
+import { registerLinkGraphRoutes } from "./routes/link-graph.js";
 import { initApp, resetApp } from "./state.js";
 import { createMcpServer, McpAdapterContext } from "./mcp/adapter.js";
 import { registerMcpStreamableHttpRoute } from "./mcp/streamable-http.js";
@@ -122,6 +123,7 @@ export async function createServer(
   registerSyncRoutes(app);
   registerOrientationRoutes(app);
   registerGuidanceRoutes(app);
+  registerLinkGraphRoutes(app);
 
   if (appConfig.mcp.enabled && mcpContext) {
     registerMcpStreamableHttpRoute(app, {

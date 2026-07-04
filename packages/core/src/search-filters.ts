@@ -138,7 +138,7 @@ function normalizePathFilters(values: string[]): string[] {
   return dedupe(values.map(normalizePathFilter));
 }
 
-function normalizePathFilter(value: string): string {
+export function normalizePathFilter(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
     throw new SearchError("INVALID_PATH_FILTER", "Path filter is empty.");

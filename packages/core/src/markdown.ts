@@ -1,3 +1,5 @@
+import path from "node:path";
+import { noteIdFromPath } from "./identifiers.js";
 import { Frontmatter, WikilinkInfo } from "./types.js";
 
 export interface MarkdownParseResult {
@@ -178,7 +180,10 @@ export function parseMarkdown(content: string): MarkdownParseResult {
 
   const bodyWithoutCode = stripCodeBlocks(body);
   const headings = extractHeadings(bodyWithoutCode);
-  const wikilinks = extractWikilinks(bodyWithoutCode);
+  const wikilinks = [
+    ...extractWikilinks(bodyWithoutCode),
+    ...extractMarkdownNoteLinks(bodyWithoutCode),
+  ];
   const attachmentReferences = extractAttachmentReferences(bodyWithoutCode);
 
   let title: string | null = null;
@@ -254,6 +259,7 @@ export function extractWikilinks(text: string): WikilinkInfo[] {
   WIKILINK_PATTERN.lastIndex = 0;
   while ((match = WIKILINK_PATTERN.exec(text)) !== null) {
     const raw = match[1]!;
+    if (isEmbeddedAttachmentWikilink(text, match.index, raw)) continue;
 
     let target: string;
     let heading: string | null = null;
@@ -286,11 +292,68 @@ export function extractWikilinks(text: string): WikilinkInfo[] {
         heading,
         display,
         resolved: null,
+        kind: "wiki",
       });
     }
   }
 
   return links;
+}
+
+export function extractMarkdownNoteLinks(text: string): WikilinkInfo[] {
+  const links: WikilinkInfo[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  MARKDOWN_LINK_PATTERN.lastIndex = 0;
+  while ((match = MARKDOWN_LINK_PATTERN.exec(text)) !== null) {
+    const display = match[1]!.trim() || null;
+    const href = match[2]!;
+    const parsed = parseMarkdownNoteHref(href);
+    if (!parsed) continue;
+
+    const key = `${parsed.target}#${parsed.heading ?? ""}|${display ?? ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      links.push({
+        target: parsed.target,
+        targetPath: parsed.targetPath,
+        heading: parsed.heading,
+        display,
+        resolved: null,
+        kind: "markdown",
+      });
+    }
+  }
+
+  return links;
+}
+
+function parseMarkdownNoteHref(
+  href: string,
+): { target: string; targetPath: string; heading: string | null } | null {
+  if (!href) return null;
+  if (href.startsWith("http://") || href.startsWith("https://")) return null;
+  if (href.startsWith("#")) return null;
+  if (href.startsWith("mailto:")) return null;
+
+  const hashIndex = href.indexOf("#");
+  const beforeHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+  const heading =
+    hashIndex >= 0
+      ? decodeUriComponentSafe(href.slice(hashIndex + 1)).trim()
+      : null;
+  const withoutQuery = beforeHash.split("?")[0]!.replace(/^<|>$/g, "");
+  const decodedPath = decodeUriComponentSafe(withoutQuery)
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/");
+  if (!/\.(md|markdown)$/i.test(decodedPath)) return null;
+
+  const filename = decodedPath.split("/").pop() ?? decodedPath;
+  const target = filename.replace(/\.(md|markdown)$/i, "").trim();
+  if (!target) return null;
+
+  return { target, targetPath: decodedPath, heading: heading || null };
 }
 
 export function extractAttachmentReferences(text: string): string[] {
@@ -357,15 +420,17 @@ export function resolveWikilinks(
     string,
     Array<{ noteId: string; title: string | null; aliases: string[] }>
   >,
-): (link: WikilinkInfo) => WikilinkInfo {
+): (link: WikilinkInfo, sourcePath?: string) => WikilinkInfo {
   const fileNameMap = new Map<string, string[]>();
   const titleMap = new Map<string, string[]>();
   const aliasMap = new Map<string, string[]>();
+  const knownNoteIds = new Set<string>();
 
   for (const [stem, entries] of notes) {
     const arr = fileNameMap.get(stem) ?? [];
     for (const info of entries) {
       arr.push(info.noteId);
+      knownNoteIds.add(info.noteId);
     }
     fileNameMap.set(stem, arr);
 
@@ -384,7 +449,17 @@ export function resolveWikilinks(
     }
   }
 
-  return (link: WikilinkInfo): WikilinkInfo => {
+  return (link: WikilinkInfo, sourcePath?: string): WikilinkInfo => {
+    if (link.kind === "markdown" && link.targetPath) {
+      const targetPath = resolveMarkdownTargetPath(link.targetPath, sourcePath);
+      if (targetPath) {
+        const noteId = noteIdFromPath(targetPath);
+        if (knownNoteIds.has(noteId)) {
+          return { ...link, targetPath, resolved: noteId };
+        }
+      }
+    }
+
     const target = link.target;
     const candidates = new Set<string>();
 
@@ -404,6 +479,44 @@ export function resolveWikilinks(
 
     return { ...link, resolved: null };
   };
+}
+
+function isEmbeddedAttachmentWikilink(
+  text: string,
+  matchIndex: number,
+  rawTarget: string,
+): boolean {
+  if (matchIndex === 0 || text[matchIndex - 1] !== "!") return false;
+  const target = rawTarget.split("|")[0]!.split("#")[0]!.trim();
+  const extension = target.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase();
+  return Boolean(extension && extension !== "md" && extension !== "markdown");
+}
+
+function decodeUriComponentSafe(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function resolveMarkdownTargetPath(
+  targetPath: string,
+  sourcePath: string | undefined,
+): string | null {
+  const normalizedTarget = targetPath.replace(/\\/g, "/");
+  const joined = normalizedTarget.startsWith("/")
+    ? normalizedTarget.slice(1)
+    : path.posix.join(path.posix.dirname(sourcePath ?? ""), normalizedTarget);
+  const normalized = path.posix.normalize(joined);
+  if (
+    normalized === "." ||
+    normalized.startsWith("../") ||
+    normalized === ".."
+  ) {
+    return null;
+  }
+  return normalized;
 }
 
 export function generateLexicalIndexText(params: {
