@@ -67,7 +67,7 @@ const tools: Tool[] = [
   {
     name: "search",
     description:
-      "Search the vault for notes matching a query. Optional filters can narrow results by vault-relative path prefixes, frontmatter tags, excluded tags, excluded path prefixes, and allowlisted frontmatter fields. Returns compact ranked results with titles, paths, snippets, and scores. Use this first to find relevant candidates before retrieving full note content.",
+      "Search the vault for notes matching a query. Optional filters can narrow results by vault-relative path prefixes, frontmatter tags, excluded tags, excluded path prefixes, and allowlisted frontmatter fields. Returns compact ranked results with titles, paths, snippets, and scores. Use this first to find relevant candidates before retrieving full note content. Do not treat snippets as complete evidence when precise note content is needed; retrieve the relevant chunk or note before answering.",
     inputSchema: {
       type: "object",
       properties: {
@@ -125,7 +125,7 @@ const tools: Tool[] = [
   {
     name: "get_note",
     description:
-      "Retrieve the full content of a note by its ID. Returns Markdown content including frontmatter. Use search first to find relevant notes, then use this to retrieve only the notes you need.",
+      "Retrieve the full content of a note by its ID. Returns Markdown content including frontmatter. Use search first to find relevant notes, then use this only when the whole note is needed. Avoid retrieving many full notes automatically; prefer get_chunk for targeted context.",
     inputSchema: {
       type: "object",
       properties: {
@@ -142,7 +142,7 @@ const tools: Tool[] = [
   {
     name: "get_chunk",
     description:
-      "Retrieve a specific chunk from a note. Chunks are sections of a note split by headings. Use this when you need only a portion of a note rather than the full content.",
+      "Retrieve a specific chunk from a note. Chunks are sections of a note split by headings. Use this when you need only a portion of a note rather than the full content. Prefer this over get_note when a search result points to a specific relevant section.",
     inputSchema: {
       type: "object",
       properties: {
@@ -184,7 +184,7 @@ const tools: Tool[] = [
   {
     name: "related",
     description:
-      "Find notes and chunks that are related to a given note or chunk. Returns compact candidates with titles, paths, snippets, and scores. Use this to discover nearby content after reading a note.",
+      "Find notes and chunks that are related to a given note or chunk. Returns compact candidates with titles, paths, snippets, and scores. Use this to discover nearby content after reading a note or chunk. Related results are candidates only; retrieve the relevant chunk or note before relying on their content.",
     inputSchema: {
       type: "object",
       properties: {
@@ -213,7 +213,7 @@ const tools: Tool[] = [
   {
     name: "vault_overview",
     description:
-      "Get compact vault-level metadata: note count, chunk count, top folders, top tags, frontmatter fields, and index freshness.",
+      "Get compact vault-level metadata: note count, chunk count, top folders, top tags, frontmatter fields, and index freshness. Use this first when the user asks what is in the vault or needs a high-level overview.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -223,7 +223,7 @@ const tools: Tool[] = [
   {
     name: "vault_tree",
     description:
-      "Get a bounded directory tree of the vault with note counts per folder. Use depth, limit, and direct_only to control response size.",
+      "Get a bounded directory tree of the vault with note counts per folder. Use this when the user asks how the vault is organized by folder. Use depth, limit, and direct_only to control response size.",
     inputSchema: {
       type: "object",
       properties: {
@@ -250,7 +250,7 @@ const tools: Tool[] = [
   {
     name: "vault_tags",
     description:
-      "Get tag names and note-level usage counts from frontmatter tags.",
+      "Get tag names and note-level usage counts from frontmatter tags. Use this when the user asks about topics, categories, or tag-based organization.",
     inputSchema: {
       type: "object",
       properties: {
@@ -267,7 +267,7 @@ const tools: Tool[] = [
   {
     name: "vault_facets",
     description:
-      "Get frontmatter field names and note counts. Values are included only for allowlisted fields (type, status).",
+      "Get frontmatter field names and note counts. Values are included only for allowlisted fields (type, status). Use this when the user asks about note metadata, types, statuses, or available filters.",
     inputSchema: {
       type: "object",
       properties: {

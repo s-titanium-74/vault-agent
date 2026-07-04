@@ -85,7 +85,9 @@ Search the vault with lexical, embedding, or hybrid mode.
 **Description:**
 "Search the vault for notes matching a query. Returns compact ranked results
 with titles, paths, snippets, and scores. Use this first to find relevant
-candidates before retrieving full note content."
+candidates before retrieving full note content. Do not treat snippets as
+complete evidence when precise note content is needed; retrieve the relevant
+chunk or note before answering."
 
 **Parameters:**
 
@@ -164,7 +166,8 @@ Retrieve a note by ID.
 **Description:**
 "Retrieve the full content of a note by its ID. Returns Markdown content
 including frontmatter. Use search first to find relevant notes, then use this
-to retrieve only the notes you need."
+only when the whole note is needed. Avoid retrieving many full notes
+automatically; prefer get_chunk for targeted context."
 
 **Parameters:**
 
@@ -233,7 +236,8 @@ Retrieve a chunk by note ID and chunk index.
 **Description:**
 "Retrieve a specific chunk from a note. Chunks are sections of a note split
 by headings. Use this when you need only a portion of a note rather than the
-full content."
+full content. Prefer this over get_note when a search result points to a
+specific relevant section."
 
 **Parameters:**
 
@@ -391,7 +395,9 @@ Find related candidates from a known note or chunk.
 **Description:**
 "Find notes and chunks that are related to a given note or chunk. Returns
 compact candidates with titles, paths, snippets, and scores. Use this to
-discover nearby content after reading a note."
+discover nearby content after reading a note or chunk. Related results are
+candidates only; retrieve the relevant chunk or note before relying on their
+content."
 
 **Parameters:**
 
