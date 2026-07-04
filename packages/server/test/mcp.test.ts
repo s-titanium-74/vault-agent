@@ -39,7 +39,7 @@ This is a demonstration vault for MCP testing.
 
 ## Overview
 
-Vault-agent provides search and retrieval.`,
+Vault-agent provides search and retrieval. See [[Privacy]] and [[Missing]].`,
   );
 
   fs.mkdirSync(path.join(vaultDir, "Architecture"), { recursive: true });
@@ -156,9 +156,14 @@ describe("MCP Adapter", () => {
       "get_note",
       "related",
       "search",
+      "vault_backlinks",
+      "vault_broken_links",
       "vault_facets",
       "vault_guidance_get",
       "vault_guidance_list",
+      "vault_link_summary",
+      "vault_links",
+      "vault_orphans",
       "vault_overview",
       "vault_tags",
       "vault_tree",
@@ -225,6 +230,95 @@ describe("MCP Adapter", () => {
     const parsed = JSON.parse((textContent as { text: string }).text);
     expect(parsed.results.length).toBeGreaterThan(0);
     expect(parsed.freshness).toBe("fresh");
+
+    await client.close();
+    await server.close();
+  });
+
+  it("link graph tools return explicit link data", async () => {
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.1.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const welcomeId = noteIdFromPath("Welcome.md");
+    const linksResult = await client.callTool({
+      name: "vault_links",
+      arguments: { noteId: welcomeId },
+    });
+    const linksText = linksResult.content.find((c) => c.type === "text") as {
+      text: string;
+    };
+    const linksParsed = JSON.parse(linksText.text);
+    expect(linksParsed.outlinks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourcePath: "Welcome.md",
+          targetPath: "Privacy.md",
+          rawTarget: "Privacy",
+          resolved: true,
+        }),
+        expect.objectContaining({
+          sourcePath: "Welcome.md",
+          rawTarget: "Missing",
+          resolved: false,
+        }),
+      ]),
+    );
+
+    const brokenResult = await client.callTool({
+      name: "vault_broken_links",
+      arguments: { limit: 5 },
+    });
+    const brokenText = brokenResult.content.find((c) => c.type === "text") as {
+      text: string;
+    };
+    const brokenParsed = JSON.parse(brokenText.text);
+    expect(brokenParsed.total).toBe(1);
+    expect(brokenParsed.links[0].rawTarget).toBe("Missing");
+
+    await client.close();
+    await server.close();
+  });
+
+  it("orphan and summary link graph tools return compact metadata", async () => {
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.1.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const orphansResult = await client.callTool({
+      name: "vault_orphans",
+      arguments: { limit: 10 },
+    });
+    const orphansText = orphansResult.content.find(
+      (c) => c.type === "text",
+    ) as {
+      text: string;
+    };
+    const orphansParsed = JSON.parse(orphansText.text);
+    expect(
+      orphansParsed.notes.map((note: { path: string }) => note.path),
+    ).toContain("Common.md");
+
+    const summaryResult = await client.callTool({
+      name: "vault_link_summary",
+      arguments: { limit: 5 },
+    });
+    const summaryText = summaryResult.content.find(
+      (c) => c.type === "text",
+    ) as {
+      text: string;
+    };
+    const summaryParsed = JSON.parse(summaryText.text);
+    expect(summaryParsed.resolvedLinkCount).toBe(1);
+    expect(summaryParsed.unresolvedLinkCount).toBe(1);
 
     await client.close();
     await server.close();
@@ -668,9 +762,14 @@ describe("MCP Adapter", () => {
       "get_note",
       "related",
       "search",
+      "vault_backlinks",
+      "vault_broken_links",
       "vault_facets",
       "vault_guidance_get",
       "vault_guidance_list",
+      "vault_link_summary",
+      "vault_links",
+      "vault_orphans",
       "vault_overview",
       "vault_tags",
       "vault_tree",

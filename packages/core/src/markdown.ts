@@ -178,7 +178,10 @@ export function parseMarkdown(content: string): MarkdownParseResult {
 
   const bodyWithoutCode = stripCodeBlocks(body);
   const headings = extractHeadings(bodyWithoutCode);
-  const wikilinks = extractWikilinks(bodyWithoutCode);
+  const wikilinks = [
+    ...extractWikilinks(bodyWithoutCode),
+    ...extractMarkdownNoteLinks(bodyWithoutCode),
+  ];
   const attachmentReferences = extractAttachmentReferences(bodyWithoutCode);
 
   let title: string | null = null;
@@ -286,11 +289,61 @@ export function extractWikilinks(text: string): WikilinkInfo[] {
         heading,
         display,
         resolved: null,
+        kind: "wiki",
       });
     }
   }
 
   return links;
+}
+
+export function extractMarkdownNoteLinks(text: string): WikilinkInfo[] {
+  const links: WikilinkInfo[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  MARKDOWN_LINK_PATTERN.lastIndex = 0;
+  while ((match = MARKDOWN_LINK_PATTERN.exec(text)) !== null) {
+    const display = match[1]!.trim() || null;
+    const href = match[2]!;
+    const parsed = parseMarkdownNoteHref(href);
+    if (!parsed) continue;
+
+    const key = `${parsed.target}#${parsed.heading ?? ""}|${display ?? ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      links.push({
+        target: parsed.target,
+        heading: parsed.heading,
+        display,
+        resolved: null,
+        kind: "markdown",
+      });
+    }
+  }
+
+  return links;
+}
+
+function parseMarkdownNoteHref(
+  href: string,
+): { target: string; heading: string | null } | null {
+  if (!href) return null;
+  if (href.startsWith("http://") || href.startsWith("https://")) return null;
+  if (href.startsWith("#")) return null;
+  if (href.startsWith("mailto:")) return null;
+
+  const hashIndex = href.indexOf("#");
+  const beforeHash = hashIndex >= 0 ? href.slice(0, hashIndex) : href;
+  const heading = hashIndex >= 0 ? href.slice(hashIndex + 1).trim() : null;
+  const withoutQuery = beforeHash.split("?")[0]!;
+  if (!/\.(md|markdown)$/i.test(withoutQuery)) return null;
+
+  const filename = withoutQuery.split(/[\\/]/).pop() ?? withoutQuery;
+  const target = filename.replace(/\.(md|markdown)$/i, "").trim();
+  if (!target) return null;
+
+  return { target, heading: heading || null };
 }
 
 export function extractAttachmentReferences(text: string): string[] {

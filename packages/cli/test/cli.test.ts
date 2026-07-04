@@ -88,6 +88,18 @@ describe("CLI command parsing", () => {
     expect(relatedCmd).toBeDefined();
   });
 
+  it("has links command with subcommands", () => {
+    const linksCmd = program.commands.find((c) => c.name() === "links");
+    expect(linksCmd).toBeDefined();
+
+    const subcommands = linksCmd!.commands.map((c) => c.name());
+    expect(subcommands).toContain("note");
+    expect(subcommands).toContain("backlinks");
+    expect(subcommands).toContain("broken");
+    expect(subcommands).toContain("orphans");
+    expect(subcommands).toContain("summary");
+  });
+
   it("has get command with subcommands", () => {
     const getCmd = program.commands.find((c) => c.name() === "get");
     expect(getCmd).toBeDefined();

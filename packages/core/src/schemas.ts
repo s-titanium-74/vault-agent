@@ -207,6 +207,72 @@ export interface FacetsResult {
   indexFreshness: FreshnessState;
 }
 
+export type LinkKind = "wiki" | "markdown";
+
+export interface LinkEdge {
+  sourceNoteId: string;
+  sourcePath: string;
+  sourceTitle: string | null;
+  targetNoteId: string | null;
+  targetPath: string | null;
+  targetTitle: string | null;
+  rawTarget: string;
+  targetHeading: string | null;
+  display: string | null;
+  kind: LinkKind;
+  resolved: boolean;
+}
+
+export interface LinkedNoteSummary {
+  noteId: string;
+  path: string;
+  title: string | null;
+  inboundCount: number;
+  outboundCount: number;
+}
+
+export interface LinkNoteResult {
+  noteId: string;
+  path: string;
+  title: string | null;
+  outlinks: LinkEdge[];
+  backlinks: LinkEdge[];
+  indexFreshness: FreshnessState;
+}
+
+export interface BacklinksResult {
+  noteId: string;
+  path: string;
+  title: string | null;
+  backlinks: LinkEdge[];
+  indexFreshness: FreshnessState;
+}
+
+export interface BrokenLinksResult {
+  links: LinkEdge[];
+  limit: number;
+  total: number;
+  indexFreshness: FreshnessState;
+}
+
+export interface OrphanNotesResult {
+  notes: LinkedNoteSummary[];
+  limit: number;
+  total: number;
+  indexFreshness: FreshnessState;
+}
+
+export interface LinkSummaryResult {
+  noteCount: number;
+  resolvedLinkCount: number;
+  unresolvedLinkCount: number;
+  orphanNoteCount: number;
+  topLinkedNotes: LinkedNoteSummary[];
+  limit: number;
+  pathPrefix: string | null;
+  indexFreshness: FreshnessState;
+}
+
 export interface OrientationParams {
   depth?: number;
   limit?: number;
@@ -239,6 +305,10 @@ export const DEFAULT_TAGS_LIMIT = 50;
 export const MAX_TAGS_LIMIT = 200;
 export const DEFAULT_FACETS_LIMIT = 50;
 export const MAX_FACETS_LIMIT = 200;
+export const DEFAULT_LINK_RESULT_LIMIT = 50;
+export const MAX_LINK_RESULT_LIMIT = 500;
+export const DEFAULT_LINK_SUMMARY_LIMIT = 20;
+export const MAX_LINK_SUMMARY_LIMIT = 100;
 
 export const FACET_VALUE_ALLOWLIST = ["type", "status"] as const;
 export type FacetValueAllowlist = (typeof FACET_VALUE_ALLOWLIST)[number];
@@ -264,6 +334,15 @@ export const tagsQuerySchema = z.object({
 
 export const facetsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_FACETS_LIMIT).optional(),
+});
+
+export const linkLimitQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_LINK_RESULT_LIMIT).optional(),
+});
+
+export const linkSummaryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_LINK_SUMMARY_LIMIT).optional(),
+  pathPrefix: z.string().min(1).optional(),
 });
 
 export const INDEXED_EXTENSIONS = [".md", ".markdown"];

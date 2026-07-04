@@ -41,6 +41,7 @@ export interface WikilinkInfo {
   heading: string | null;
   display: string | null;
   resolved: string | null;
+  kind?: "wiki" | "markdown";
 }
 
 export interface IndexManifest {

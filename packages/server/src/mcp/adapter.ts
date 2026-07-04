@@ -30,7 +30,13 @@ import {
   getTree,
   getTags,
   getFacets,
+  getBacklinks,
+  getBrokenLinks,
+  getLinkSummary,
+  getNoteLinks,
+  getOrphanNotes,
   type AgentGuidanceRetrieveResult,
+  type LinkGraphContext,
   type OrientationContext,
 } from "@vault-agent/core";
 import {
@@ -62,6 +68,8 @@ const readOnlyAnnotations = {
   destructiveHint: false,
   idempotentHint: true,
 };
+
+const NOTE_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 const tools: Tool[] = [
   {
@@ -311,6 +319,87 @@ const tools: Tool[] = [
     },
     annotations: readOnlyAnnotations,
   },
+  {
+    name: "vault_links",
+    description:
+      "Get explicit wiki-link outlinks and backlinks for one note. This is deterministic link graph data, not content-similarity search, and it does not return note bodies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        noteId: { type: "string", description: "Note ID to inspect" },
+      },
+      required: ["noteId"],
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_backlinks",
+    description:
+      "Get explicit wiki-link backlinks to one note. Returns compact source and target metadata without note bodies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        noteId: { type: "string", description: "Target note ID" },
+      },
+      required: ["noteId"],
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_broken_links",
+    description:
+      "List unresolved wiki links across the vault, bounded by limit. Use this to inspect broken or ambiguous note references without retrieving note bodies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 500,
+          description: "Maximum broken links",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_orphans",
+    description:
+      "List notes with no resolved inbound or outbound wiki-link note relationships, bounded by limit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 500,
+          description: "Maximum orphan notes",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_link_summary",
+    description:
+      "Get compact link graph counts and top linked notes for the whole vault or a path prefix. Does not return note bodies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Maximum top linked notes",
+        },
+        path_prefix: {
+          type: "string",
+          description: "Optional vault-relative path prefix",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
 ];
 
 export function createMcpServer(context: McpAdapterContext): Server {
@@ -414,6 +503,16 @@ async function dispatchTool(
       return handleVaultGuidanceList(context);
     case "vault_guidance_get":
       return handleVaultGuidanceGet(context, arguments_);
+    case "vault_links":
+      return handleVaultLinks(context, arguments_);
+    case "vault_backlinks":
+      return handleVaultBacklinks(context, arguments_);
+    case "vault_broken_links":
+      return handleVaultBrokenLinks(context, arguments_);
+    case "vault_orphans":
+      return handleVaultOrphans(context, arguments_);
+    case "vault_link_summary":
+      return handleVaultLinkSummary(context, arguments_);
     default:
       throw createMcpError("INTERNAL_ERROR", `Unknown tool: ${name}`);
   }
@@ -444,6 +543,11 @@ function ensureContext(context: McpAdapterContext): {
     embeddingProvider: context.embeddingProvider,
     freshnessMachine: context.freshnessMachine,
   };
+}
+
+function makeLinkGraphContext(context: McpAdapterContext): LinkGraphContext {
+  const { store, config, freshnessMachine } = ensureContext(context);
+  return { store, config, freshnessMachine };
 }
 
 function getFreshnessAndWarnings(freshnessMachine: FreshnessMachine | null): {
@@ -1094,6 +1198,113 @@ async function handleVaultGuidanceGet(
   } catch (error) {
     if (error instanceof McpError) throw error;
     throw mapRetrievalError(error);
+  }
+}
+
+async function handleVaultLinks(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const noteId = getStringArg(args, "noteId");
+  if (!noteId || !NOTE_ID_PATTERN.test(noteId)) {
+    throw createMcpError("INVALID_ID", "noteId must be a valid note ID.");
+  }
+
+  try {
+    const result = getNoteLinks(makeLinkGraphContext(context), noteId);
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultBacklinks(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const noteId = getStringArg(args, "noteId");
+  if (!noteId || !NOTE_ID_PATTERN.test(noteId)) {
+    throw createMcpError("INVALID_ID", "noteId must be a valid note ID.");
+  }
+
+  try {
+    const result = getBacklinks(makeLinkGraphContext(context), noteId);
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultBrokenLinks(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 500 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 500.",
+    );
+  }
+
+  try {
+    const result = getBrokenLinks(makeLinkGraphContext(context), { limit });
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultOrphans(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 500 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 500.",
+    );
+  }
+
+  try {
+    const result = getOrphanNotes(makeLinkGraphContext(context), { limit });
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultLinkSummary(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 100 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 100.",
+    );
+  }
+  const pathPrefix = getStringArg(args, "path_prefix");
+
+  try {
+    const result = getLinkSummary(makeLinkGraphContext(context), {
+      limit,
+      pathPrefix,
+    });
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
   }
 }
 

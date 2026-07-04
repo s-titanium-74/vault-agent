@@ -53,6 +53,14 @@ export {
   getFacets,
   type OrientationContext,
 } from "./orientation.js";
+export {
+  getNoteLinks,
+  getBacklinks,
+  getBrokenLinks,
+  getOrphanNotes,
+  getLinkSummary,
+  type LinkGraphContext,
+} from "./link-graph.js";
 export type {
   OverviewResult,
   TreeResult,
@@ -65,12 +73,22 @@ export type {
   FacetField,
   FacetFieldValue,
   OrientationParams,
+  LinkKind,
+  LinkEdge,
+  LinkedNoteSummary,
+  LinkNoteResult,
+  BacklinksResult,
+  BrokenLinksResult,
+  OrphanNotesResult,
+  LinkSummaryResult,
 } from "./schemas.js";
 export {
   overviewQuerySchema,
   treeQuerySchema,
   tagsQuerySchema,
   facetsQuerySchema,
+  linkLimitQuerySchema,
+  linkSummaryQuerySchema,
 } from "./schemas.js";
 export {
   getNote,
