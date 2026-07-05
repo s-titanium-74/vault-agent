@@ -273,10 +273,103 @@ export interface LinkSummaryResult {
   indexFreshness: FreshnessState;
 }
 
+export interface ProfileExample {
+  noteId: string;
+  path: string;
+  title: string | null;
+}
+
+export interface ProfileScope {
+  pathPrefix: string | null;
+  noteCount: number;
+  filters?: ProfileScopeFilters;
+  exampleSelection: ProfileExampleSelection;
+}
+
+export type ProfileExampleSelection = "path" | "representative";
+
+export interface ProfileScopeFilters {
+  pathPrefix?: string[];
+  tags?: string[];
+  frontmatter?: {
+    type?: string[];
+    status?: string[];
+  };
+  noteIds?: string[];
+}
+
+export interface MetadataProfileField {
+  name: string;
+  noteCount: number;
+  values?: FacetFieldValue[];
+}
+
+export interface MetadataProfileResult {
+  scope: ProfileScope;
+  frontmatterKeys: MetadataProfileField[];
+  tags: TagEntry[];
+  degradedFrontmatterNoteCount: number;
+  examples: ProfileExample[];
+  limit: number;
+  indexFreshness: FreshnessState;
+}
+
+export interface HeadingLevelCount {
+  level: number;
+  noteCount: number;
+  headingCount: number;
+}
+
+export interface CommonHeadingName {
+  heading: string;
+  noteCount: number;
+}
+
+export interface LinkStyleProfile {
+  wikiLinkNoteCount: number;
+  markdownLinkNoteCount: number;
+  wikiLinkCount: number;
+  markdownLinkCount: number;
+}
+
+export interface AttachmentProfile {
+  noteCountWithAttachments: number;
+  totalAttachmentReferences: number;
+  maxAttachmentReferencesInNote: number;
+}
+
+export interface NamingPattern {
+  pattern: string;
+  noteCount: number;
+}
+
+export interface StyleProfileResult {
+  scope: ProfileScope;
+  headings: {
+    levelDistribution: HeadingLevelCount[];
+    commonHeadingNames: CommonHeadingName[];
+    h1MatchesTitleCount: number;
+  };
+  links: LinkStyleProfile;
+  attachments: AttachmentProfile;
+  namingPatterns: NamingPattern[];
+  examples: ProfileExample[];
+  limit: number;
+  indexFreshness: FreshnessState;
+}
+
 export interface OrientationParams {
   depth?: number;
   limit?: number;
   directOnly?: boolean;
+}
+
+export interface ProfileParams {
+  pathPrefix?: string;
+  filters?: ProfileScopeFilters;
+  noteIds?: string[];
+  limit?: number;
+  exampleSelection?: ProfileExampleSelection;
 }
 
 export const DEFAULT_RESULT_LIMIT = 10;
@@ -309,6 +402,8 @@ export const DEFAULT_LINK_RESULT_LIMIT = 50;
 export const MAX_LINK_RESULT_LIMIT = 500;
 export const DEFAULT_LINK_SUMMARY_LIMIT = 20;
 export const MAX_LINK_SUMMARY_LIMIT = 100;
+export const DEFAULT_PROFILE_LIMIT = 20;
+export const MAX_PROFILE_LIMIT = 100;
 
 export const FACET_VALUE_ALLOWLIST = ["type", "status"] as const;
 export type FacetValueAllowlist = (typeof FACET_VALUE_ALLOWLIST)[number];
@@ -344,6 +439,33 @@ export const linkSummaryQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(MAX_LINK_SUMMARY_LIMIT).optional(),
   pathPrefix: z.string().min(1).optional(),
 });
+
+export const profileQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(MAX_PROFILE_LIMIT).optional(),
+  pathPrefix: z.string().min(1).optional(),
+  tag: z
+    .preprocess((val) => queryValueArray(val), z.array(z.string()).min(1))
+    .optional(),
+  frontmatterType: z
+    .preprocess((val) => queryValueArray(val), z.array(z.string()).min(1))
+    .optional(),
+  frontmatterStatus: z
+    .preprocess((val) => queryValueArray(val), z.array(z.string()).min(1))
+    .optional(),
+  noteId: z
+    .preprocess(
+      (val) => queryValueArray(val),
+      z.array(z.string().regex(/^[0-9a-f]{32}$/)).min(1),
+    )
+    .optional(),
+  exampleSelection: z.enum(["path", "representative"]).optional(),
+});
+
+function queryValueArray(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return value.map(String);
+  return [String(value)];
+}
 
 export const INDEXED_EXTENSIONS = [".md", ".markdown"];
 

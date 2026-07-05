@@ -100,6 +100,30 @@ describe("CLI command parsing", () => {
     expect(subcommands).toContain("summary");
   });
 
+  it("has profile command with subcommands", () => {
+    const profileCmd = program.commands.find((c) => c.name() === "profile");
+    expect(profileCmd).toBeDefined();
+
+    const subcommands = profileCmd!.commands.map((c) => c.name());
+    expect(subcommands).toContain("metadata");
+    expect(subcommands).toContain("style");
+
+    const metadataCmd = profileCmd!.commands.find(
+      (c) => c.name() === "metadata",
+    );
+    expect(metadataCmd?.options.map((o) => o.long)).toEqual(
+      expect.arrayContaining([
+        "--path",
+        "--tag",
+        "--frontmatter",
+        "--note-id",
+        "--examples",
+        "--limit",
+        "--json",
+      ]),
+    );
+  });
+
   it("has get command with subcommands", () => {
     const getCmd = program.commands.find((c) => c.name() === "get");
     expect(getCmd).toBeDefined();

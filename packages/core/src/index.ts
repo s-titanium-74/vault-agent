@@ -13,6 +13,7 @@ export {
   type WatchConfig,
   type SyncConfig,
   type McpConfig,
+  type ProfilesConfig,
 } from "./config.js";
 export { envPaths, defaultConfigPath, defaultIndexDir } from "./paths.js";
 export { vaultIdentity, noteIdFromPath } from "./identifiers.js";
@@ -61,6 +62,11 @@ export {
   getLinkSummary,
   type LinkGraphContext,
 } from "./link-graph.js";
+export {
+  getMetadataProfile,
+  getStyleProfile,
+  type ProfileContext,
+} from "./profile.js";
 export type {
   OverviewResult,
   TreeResult,
@@ -81,6 +87,17 @@ export type {
   BrokenLinksResult,
   OrphanNotesResult,
   LinkSummaryResult,
+  ProfileExample,
+  ProfileScope,
+  MetadataProfileField,
+  MetadataProfileResult,
+  HeadingLevelCount,
+  CommonHeadingName,
+  LinkStyleProfile,
+  AttachmentProfile,
+  NamingPattern,
+  StyleProfileResult,
+  ProfileParams,
 } from "./schemas.js";
 export {
   overviewQuerySchema,
@@ -89,6 +106,7 @@ export {
   facetsQuerySchema,
   linkLimitQuerySchema,
   linkSummaryQuerySchema,
+  profileQuerySchema,
 } from "./schemas.js";
 export {
   getNote,

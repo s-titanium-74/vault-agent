@@ -57,6 +57,10 @@ export const mcpConfigSchema = z.object({
   }),
 });
 
+export const profilesConfigSchema = z.object({
+  frontmatter_value_allowlist: z.array(z.string()).default([]),
+});
+
 const RESERVED_ENDPOINT_PATHS = new Set([
   "/search",
   "/notes",
@@ -72,6 +76,7 @@ const RESERVED_ENDPOINT_PATHS = new Set([
   "/tree",
   "/tags",
   "/facets",
+  "/profiles",
 ]);
 
 function validateMcpEndpoint(endpoint: string): string | undefined {
@@ -100,6 +105,7 @@ export const configSchema = z
     watch: watchConfigSchema,
     sync: syncConfigSchema,
     mcp: mcpConfigSchema,
+    profiles: profilesConfigSchema,
   })
   .superRefine((config, ctx) => {
     if (config.watch.max_batch_delay_ms < config.watch.debounce_ms) {
@@ -134,6 +140,7 @@ export type CorsConfig = z.infer<typeof corsConfigSchema>;
 export type WatchConfig = z.infer<typeof watchConfigSchema>;
 export type SyncConfig = z.infer<typeof syncConfigSchema>;
 export type McpConfig = z.infer<typeof mcpConfigSchema>;
+export type ProfilesConfig = z.infer<typeof profilesConfigSchema>;
 export type Config = z.infer<typeof configSchema>;
 
 export const DEFAULT_CONFIG: Config = {
@@ -184,6 +191,9 @@ export const DEFAULT_CONFIG: Config = {
     http: {
       endpoint: "/mcp",
     },
+  },
+  profiles: {
+    frontmatter_value_allowlist: [],
   },
 };
 
@@ -270,6 +280,10 @@ function applyEnvOverrides(config: Config): Config {
     VAULT_AGENT_MCP_HTTP_ENDPOINT: {
       path: ["mcp", "http", "endpoint"],
       type: "string",
+    },
+    VAULT_AGENT_PROFILE_FRONTMATTER_VALUE_ALLOWLIST: {
+      path: ["profiles", "frontmatter_value_allowlist"],
+      type: "stringArray",
     },
   };
 
@@ -361,6 +375,7 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
     "failure_backoff_seconds",
   ]),
   mcp: new Set(["enabled", "http"]),
+  profiles: new Set(["frontmatter_value_allowlist"]),
 };
 
 function validateConfigKeys(parsed: Record<string, unknown>): void {
@@ -434,6 +449,9 @@ function toTOMLObject(config: Config): Record<string, unknown> {
       http: {
         endpoint: config.mcp.http.endpoint,
       },
+    },
+    profiles: {
+      frontmatter_value_allowlist: config.profiles.frontmatter_value_allowlist,
     },
   };
 }
@@ -623,6 +641,15 @@ function configFromTOMLParsed(
     };
   }
 
+  if (parsed.profiles && typeof parsed.profiles === "object") {
+    const p = parsed.profiles as Record<string, unknown>;
+    result.profiles = {
+      frontmatter_value_allowlist:
+        (p.frontmatter_value_allowlist as string[]) ??
+        DEFAULT_CONFIG.profiles.frontmatter_value_allowlist,
+    };
+  }
+
   return result;
 }
 
@@ -635,6 +662,7 @@ function mergeWithDefaults(partial: Partial<Config>): Config {
     cors: { ...DEFAULT_CONFIG.cors, ...partial.cors },
     watch: { ...DEFAULT_CONFIG.watch, ...partial.watch },
     sync: { ...DEFAULT_CONFIG.sync, ...partial.sync },
+    profiles: { ...DEFAULT_CONFIG.profiles, ...partial.profiles },
     mcp: {
       ...DEFAULT_CONFIG.mcp,
       ...partial.mcp,
@@ -681,6 +709,10 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "sync.failure_backoff_seconds": ["sync", "failure_backoff_seconds"],
     "mcp.enabled": ["mcp", "enabled"],
     "mcp.http.endpoint": ["mcp", "http", "endpoint"],
+    "profiles.frontmatter_value_allowlist": [
+      "profiles",
+      "frontmatter_value_allowlist",
+    ],
   };
 
   const mapped = keyMapping[dottedKey];
@@ -738,7 +770,11 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
       throw new ConfigError("CONFIG_INVALID", `Invalid number value: ${value}`);
     }
     sectionObj[key] = num;
-  } else if (key === "exclude" || key === "allowedOrigins") {
+  } else if (
+    key === "exclude" ||
+    key === "allowedOrigins" ||
+    key === "frontmatter_value_allowlist"
+  ) {
     if (typeof value === "string") {
       sectionObj[key] = value
         .split(",")

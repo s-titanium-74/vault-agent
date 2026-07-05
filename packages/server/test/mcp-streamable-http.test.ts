@@ -259,7 +259,7 @@ describe("MCP Streamable HTTP Route", () => {
     expect(followUp.statusCode).toBe(200);
     const followUpBody = JSON.parse(followUp.payload);
     expect(followUpBody.id).toBe(2);
-    expect(followUpBody.result.tools).toHaveLength(16);
+    expect(followUpBody.result.tools).toHaveLength(18);
   });
 
   it("rejects missing protocolVersion with JSON-RPC -32600", async () => {
@@ -422,8 +422,8 @@ describe("MCP Streamable HTTP Route", () => {
 
     expect(listBodyA.id).toBe(11);
     expect(listBodyB.id).toBe(21);
-    expect(listBodyA.result.tools).toHaveLength(16);
-    expect(listBodyB.result.tools).toHaveLength(16);
+    expect(listBodyA.result.tools).toHaveLength(18);
+    expect(listBodyB.result.tools).toHaveLength(18);
 
     const namesA = listBodyA.result.tools
       .map((tool: { name: string }) => tool.name)
@@ -445,8 +445,10 @@ describe("MCP Streamable HTTP Route", () => {
       "vault_guidance_list",
       "vault_link_summary",
       "vault_links",
+      "vault_metadata_profile",
       "vault_orphans",
       "vault_overview",
+      "vault_style_profile",
       "vault_tags",
       "vault_tree",
     ]);
@@ -503,9 +505,9 @@ describe("MCP Streamable HTTP Route", () => {
     expect(Array.isArray(body)).toBe(true);
     expect(body).toHaveLength(2);
     expect(body[0].id).toBe(2);
-    expect(body[0].result.tools).toHaveLength(16);
+    expect(body[0].result.tools).toHaveLength(18);
     expect(body[1].id).toBe(3);
-    expect(body[1].result.tools).toHaveLength(16);
+    expect(body[1].result.tools).toHaveLength(18);
   });
 
   it("opens SSE stream via GET", async () => {

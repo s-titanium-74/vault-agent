@@ -163,11 +163,51 @@ describe("MCP Adapter", () => {
       "vault_guidance_list",
       "vault_link_summary",
       "vault_links",
+      "vault_metadata_profile",
       "vault_orphans",
       "vault_overview",
+      "vault_style_profile",
       "vault_tags",
       "vault_tree",
     ]);
+
+    await client.close();
+    await server.close();
+  });
+
+  it("advertises profile-only inputs only on profile tools", async () => {
+    const server = createMcpServer(context);
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.1.0" });
+
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+
+    const listedTools = await client.listTools();
+    const toolByName = new Map(
+      listedTools.tools.map((tool) => [tool.name, tool]),
+    );
+    const propertiesFor = (name: string): Record<string, unknown> => {
+      const tool = toolByName.get(name);
+      expect(tool).toBeDefined();
+      const schema = tool?.inputSchema as
+        { properties?: Record<string, unknown> } | undefined;
+      return schema?.properties ?? {};
+    };
+
+    expect(propertiesFor("vault_link_summary")).not.toHaveProperty("filters");
+    expect(propertiesFor("vault_link_summary")).not.toHaveProperty(
+      "example_selection",
+    );
+    expect(propertiesFor("vault_metadata_profile")).toHaveProperty("filters");
+    expect(propertiesFor("vault_metadata_profile")).toHaveProperty(
+      "example_selection",
+    );
+    expect(propertiesFor("vault_style_profile")).toHaveProperty("filters");
+    expect(propertiesFor("vault_style_profile")).toHaveProperty(
+      "example_selection",
+    );
 
     await client.close();
     await server.close();
@@ -769,8 +809,10 @@ describe("MCP Adapter", () => {
       "vault_guidance_list",
       "vault_link_summary",
       "vault_links",
+      "vault_metadata_profile",
       "vault_orphans",
       "vault_overview",
+      "vault_style_profile",
       "vault_tags",
       "vault_tree",
     ]);
