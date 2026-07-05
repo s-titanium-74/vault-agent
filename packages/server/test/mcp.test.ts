@@ -163,8 +163,10 @@ describe("MCP Adapter", () => {
       "vault_guidance_list",
       "vault_link_summary",
       "vault_links",
+      "vault_metadata_profile",
       "vault_orphans",
       "vault_overview",
+      "vault_style_profile",
       "vault_tags",
       "vault_tree",
     ]);
@@ -769,8 +771,10 @@ describe("MCP Adapter", () => {
       "vault_guidance_list",
       "vault_link_summary",
       "vault_links",
+      "vault_metadata_profile",
       "vault_orphans",
       "vault_overview",
+      "vault_style_profile",
       "vault_tags",
       "vault_tree",
     ]);

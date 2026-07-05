@@ -33,11 +33,14 @@ import {
   getBacklinks,
   getBrokenLinks,
   getLinkSummary,
+  getMetadataProfile,
   getNoteLinks,
   getOrphanNotes,
+  getStyleProfile,
   type AgentGuidanceRetrieveResult,
   type LinkGraphContext,
   type OrientationContext,
+  type ProfileContext,
 } from "@vault-agent/core";
 import {
   createMcpError,
@@ -396,6 +399,88 @@ const tools: Tool[] = [
           type: "string",
           description: "Optional vault-relative path prefix",
         },
+        filters: {
+          type: "object",
+          description: "Optional profile filters",
+          properties: {
+            tags: { type: "array", items: { type: "string" } },
+            frontmatter: {
+              type: "object",
+              properties: {
+                type: { type: "array", items: { type: "string" } },
+                status: { type: "array", items: { type: "string" } },
+              },
+            },
+            note_ids: { type: "array", items: { type: "string" } },
+          },
+        },
+        example_selection: {
+          type: "string",
+          enum: ["path", "representative"],
+          description: "Example selection mode",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_metadata_profile",
+    description:
+      "Get a compact metadata profile for the whole vault or a path prefix. Returns frontmatter key counts, allowlisted type/status values, tags, and examples without note bodies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Maximum list entries",
+        },
+        path_prefix: {
+          type: "string",
+          description: "Optional vault-relative path prefix",
+        },
+        filters: {
+          type: "object",
+          description: "Optional profile filters",
+          properties: {
+            tags: { type: "array", items: { type: "string" } },
+            frontmatter: {
+              type: "object",
+              properties: {
+                type: { type: "array", items: { type: "string" } },
+                status: { type: "array", items: { type: "string" } },
+              },
+            },
+            note_ids: { type: "array", items: { type: "string" } },
+          },
+        },
+        example_selection: {
+          type: "string",
+          enum: ["path", "representative"],
+          description: "Example selection mode",
+        },
+      },
+    },
+    annotations: readOnlyAnnotations,
+  },
+  {
+    name: "vault_style_profile",
+    description:
+      "Get a compact Markdown style profile for the whole vault or a path prefix. Returns heading, title, link-style, attachment, and naming-pattern statistics without note bodies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Maximum list entries",
+        },
+        path_prefix: {
+          type: "string",
+          description: "Optional vault-relative path prefix",
+        },
       },
     },
     annotations: readOnlyAnnotations,
@@ -513,6 +598,10 @@ async function dispatchTool(
       return handleVaultOrphans(context, arguments_);
     case "vault_link_summary":
       return handleVaultLinkSummary(context, arguments_);
+    case "vault_metadata_profile":
+      return handleVaultMetadataProfile(context, arguments_);
+    case "vault_style_profile":
+      return handleVaultStyleProfile(context, arguments_);
     default:
       throw createMcpError("INTERNAL_ERROR", `Unknown tool: ${name}`);
   }
@@ -546,6 +635,11 @@ function ensureContext(context: McpAdapterContext): {
 }
 
 function makeLinkGraphContext(context: McpAdapterContext): LinkGraphContext {
+  const { store, config, freshnessMachine } = ensureContext(context);
+  return { store, config, freshnessMachine };
+}
+
+function makeProfileContext(context: McpAdapterContext): ProfileContext {
   const { store, config, freshnessMachine } = ensureContext(context);
   return { store, config, freshnessMachine };
 }
@@ -1306,6 +1400,120 @@ async function handleVaultLinkSummary(
   } catch (error) {
     throw mapSearchError(error);
   }
+}
+
+async function handleVaultMetadataProfile(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const params = getProfileParams(args);
+
+  try {
+    const result = getMetadataProfile(makeProfileContext(context), params);
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+async function handleVaultStyleProfile(
+  context: McpAdapterContext,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const params = getProfileParams(args);
+
+  try {
+    const result = getStyleProfile(makeProfileContext(context), params);
+    return { ...result.data, warnings: result.warnings };
+  } catch (error) {
+    throw mapSearchError(error);
+  }
+}
+
+function getProfileParams(args: Record<string, unknown>): {
+  limit?: number;
+  pathPrefix?: string;
+  filters?: {
+    tags?: string[];
+    frontmatter?: {
+      type?: string[];
+      status?: string[];
+    };
+    noteIds?: string[];
+  };
+  exampleSelection?: "path" | "representative";
+} {
+  const limit = getNumberArg(args, "limit", "INVALID_PARAMETER");
+  if (
+    limit !== undefined &&
+    (limit < 1 || limit > 100 || !Number.isInteger(limit))
+  ) {
+    throw createMcpError(
+      "INVALID_PARAMETER",
+      "limit must be an integer between 1 and 100.",
+    );
+  }
+  const pathPrefix = getStringArg(args, "path_prefix");
+  const exampleSelection = getEnumArg(args, "example_selection", [
+    "path",
+    "representative",
+  ] as const);
+  const filters = getProfileFiltersArg(args);
+  return { limit, pathPrefix, filters, exampleSelection };
+}
+
+function getProfileFiltersArg(args: Record<string, unknown>):
+  | {
+      tags?: string[];
+      frontmatter?: {
+        type?: string[];
+        status?: string[];
+      };
+      noteIds?: string[];
+    }
+  | undefined {
+  const raw = args.filters;
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw createMcpError("INVALID_FILTER", "filters must be an object.");
+  }
+
+  const filters = raw as Record<string, unknown>;
+  const result: {
+    tags?: string[];
+    frontmatter?: { type?: string[]; status?: string[] };
+    noteIds?: string[];
+  } = {};
+
+  const tags = getStringArrayFilter(filters, "tags");
+  if (tags) result.tags = tags;
+
+  const noteIds = getStringArrayFilter(filters, "note_ids");
+  if (noteIds) result.noteIds = noteIds;
+
+  if (filters.frontmatter !== undefined) {
+    const rawFrontmatter = filters.frontmatter;
+    if (
+      !rawFrontmatter ||
+      typeof rawFrontmatter !== "object" ||
+      Array.isArray(rawFrontmatter)
+    ) {
+      throw createMcpError(
+        "INVALID_FRONTMATTER_FILTER",
+        "frontmatter must be an object.",
+      );
+    }
+    const frontmatter = rawFrontmatter as Record<string, unknown>;
+    const type = getStringArrayFilter(frontmatter, "type");
+    const status = getStringArrayFilter(frontmatter, "status");
+    if (type || status) {
+      result.frontmatter = {};
+      if (type) result.frontmatter.type = type;
+      if (status) result.frontmatter.status = status;
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function checkSafeResolution(

@@ -313,6 +313,7 @@ Phase requirements:
 - Phase 3: [MCP Bridge requirements](phases/phase-3-mcp-bridge/requirements.md)
 - Phase 3.1: [Vault Orientation requirements](phases/phase-3.1-vault-orientation/requirements.md)
 - Phase 3.2: [Structured Search Filters requirements](phases/phase-3.2-structured-search-filters/requirements.md)
+- Phase 3.5: [Style and Metadata Profile Discovery requirements](phases/phase-3.5-profile-discovery/requirements.md)
 - Phase 4: planned `docs/phases/phase-4-llm-integration/requirements.md`
 - Phase 5: planned `docs/phases/phase-5-obsidian-plugin/requirements.md`
 
@@ -394,6 +395,18 @@ Requirements: [Phase 3.2 Structured Search Filters requirements](phases/phase-3.
 - Search results remain compact and do not include full note or chunk bodies.
 
 Purpose: let agents apply the compact orientation data from Phase 3.1 to deterministic search. Instead of relying on query-text hacks such as putting folder names or tags into the query string, agents can narrow search candidates with explicit structured filters while preserving progressive disclosure and privacy guarantees.
+
+### Phase 3.5: Style and Metadata Profile Discovery
+
+Requirements: [Phase 3.5 Style and Metadata Profile Discovery requirements](phases/phase-3.5-profile-discovery/requirements.md).
+
+- Deterministic profile APIs for scoped note sets, initially by vault-relative path prefix.
+- `vault-agent profile metadata` for compact frontmatter key and allowlisted value counts.
+- `vault-agent profile style` for heading, title, link-style, attachment, and naming-pattern statistics.
+- HTTP endpoints and MCP tools for both profile surfaces.
+- Aggregate responses only; no full note bodies or chunk bodies.
+
+Purpose: help agents understand local note conventions before targeted search, retrieval, or future note placement workflows. Profile discovery is read-only and returns statistics, examples, and deterministic observations, not LLM summaries.
 
 ### Phase 4: LLM Integration
 
