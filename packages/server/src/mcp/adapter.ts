@@ -399,26 +399,6 @@ const tools: Tool[] = [
           type: "string",
           description: "Optional vault-relative path prefix",
         },
-        filters: {
-          type: "object",
-          description: "Optional profile filters",
-          properties: {
-            tags: { type: "array", items: { type: "string" } },
-            frontmatter: {
-              type: "object",
-              properties: {
-                type: { type: "array", items: { type: "string" } },
-                status: { type: "array", items: { type: "string" } },
-              },
-            },
-            note_ids: { type: "array", items: { type: "string" } },
-          },
-        },
-        example_selection: {
-          type: "string",
-          enum: ["path", "representative"],
-          description: "Example selection mode",
-        },
       },
     },
     annotations: readOnlyAnnotations,
@@ -480,6 +460,26 @@ const tools: Tool[] = [
         path_prefix: {
           type: "string",
           description: "Optional vault-relative path prefix",
+        },
+        filters: {
+          type: "object",
+          description: "Optional profile filters",
+          properties: {
+            tags: { type: "array", items: { type: "string" } },
+            frontmatter: {
+              type: "object",
+              properties: {
+                type: { type: "array", items: { type: "string" } },
+                status: { type: "array", items: { type: "string" } },
+              },
+            },
+            note_ids: { type: "array", items: { type: "string" } },
+          },
+        },
+        example_selection: {
+          type: "string",
+          enum: ["path", "representative"],
+          description: "Example selection mode",
         },
       },
     },

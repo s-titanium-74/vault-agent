@@ -76,6 +76,7 @@ const RESERVED_ENDPOINT_PATHS = new Set([
   "/tree",
   "/tags",
   "/facets",
+  "/profiles",
 ]);
 
 function validateMcpEndpoint(endpoint: string): string | undefined {

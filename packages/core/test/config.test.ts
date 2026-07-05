@@ -656,4 +656,9 @@ describe("MCP endpoint validation", () => {
     const result = configSchema.safeParse(baseConfig("/notes/mcp"));
     expect(result.success).toBe(false);
   });
+
+  it("rejects endpoint conflicting with profile routes", () => {
+    const result = configSchema.safeParse(baseConfig("/profiles/style"));
+    expect(result.success).toBe(false);
+  });
 });
