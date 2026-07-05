@@ -192,8 +192,7 @@ describe("MCP Adapter", () => {
       const tool = toolByName.get(name);
       expect(tool).toBeDefined();
       const schema = tool?.inputSchema as
-        | { properties?: Record<string, unknown> }
-        | undefined;
+        { properties?: Record<string, unknown> } | undefined;
       return schema?.properties ?? {};
     };
 
