@@ -439,10 +439,16 @@ export class IndexStore {
     return rows.map((r) => r.path);
   }
 
-  getChunks(noteId: string): Array<Record<string, unknown>> {
+  getChunks(
+    noteId: string,
+    limit = -1,
+    offset = 0,
+  ): Array<Record<string, unknown>> {
     return this.db
-      .prepare("SELECT * FROM chunks WHERE note_id = ? ORDER BY chunk_index")
-      .all(noteId) as Array<Record<string, unknown>>;
+      .prepare(
+        "SELECT * FROM chunks WHERE note_id = ? ORDER BY chunk_index LIMIT ? OFFSET ?",
+      )
+      .all(noteId, limit, offset) as Array<Record<string, unknown>>;
   }
 
   getChunk(noteId: string, chunkIndex: number): Record<string, unknown> | null {

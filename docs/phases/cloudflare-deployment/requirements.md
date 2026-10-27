@@ -34,6 +34,7 @@ existing path-based note IDs and note/index-based chunk IDs; state their edit
 and rename limits explicitly. Keep source and index storage independent.
 
 Details: [architecture and contracts](specifications/architecture-contracts.md).
+Extraction details: [portable core](specifications/portable-core.md).
 
 ## API And Client Scope
 
