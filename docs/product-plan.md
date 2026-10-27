@@ -65,12 +65,15 @@ Future users include people who want the same vault retrieval foundation from an
 - Do not make the initial product an Obsidian plugin.
 - Do not make MCP the primary initial integration surface.
 - Do not return large note bodies from `search`.
-- Do not build this as a public hosted web service.
+- Do not operate a public multi-tenant hosted service. An opt-in authenticated
+  deployment into the user's own Cloudflare account is a separate edition.
 - Do not include private vault content in the repository.
 - Do not include `chat` in the MVP.
 - Do not bundle embedding models or automatically download / pull them.
 - Do not support multiple vaults inside one server process in the initial product. If needed, users can run multiple server instances with separate ports and config.
-- Do not treat direct public internet exposure as a supported hosted-service mode.
+- Do not expose the local Node server directly as a public hosted service.
+  Public HTTPS access is supported only by the separately installed,
+  authenticated Cloudflare edition described below.
 - Do not include note writing or editing workflows in the MVP. If added later, they should be read-only by default, opt-in, proposal-first, and reviewable.
 
 ## Design Principles
@@ -210,7 +213,40 @@ http://127.0.0.1:8787
 
 Remote access is not the default. If enabled, it must be explicitly configured and should assume a private network such as Tailscale or API key protection.
 
-Binding to `0.0.0.0` is allowed only with explicit configuration. Access from outside localhost should assume a private network or API key protection. Direct public internet exposure is a non-goal.
+Binding to `0.0.0.0` is allowed only with explicit configuration. Access from outside localhost should assume a private network or API key protection. Direct public internet exposure of the local Node server is a non-goal.
+
+### Opt-In Cloudflare Edition
+
+Requirements: [Cloudflare Deployment requirements](phases/cloudflare-deployment/requirements.md).
+
+The local edition remains the default: `127.0.0.1`, filesystem source,
+SQLite/FTS5, optional sqlite-vec and explicitly configured local Ollama. It
+requires no cloud account, credentials, Cloudflare packages, or external
+provider calls. Lexical retrieval works without an embedding provider.
+
+A separate installation may expose authenticated HTTPS retrieval and MCP in
+the user's own Cloudflare account. One deployment serves one vault. The initial
+composition is Workers, private R2 source storage, D1 metadata/lexical storage,
+and separately enabled Workers AI embeddings with Vectorize. These adapters
+share portable parsing, chunking, filters, ranking, and schemas; Node/native
+dependencies remain outside the portable import graph. Source storage and
+index storage have independent contracts so future sources need not copy into
+R2. pCloud and other source adapters are extensions.
+
+Cloud setup explicitly authorizes external storage of selected Markdown,
+PDFs, images, and other allowed attachments. Upload is manual and scoped;
+existing exclusions apply before transmission. Semantic search requires an
+additional opt-in that discloses external processing of embedding input and
+queries. It does not generate answers or embed attachment bytes. Data,
+metadata, status, ingestion, and MCP routes require authentication. Only a
+minimal liveness response may be public.
+
+Cloud ingestion uses a dedicated `upload` workflow; `sync` retains its opt-in
+local Git checkout meaning. File watching and Git operations do not run in
+Workers. Revision publication must keep source, lexical metadata, chunks, and
+optional vectors consistent, including replacement, deletion, and recovery.
+Bounded resumable indexing and measured platform limits are release gates;
+free operation is not promised.
 
 ### Clients
 
@@ -308,6 +344,7 @@ The MVP is Phase 1: Retrieval Foundation. Phase 2 and later are post-MVP extensi
 
 Phase requirements:
 
+- Cloudflare edition: [Cloudflare Deployment requirements](phases/cloudflare-deployment/requirements.md)
 - Phase 1: [Retrieval Foundation requirements](phases/phase-1-retrieval-foundation/requirements.md)
 - Phase 2: [Automatic Index Updates requirements](phases/phase-2-automatic-index-updates/requirements.md)
 - Phase 3: [MCP Bridge requirements](phases/phase-3-mcp-bridge/requirements.md)
@@ -436,6 +473,11 @@ Requirements: planned `docs/phases/phase-5-obsidian-plugin/requirements.md`.
 Purpose: let Obsidian use the same search and LLM foundation.
 
 ## Delivery Policy
+
+The Cloudflare edition follows issues #30 through #35 in order: specification,
+portable contracts, authenticated lexical/MCP retrieval, optional semantic
+retrieval, scoped upload, then self-deployment and cost/limit validation. It
+does not replace or renumber the local feature phases.
 
 For initial local use, prefer distribution options that are simple to install.
 
