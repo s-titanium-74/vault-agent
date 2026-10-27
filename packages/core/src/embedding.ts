@@ -5,11 +5,13 @@ import {
   EMBEDDING_REQUEST_TIMEOUT_MS,
 } from "./schemas.js";
 
-export interface EmbeddingResponse {
-  embeddings: Float32Array[];
-  model: string;
-  dimension: number;
-}
+import type {
+  EmbeddingResponse,
+  EmbeddingProviderContract,
+} from "./portable/contracts.js";
+import { EmbeddingProviderError } from "./portable/embedding.js";
+export type { EmbeddingResponse } from "./portable/contracts.js";
+export { EmbeddingProviderError } from "./portable/embedding.js";
 
 export interface EmbeddingWarning {
   code: string;
@@ -93,7 +95,22 @@ export function validateEmbeddingEndpoint(
   }
 }
 
-export class EmbeddingProvider {
+export class EmbeddingProvider implements EmbeddingProviderContract {
+  private dimension: number | null = null;
+  describe() {
+    return {
+      provider: "ollama",
+      modelRevision: null,
+      metric: "l2" as const,
+      normalization: "none" as const,
+      maxInputTokens: null,
+      model: this.model,
+      dimension: this.dimension,
+      inputFormat: "vault-agent-v1",
+      maxBatchSize: EMBEDDING_BATCH_SIZE,
+      maxInputCharacters: 8000,
+    };
+  }
   private endpoint: string;
   private model: string;
   private timeout: number;
@@ -104,7 +121,11 @@ export class EmbeddingProvider {
     this.timeout = EMBEDDING_REQUEST_TIMEOUT_MS;
   }
 
-  async embed(texts: string[]): Promise<EmbeddingResponse> {
+  async embed(
+    texts: string[],
+    options?: { signal?: AbortSignal },
+  ): Promise<EmbeddingResponse> {
+    options?.signal?.throwIfAborted();
     const batches: string[][] = [];
     for (let i = 0; i < texts.length; i += EMBEDDING_BATCH_SIZE) {
       batches.push(texts.slice(i, i + EMBEDDING_BATCH_SIZE));
@@ -115,7 +136,15 @@ export class EmbeddingProvider {
     let dimension = 0;
 
     for (const batch of batches) {
-      const response = await this.embedBatch(batch);
+      const response = await this.embedBatch(batch, options?.signal);
+      if (
+        dimension &&
+        (dimension !== response.dimension || responseModel !== response.model)
+      ) {
+        throw new EmbeddingProviderError(
+          "Embedding provider changed model or dimension between batches.",
+        );
+      }
       allEmbeddings.push(...response.embeddings);
       if (!responseModel) {
         responseModel = response.model;
@@ -123,6 +152,7 @@ export class EmbeddingProvider {
       }
     }
 
+    this.dimension = dimension || this.dimension;
     return {
       embeddings: allEmbeddings,
       model: responseModel,
@@ -130,7 +160,10 @@ export class EmbeddingProvider {
     };
   }
 
-  private async embedBatch(texts: string[]): Promise<EmbeddingResponse> {
+  private async embedBatch(
+    texts: string[],
+    signal?: AbortSignal,
+  ): Promise<EmbeddingResponse> {
     const body = JSON.stringify({
       model: this.model,
       input: texts,
@@ -144,13 +177,15 @@ export class EmbeddingProvider {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body,
-        signal: controller.signal,
+        signal: signal
+          ? AbortSignal.any([controller.signal, signal])
+          : controller.signal,
       });
 
       if (!response.ok) {
-        const errorBody = await response.text().catch(() => "");
+        await response.body?.cancel();
         throw new EmbeddingProviderError(
-          `Embedding provider returned HTTP ${response.status}: ${errorBody.slice(0, 200)}`,
+          `Embedding provider returned HTTP ${response.status}.`,
           response.status,
         );
       }
@@ -160,14 +195,25 @@ export class EmbeddingProvider {
         data?: Array<{ embedding?: number[] }>;
       };
 
-      if (!data.data || !Array.isArray(data.data)) {
+      if (
+        !data.data ||
+        !Array.isArray(data.data) ||
+        data.data.length !== texts.length
+      ) {
         throw new EmbeddingProviderError(
           "Embedding provider returned invalid response format",
         );
       }
 
       const embeddings = data.data.map((item) => {
-        if (!item.embedding || !Array.isArray(item.embedding)) {
+        if (
+          !item.embedding ||
+          !Array.isArray(item.embedding) ||
+          item.embedding.length === 0 ||
+          !item.embedding.every(
+            (value) => typeof value === "number" && Number.isFinite(value),
+          )
+        ) {
           throw new EmbeddingProviderError(
             "Embedding provider returned missing embedding data",
           );
@@ -176,6 +222,14 @@ export class EmbeddingProvider {
       });
 
       const dim = embeddings.length > 0 ? embeddings[0]!.length : 0;
+      if (
+        embeddings.some(
+          (vector) => vector.length !== dim || !vector.every(Number.isFinite),
+        )
+      )
+        throw new EmbeddingProviderError(
+          "Embedding provider returned inconsistent dimensions.",
+        );
 
       return {
         embeddings,
@@ -183,6 +237,7 @@ export class EmbeddingProvider {
         dimension: dim,
       };
     } catch (error) {
+      signal?.throwIfAborted();
       if (error instanceof EmbeddingProviderError) {
         throw error;
       }
@@ -191,22 +246,10 @@ export class EmbeddingProvider {
           `Embedding request timed out after ${this.timeout / 1000}s`,
         );
       }
-      throw new EmbeddingProviderError(
-        `Embedding provider request failed: ${(error as Error).message}`,
-      );
+      throw new EmbeddingProviderError("Embedding provider request failed.");
     } finally {
       clearTimeout(timeoutId);
     }
-  }
-}
-
-export class EmbeddingProviderError extends Error {
-  public readonly statusCode?: number;
-
-  constructor(message: string, statusCode?: number) {
-    super(message);
-    this.name = "EmbeddingProviderError";
-    this.statusCode = statusCode;
   }
 }
 
