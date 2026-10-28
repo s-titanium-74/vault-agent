@@ -175,6 +175,7 @@ async function call(env: Env, name: string, args: Record<string, unknown>) {
         ? { freshness: "fresh" }
         : {}),
       warnings: result.warnings,
+      ...(result.usage ? { usage: result.usage } : {}),
       revision: service.revision(),
     };
     const text = JSON.stringify(payload);

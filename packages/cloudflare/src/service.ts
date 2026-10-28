@@ -6,6 +6,12 @@ import { D1MetadataStore, ftsName } from "./d1.js";
 import { R2VaultSource } from "./r2.js";
 import { CloudError } from "./errors.js";
 import { z } from "zod";
+import {
+  WorkersAIEmbeddingProvider,
+  ProviderOperations,
+  type Usage,
+} from "./provider.js";
+import { VectorizeStore } from "./vectorize.js";
 
 const compatibility = { stale: false, incompatible: false, details: "" };
 const getSchema = z.object({
@@ -50,6 +56,8 @@ export class RetrievalService {
   readonly source: R2VaultSource;
   readonly metadata: D1MetadataStore;
   readonly settings: ReturnType<typeof config>;
+  readonly operations = new ProviderOperations();
+  readonly vectors: VectorizeStore;
   constructor(
     readonly env: Env,
     readonly snapshot: string,
@@ -70,6 +78,12 @@ export class RetrievalService {
       snapshot,
       manifest,
       this.settings.allowed,
+    );
+    this.vectors = new VectorizeStore(
+      this.settings.semantic ? env.VECTORS : undefined,
+      this.metadata,
+      env.EMBEDDING_MODEL_REVISION,
+      this.operations,
     );
   }
   static async open(env: Env) {
@@ -111,21 +125,18 @@ export class RetrievalService {
       throw new CloudError("REVISION_CHANGED", 409);
   }
   context(): core.RetrievalContext {
-    const unavailable = async () => ({ id: null, state: "failed" as const });
     return {
       metadata: this.metadata,
       compatibility,
-      embeddingEnabled: false,
-      vectors: {
-        vaultId: this.env.VAULT_ID,
-        available: async () => false,
-        query: async () => [],
-        upsert: unavailable,
-        delete: unavailable,
-        mutationStatus: async () => "failed",
-        score: () => 0,
-        minimumScore: 1,
-      },
+      embeddingEnabled: this.settings.semantic,
+      embeddingProvider: this.settings.semantic
+        ? new WorkersAIEmbeddingProvider(
+            this.env.AI!,
+            this.env.EMBEDDING_MODEL_REVISION,
+            this.operations,
+          )
+        : undefined,
+      vectors: this.vectors,
     };
   }
   async aggregate() {
@@ -138,7 +149,7 @@ export class RetrievalService {
   async invoke(
     operation: string,
     input: unknown = {},
-  ): Promise<{ data: unknown; warnings: core.WarningItem[] }> {
+  ): Promise<{ data: unknown; warnings: core.WarningItem[]; usage?: Usage }> {
     const args = (input ?? {}) as Record<string, unknown>;
     let data: unknown;
     let warnings: core.WarningItem[] = [];
@@ -317,7 +328,13 @@ export class RetrievalService {
       warnings = result.warnings;
     }
     await this.current();
-    return { data, warnings };
+    return {
+      data,
+      warnings,
+      ...(this.settings.semantic && ["search", "related"].includes(operation)
+        ? { usage: { ...this.operations.counts } }
+        : {}),
+    };
   }
   guidance(entry: core.SourceEntry) {
     const kind = core.guidanceKind(entry.path)!;
@@ -337,7 +354,8 @@ export class RetrievalService {
   revision() {
     return { vaultId: this.env.VAULT_ID, snapshot: this.snapshot };
   }
-  status(host: string) {
+  async status(host: string) {
+    const ready = this.settings.semantic && (await this.vectors.available());
     return {
       server: { running: true, host, port: 443, apiKeyRequired: true },
       index: {
@@ -348,7 +366,11 @@ export class RetrievalService {
           reindexRequired: false,
           reindexReasons: [],
         },
-        embeddingState: "disabled",
+        embeddingState: ready
+          ? "ready"
+          : this.settings.semantic
+            ? "unavailable"
+            : "disabled",
       },
       watch: {
         enabled: false,
@@ -375,7 +397,7 @@ export class RetrievalService {
         cleanupPending: false,
         capabilities: {
           lexical: true,
-          semantic: false,
+          semantic: ready,
           attachments: true,
           related: true,
           orientation: true,

@@ -77,6 +77,7 @@ export async function getRelated(
   }
 
   const embeddingsAvailable =
+    mode !== "lexical" &&
     context.embeddingEnabled &&
     manifest.embeddingModel !== null &&
     (await vectors.available());

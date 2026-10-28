@@ -84,12 +84,80 @@ download and MCP returns base64. R2 bytes are bounded and digest-verified before
 any content is returned. `allowLarge` raises ordinary retrieval thresholds but
 never bypasses the hard source or MCP transport budgets.
 
-Search is lexical, with existing hybrid fallback warnings. Explicit embedding
-returns 503. No provider calls occur. Upload/index jobs return 501 after admin
+The base configuration serves lexical search with hybrid fallback warnings;
+explicit embedding returns 503 until semantic processing is configured and a
+complete generation is ready. Upload/index jobs return 501 after admin
 authentication. Watch and Git sync are unsupported; `/status` advertises these
 capabilities as false. Link/orientation/profile data comes from bounded indexed
 rows. Guidance is untrusted vault context, retrieved only by explicit calls.
 See [admission budgets](../../docs/phases/cloudflare-deployment/specifications/workers-retrieval.md).
+
+## Opt-in semantic environment
+
+The `semantic` Wrangler environment is an explicit configuration example for
+Workers AI and Vectorize V2. Review and replace its resource placeholders,
+configure its own read/admin secrets, and apply **all** migrations (including 0002) before enabling it. Create a dedicated 1024-dimension cosine index and
+a string metadata index on `chunkId` for visibility probes. The base environment
+has no AI/Vectorize bindings and keeps consent false. Selecting `--env semantic`
+sets `EXTERNAL_EMBEDDING_CONSENT=true`; this permits processing document inputs,
+queries, and related context in Cloudflare. AI calls during local development
+can still use the real service and incur usage; deterministic tests do not.
+
+The selected model is `@cf/baai/bge-m3`. The adapter validates dimensions,
+finite vectors and bounded input/batch sizes, normalizes vectors, and sanitizes
+provider failures. Shared core applies filters and RRF fusion. Vectorize holds
+compact identifiers and hashes only; D1 authorizes every hit against the pinned
+snapshot. Explicit lexical mode performs no provider calls. Hybrid falls back
+with a warning; embedding-only returns 503 when the provider/generation is
+unavailable. Search/related responses include content-free `usage` counts when
+semantic processing is configured.
+
+Applying migration 0002 or selecting an environment does not create embeddings.
+The #34 publisher must stage a matching `embedding_generations` descriptor,
+call bounded adapter writes and visibility probes, then publish a complete
+ready snapshot. Existing lexical snapshots remain usable. This change provides
+the adapters and read path; upload/index HTTP jobs still return 501. Model or
+input-format changes require a new generation and full rebuild. See the
+[semantic contract](../../docs/phases/cloudflare-deployment/specifications/semantic-retrieval.md)
+for model selection, budgets, readiness, migration and hosted validation results.
+
+### Remote semantic smoke
+
+[The recorded synthetic run](../../docs/phases/cloudflare-deployment/specifications/remote-semantic-smoke-2026-10-28.md)
+uses real Workers AI and Vectorize and records both successful behavior and a
+hybrid ranking limitation. Its reusable runner is
+`scripts/remote-semantic-smoke.ts`, paired with the separate disposable
+`test/remote-semantic-worker.ts` entrypoint. Neither runs during ordinary tests.
+
+Provision **new disposable** Worker/D1/private R2/Vectorize resources. Compile
+the test entrypoint with the existing esbuild settings plus a `.sql` text loader.
+Use the semantic bindings, the synthetic fixture vault identity, independently
+generated read/admin secrets and `SYNTHETIC_SMOKE=true`. Keep content logging,
+observability, previews and public bucket access disabled. Create the `chunkId`
+string metadata index before writes. Do not use an existing vault's bindings.
+Bootstrap with admin-authenticated POSTs to `/__smoke/setup`, then
+`/__smoke/embed`, and bounded `/__smoke/probe` requests until ready. The setup
+route is synthetic test scaffolding, not a production ingestion API.
+
+Create a private operator-local JSON file with `endpoint`, `readToken` and
+`adminToken`; never put secrets in command arguments or tracked files. From this
+package directory run:
+
+```sh
+./node_modules/.bin/tsx scripts/remote-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON
+```
+
+If the visibility polling budget expires, rerun with `--resume-visibility` and
+the same private state/report files. The runner preserves completed measurements
+and resumes the staging visibility/deletion checks. It records semantic top-one
+and hybrid top-three as smoke assertions and reports actual top-one rankings
+for both modes. This small corpus is not a general relevance benchmark.
+
+Finally POST `/__smoke/clear-source` with admin authentication, disable the route,
+delete exactly the disposable Worker/secrets, index, database and bucket, and
+verify their absence. Remove the local credential file. Worker deletion alone
+does not remove storage or provider backups. Use the regular `src/index.ts`
+entrypoint for product deployments; the smoke wrapper must never serve a vault.
 
 MCP accepts POST only, protocol `2025-03-26`, notification responses 202, batches
 of at most 10 messages, total request body at most 64 KiB and total response at

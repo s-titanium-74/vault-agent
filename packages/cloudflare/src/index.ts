@@ -82,9 +82,10 @@ async function dispatch(request: Request, env: Env) {
   const service = await RetrievalService.open(env);
   const revision = service.revision();
   if (url.pathname === "/status" && request.method === "GET") {
+    const status = await service.status(url.hostname);
     await service.current();
     return Response.json({
-      data: service.status(url.hostname),
+      data: status,
       warnings: [],
       revision,
     });
