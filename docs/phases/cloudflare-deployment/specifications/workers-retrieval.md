@@ -47,16 +47,17 @@ all rollout gates pass.
 
 - `npm run typecheck`, `npm run lint`, `npm run format:check`, and
   `npm run build` passed.
-- `npm test -- --maxWorkers=2`: 648 local tests passed. Unbounded parallel
-  retries in this development environment intermittently reported timeouts
-  across different existing suites; those retries were not clean passes.
+- `npm test`: 648 local tests passed at default concurrency. Earlier local
+  retries reported timeouts during observed wall-clock jumps. After correcting
+  development-environment time synchronization, normal parallel runs passed
+  without changing product or test timeout settings.
 - `npm run test:dist`: 8 packaged-artifact tests passed.
 - Cloud package typecheck and Wrangler deployment dry-run passed;
   `npm test --prefix packages/cloudflare`: 18 workerd/D1/R2 tests passed,
   including a real SDK client connected to the local Worker simulator.
 - Cloud package dependency audit reported zero vulnerabilities.
 
-No Cloudflare account resources were provisioned and no deployed remote
-Worker/client smoke test was performed. The remote compatibility gate in
-validation-rollout.md remains open; #32 must not be closed on this evidence
-alone. The README supplies the synthetic remote procedure.
+The deployed remote Worker/D1/R2 and real MCP client smoke gate also passed:
+[remote synthetic validation](remote-smoke-2026-10-28.md). The isolated test
+resources were removed and their absence was verified. Production onboarding
+remains gated on #34, with capacity/cost validation in #35.
