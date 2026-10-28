@@ -81,8 +81,9 @@ versus ready; unknown or incompatible generations never appear ready.
 Synthetic Japanese, English and Spanish tests verify adapter contracts,
 filters, fusion, isolation, failure and budgets using deterministic bindings.
 They do not measure hosted multilingual relevance, availability, latency or
-cost. Real provider relevance/cost validation remains a release gate before
-private onboarding, together with #34 publication and #35 deployment work.
+cost. The separate [deployed synthetic validation](remote-semantic-smoke-2026-10-28.md)
+records actual provider behavior, ranking limitations and scoped cost evidence.
+Production onboarding still requires #34 publication and #35 deployment work.
 
 ## Implementation validation (2026-10-28)
 
@@ -91,6 +92,10 @@ private onboarding, together with #34 publication and #35 deployment work.
 - Local regression suite: 648 tests pass; built-artifact suite: 8 tests pass.
   Git, loopback and child-process cases require the normal execution environment.
 - Root/cloud typechecks, lint, formatting, root build and both base/semantic
-  Wrangler deployment dry-runs pass. No deployment or paid inference was run.
-- Hosted multilingual relevance, provider availability/latency, billed token
-  costs and real asynchronous vector visibility remain unverified release gates.
+  Wrangler deployment dry-runs pass.
+- The subsequent deployed synthetic run passed ten functional groups using real
+  providers. Semantic topic top-one was 9/9; hybrid top-one was 8/9 and top-three
+  9/9. Real vector visibility was observed after pending receipts, and all
+  disposable resources were removed. See the linked report for latency, usage,
+  billing-probe evidence and limitations. Aggregate invoiced costs and capacity
+  remain #35 work.

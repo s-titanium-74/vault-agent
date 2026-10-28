@@ -119,7 +119,45 @@ ready snapshot. Existing lexical snapshots remain usable. This change provides
 the adapters and read path; upload/index HTTP jobs still return 501. Model or
 input-format changes require a new generation and full rebuild. See the
 [semantic contract](../../docs/phases/cloudflare-deployment/specifications/semantic-retrieval.md)
-for model selection, budgets, readiness, migration and pending hosted validation.
+for model selection, budgets, readiness, migration and hosted validation results.
+
+### Remote semantic smoke
+
+[The recorded synthetic run](../../docs/phases/cloudflare-deployment/specifications/remote-semantic-smoke-2026-10-28.md)
+uses real Workers AI and Vectorize and records both successful behavior and a
+hybrid ranking limitation. Its reusable runner is
+`scripts/remote-semantic-smoke.ts`, paired with the separate disposable
+`test/remote-semantic-worker.ts` entrypoint. Neither runs during ordinary tests.
+
+Provision **new disposable** Worker/D1/private R2/Vectorize resources. Compile
+the test entrypoint with the existing esbuild settings plus a `.sql` text loader.
+Use the semantic bindings, the synthetic fixture vault identity, independently
+generated read/admin secrets and `SYNTHETIC_SMOKE=true`. Keep content logging,
+observability, previews and public bucket access disabled. Create the `chunkId`
+string metadata index before writes. Do not use an existing vault's bindings.
+Bootstrap with admin-authenticated POSTs to `/__smoke/setup`, then
+`/__smoke/embed`, and bounded `/__smoke/probe` requests until ready. The setup
+route is synthetic test scaffolding, not a production ingestion API.
+
+Create a private operator-local JSON file with `endpoint`, `readToken` and
+`adminToken`; never put secrets in command arguments or tracked files. From this
+package directory run:
+
+```sh
+./node_modules/.bin/tsx scripts/remote-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON
+```
+
+If the visibility polling budget expires, rerun with `--resume-visibility` and
+the same private state/report files. The runner preserves completed measurements
+and resumes the staging visibility/deletion checks. It records semantic top-one
+and hybrid top-three as smoke assertions and reports actual top-one rankings
+for both modes. This small corpus is not a general relevance benchmark.
+
+Finally POST `/__smoke/clear-source` with admin authentication, disable the route,
+delete exactly the disposable Worker/secrets, index, database and bucket, and
+verify their absence. Remove the local credential file. Worker deletion alone
+does not remove storage or provider backups. Use the regular `src/index.ts`
+entrypoint for product deployments; the smoke wrapper must never serve a vault.
 
 MCP accepts POST only, protocol `2025-03-26`, notification responses 202, batches
 of at most 10 messages, total request body at most 64 KiB and total response at
