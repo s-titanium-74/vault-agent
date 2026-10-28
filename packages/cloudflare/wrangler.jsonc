@@ -24,10 +24,54 @@
     { "binding": "SOURCE", "bucket_name": "vault-agent-synthetic" },
   ],
   "vars": {
+    "EXTERNAL_EMBEDDING_CONSENT": "false",
+    "EMBEDDING_MODEL": "@cf/baai/bge-m3",
+    "EMBEDDING_MODEL_REVISION": "operator-v1",
     "VAULT_ID": "00000000-0000-4000-8000-000000000001",
     "INCLUDE_PATHS": "[\".\"]",
     "EXCLUDE_PATHS": "[]",
     "ALLOWED_ORIGINS": "[]",
     "PROFILE_VALUE_ALLOWLIST": "[\"type\",\"status\"]",
+  },
+  // Explicit semantic deployment. Base local development needs no AI service.
+  "env": {
+    "semantic": {
+      "name": "vault-agent-synthetic-semantic",
+      "ai": { "binding": "AI" },
+      "vectorize": [
+        {
+          "binding": "VECTORS",
+          "index_name": "vault-agent-synthetic-semantic",
+        },
+      ],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "vault-agent-synthetic",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations",
+        },
+      ],
+      "r2_buckets": [
+        { "binding": "SOURCE", "bucket_name": "vault-agent-synthetic" },
+      ],
+      "ratelimits": [
+        {
+          "name": "REQUEST_LIMITER",
+          "namespace_id": "1001",
+          "simple": { "limit": 120, "period": 60 },
+        },
+      ],
+      "vars": {
+        "EXTERNAL_EMBEDDING_CONSENT": "true",
+        "EMBEDDING_MODEL": "@cf/baai/bge-m3",
+        "EMBEDDING_MODEL_REVISION": "operator-v1",
+        "VAULT_ID": "00000000-0000-4000-8000-000000000001",
+        "INCLUDE_PATHS": "[\".\"]",
+        "EXCLUDE_PATHS": "[]",
+        "ALLOWED_ORIGINS": "[]",
+        "PROFILE_VALUE_ALLOWLIST": "[\"type\",\"status\"]",
+      },
+    },
   },
 }

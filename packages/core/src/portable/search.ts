@@ -88,6 +88,7 @@ export async function search(
   let usedMode: SearchMode;
   let requestedMode = mode ?? "hybrid";
   const embeddingsAvailable =
+    mode !== "lexical" &&
     context.embeddingEnabled &&
     manifest.embeddingModel !== null &&
     (await vectors.available());

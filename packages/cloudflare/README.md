@@ -84,12 +84,42 @@ download and MCP returns base64. R2 bytes are bounded and digest-verified before
 any content is returned. `allowLarge` raises ordinary retrieval thresholds but
 never bypasses the hard source or MCP transport budgets.
 
-Search is lexical, with existing hybrid fallback warnings. Explicit embedding
-returns 503. No provider calls occur. Upload/index jobs return 501 after admin
+The base configuration serves lexical search with hybrid fallback warnings;
+explicit embedding returns 503 until semantic processing is configured and a
+complete generation is ready. Upload/index jobs return 501 after admin
 authentication. Watch and Git sync are unsupported; `/status` advertises these
 capabilities as false. Link/orientation/profile data comes from bounded indexed
 rows. Guidance is untrusted vault context, retrieved only by explicit calls.
 See [admission budgets](../../docs/phases/cloudflare-deployment/specifications/workers-retrieval.md).
+
+## Opt-in semantic environment
+
+The `semantic` Wrangler environment is an explicit configuration example for
+Workers AI and Vectorize V2. Review and replace its resource placeholders,
+configure its own read/admin secrets, and apply **all** migrations (including 0002) before enabling it. Create a dedicated 1024-dimension cosine index and
+a string metadata index on `chunkId` for visibility probes. The base environment
+has no AI/Vectorize bindings and keeps consent false. Selecting `--env semantic`
+sets `EXTERNAL_EMBEDDING_CONSENT=true`; this permits processing document inputs,
+queries, and related context in Cloudflare. AI calls during local development
+can still use the real service and incur usage; deterministic tests do not.
+
+The selected model is `@cf/baai/bge-m3`. The adapter validates dimensions,
+finite vectors and bounded input/batch sizes, normalizes vectors, and sanitizes
+provider failures. Shared core applies filters and RRF fusion. Vectorize holds
+compact identifiers and hashes only; D1 authorizes every hit against the pinned
+snapshot. Explicit lexical mode performs no provider calls. Hybrid falls back
+with a warning; embedding-only returns 503 when the provider/generation is
+unavailable. Search/related responses include content-free `usage` counts when
+semantic processing is configured.
+
+Applying migration 0002 or selecting an environment does not create embeddings.
+The #34 publisher must stage a matching `embedding_generations` descriptor,
+call bounded adapter writes and visibility probes, then publish a complete
+ready snapshot. Existing lexical snapshots remain usable. This change provides
+the adapters and read path; upload/index HTTP jobs still return 501. Model or
+input-format changes require a new generation and full rebuild. See the
+[semantic contract](../../docs/phases/cloudflare-deployment/specifications/semantic-retrieval.md)
+for model selection, budgets, readiness, migration and pending hosted validation.
 
 MCP accepts POST only, protocol `2025-03-26`, notification responses 202, batches
 of at most 10 messages, total request body at most 64 KiB and total response at

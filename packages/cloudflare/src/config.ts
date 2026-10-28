@@ -1,7 +1,11 @@
 import type { SubtleCrypto as WorkersSubtleCrypto } from "@cloudflare/workers-types";
 import { sourcePolicy } from "@vault-agent/core/portable";
 import { CloudError } from "./errors.js";
-export type Env = Cloudflare.Env & {
+import { MODEL } from "./provider.js";
+// Wrangler emits the legacy VectorizeIndex name when runtime declarations are
+// omitted. Use the installed platform's V2 type for the generated binding.
+export type Env = Omit<Cloudflare.Env, "VECTORS"> & {
+  VECTORS?: Vectorize;
   READ_TOKEN: string;
   ADMIN_TOKEN: string;
   PREVIOUS_READ_TOKEN?: string;
@@ -48,7 +52,23 @@ export function config(env: Env) {
     const allowlist = strings(env.PROFILE_VALUE_ALLOWLIST);
     if (allowlist.some((v) => !["type", "status"].includes(v)))
       throw new Error();
+    if (
+      env.EXTERNAL_EMBEDDING_CONSENT !== undefined &&
+      !["true", "false"].includes(env.EXTERNAL_EMBEDDING_CONSENT)
+    )
+      throw new Error();
+    const semantic = String(env.EXTERNAL_EMBEDDING_CONSENT) === "true";
+    if (
+      semantic &&
+      (!env.AI ||
+        !env.VECTORS ||
+        env.EMBEDDING_MODEL !== MODEL ||
+        typeof env.EMBEDDING_MODEL_REVISION !== "string" ||
+        !/^[A-Za-z0-9._-]{1,64}$/.test(env.EMBEDDING_MODEL_REVISION))
+    )
+      throw new Error();
     return {
+      semantic,
       allowed: sourcePolicy(includes, strings(env.EXCLUDE_PATHS)),
       origins,
       profiles: { frontmatter_value_allowlist: allowlist },
