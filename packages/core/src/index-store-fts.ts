@@ -29,3 +29,34 @@ export function textToTrigrams(text: string): string[] {
 
   return Array.from(grams);
 }
+
+export function matchFallbackNotes(
+  rows: Record<string, unknown>[],
+  query: string,
+  limit: number,
+) {
+  const tokens = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((t) => t.length > 0);
+
+  const matched = rows.filter((row) => {
+    const title = ((row.title as string) ?? "").toLowerCase();
+    const path = ((row.path as string) ?? "").toLowerCase();
+    const aliases = JSON.parse(
+      (row.aliases_json as string) ?? "[]",
+    ) as string[];
+    const tags = JSON.parse((row.tags_json as string) ?? "[]") as string[];
+
+    const searchable = [
+      title,
+      path,
+      ...aliases.map((a) => a.toLowerCase()),
+      ...tags.map((t) => t.toLowerCase()),
+    ].join(" ");
+
+    return tokens.some((token) => searchable.includes(token));
+  });
+
+  return matched.slice(0, limit);
+}

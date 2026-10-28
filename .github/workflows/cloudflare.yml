@@ -1,0 +1,25 @@
+name: Cloudflare adapter
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  synthetic-workers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/cloudflare/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix packages/cloudflare
+      - run: npm run typecheck --prefix packages/cloudflare
+      - run: npm test --prefix packages/cloudflare
+      - run: npm run build --prefix packages/cloudflare

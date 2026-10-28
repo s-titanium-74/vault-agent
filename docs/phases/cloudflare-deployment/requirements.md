@@ -76,3 +76,5 @@ Acceptance for #30:
   validation requires a specification revision before changing that behavior.
 - User scope decisions include initial Workers MCP and scoped Markdown plus
   attachments, with semantic processing separately enabled.
+
+Implementation milestone #32: [Workers retrieval](specifications/workers-retrieval.md).

@@ -1,3 +1,4 @@
+import { matchFallbackNotes } from "./index-store-fts.js";
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
@@ -549,32 +550,11 @@ export class IndexStore {
       .prepare("SELECT * FROM notes WHERE oversized = 1 OR empty = 1")
       .all() as Array<Record<string, unknown>>;
 
-    const tokens = query
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((t) => t.length > 0);
-
-    const matched = rows.filter((row) => {
-      if (allowed && !allowed.has(row.note_id as string)) return false;
-
-      const title = ((row.title as string) ?? "").toLowerCase();
-      const path = ((row.path as string) ?? "").toLowerCase();
-      const aliases = JSON.parse(
-        (row.aliases_json as string) ?? "[]",
-      ) as string[];
-      const tags = JSON.parse((row.tags_json as string) ?? "[]") as string[];
-
-      const searchable = [
-        title,
-        path,
-        ...aliases.map((a) => a.toLowerCase()),
-        ...tags.map((t) => t.toLowerCase()),
-      ].join(" ");
-
-      return tokens.some((token) => searchable.includes(token));
-    });
-
-    return matched.slice(0, limit);
+    return matchFallbackNotes(
+      rows.filter((row) => !allowed || allowed.has(row.note_id as string)),
+      query,
+      limit,
+    );
   }
 
   getAllNotes(): Array<Record<string, unknown>> {

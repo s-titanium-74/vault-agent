@@ -19,6 +19,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    exclude: ["packages/cloudflare/**", "**/node_modules/**"],
     include: ["packages/*/src/**/*.test.ts", "packages/*/test/**/*.test.ts"],
     coverage: {
       enabled: false,
