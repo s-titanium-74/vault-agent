@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vault-agent-synthetic",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-28",
+  "workers_dev": false,
+  "observability": { "enabled": false },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vault-agent-synthetic",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "ratelimits": [
+    {
+      "name": "REQUEST_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
+  "r2_buckets": [
+    { "binding": "SOURCE", "bucket_name": "vault-agent-synthetic" },
+  ],
+  "vars": {
+    "VAULT_ID": "00000000-0000-4000-8000-000000000001",
+    "INCLUDE_PATHS": "[\".\"]",
+    "EXCLUDE_PATHS": "[]",
+    "ALLOWED_ORIGINS": "[]",
+    "PROFILE_VALUE_ALLOWLIST": "[\"type\",\"status\"]",
+  },
+}

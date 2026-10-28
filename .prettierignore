@@ -10,3 +10,7 @@ coverage/
 .git/
 .agents/
 .codex/
+
+.wrangler/
+.dev.vars
+.dev.vars.*

@@ -1,5 +1,10 @@
 export type * from "./contracts.js";
 export {
+  escapeFTSQuery,
+  textToTrigrams,
+  matchFallbackNotes,
+} from "../index-store-fts.js";
+export {
   SourceError,
   canonicalSourcePath,
   sourcePolicy,
