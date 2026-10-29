@@ -6,6 +6,34 @@ export default {
   async fetch(request: Request, env: Env) {
     if (request.headers.has("X-Synthetic-Policy-Change"))
       env = { ...env, EXCLUDE_PATHS: '["Notes/**"]' } as Env;
+    if (request.headers.has("X-Synthetic-Lost-Admission")) {
+      const original = env.DB;
+      const DB = new Proxy(original, {
+        get(target, key) {
+          if (key === "prepare")
+            return (sql: string) => {
+              const statement = target.prepare(sql);
+              if (!sql.startsWith("UPDATE ingestion_state SET job="))
+                return statement;
+              const wrap = (s: D1PreparedStatement): D1PreparedStatement =>
+                new Proxy(s, {
+                  get(t, k) {
+                    if (k === "bind")
+                      return (...args: unknown[]) => wrap(t.bind(...args));
+                    if (k === "run")
+                      return async () => ({ meta: { changes: 0 } });
+                    const value = Reflect.get(t, k);
+                    return typeof value === "function" ? value.bind(t) : value;
+                  },
+                });
+              return wrap(statement);
+            };
+          const value = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      env = { ...env, DB };
+    }
     if (String(env.EXTERNAL_EMBEDDING_CONSENT) === "true") {
       const index = {
         async describe() {

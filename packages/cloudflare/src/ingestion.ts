@@ -482,6 +482,9 @@ async function startScan(
     )
       .bind(id)
       .run();
+    // Explicit work requirements must retry admission after losing the writer race.
+    if (force || newScan || requireEmbeddings)
+      throw new CloudError("INDEX_BUSY", 409);
     return (await env.DB.prepare(
       "SELECT job FROM ingestion_state WHERE id=1",
     ).first<{ job: string }>())!.job;

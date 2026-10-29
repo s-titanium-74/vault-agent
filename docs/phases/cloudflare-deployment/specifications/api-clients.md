@@ -125,3 +125,7 @@ reporting overall success. Job cancellation is not exposed in this milestone;
 uncommitted plans expire after 24 hours. `--resume` takes the private local plan
 UUID rather than an arbitrary remote job ID. Failed source intents require a
 new plan so conflicting direct edits are never silently overwritten.
+
+Explicit rebuild, new-scan and mandatory-embedding requests that lose writer
+admission return 409 `INDEX_BUSY`. They must retry admission so the caller's
+requirements are preserved when another writer starts concurrently.

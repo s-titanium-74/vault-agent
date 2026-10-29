@@ -180,6 +180,21 @@ it("caches unchanged embedding inputs, waits for visibility and revokes deleted 
     )
       failed = await step(failed);
     expect(failed.state).toBe("failed");
+    const admission = await mf.dispatchFetch(
+      "https://vault.example.invalid/index",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${admin}`,
+          "Content-Type": "application/json",
+          "X-Synthetic-Lost-Admission": "true",
+        },
+        body: JSON.stringify({ requireEmbeddings: true }),
+      },
+    );
+    expect(admission.status).toBe(409);
+    expect(((await admission.json()) as any).error.code).toBe("INDEX_BUSY");
+
     expect(JSON.stringify(failed)).not.toContain(
       "synthetic-private-provider-error",
     );

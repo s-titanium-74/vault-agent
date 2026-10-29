@@ -575,3 +575,31 @@ it("validates guidance UTF-8 before publication and recovers from an invalid dir
   const guidance = await request("/agent-guidance/Notes%2FAGENTS.md");
   expect(guidance.status).toBe(200);
 });
+
+it("returns INDEX_BUSY when an explicit rebuild loses writer admission", async () => {
+  const parent = (await db.prepare("SELECT revision FROM deployment").first())!
+    .revision;
+  for (const [route, input] of [
+    ["/reindex", {}],
+    ["/index", { newScan: true }],
+  ] as const) {
+    const response = await mf.dispatchFetch(
+      "https://vault.example.invalid" + route,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${admin}`,
+          "Content-Type": "application/json",
+          "X-Synthetic-Lost-Admission": "true",
+        },
+        body: JSON.stringify(input),
+      },
+    );
+    const result = (await response.json()) as any;
+    expect(response.status).toBe(409);
+    expect(result.error.code).toBe("INDEX_BUSY");
+  }
+  expect(
+    (await db.prepare("SELECT revision FROM deployment").first())!.revision,
+  ).toBe(parent);
+});
