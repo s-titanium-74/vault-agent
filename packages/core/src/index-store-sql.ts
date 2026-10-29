@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS notes (
   frontmatter_degraded INTEGER NOT NULL DEFAULT 0,
   frontmatter_fields_json TEXT,
   links_json TEXT,
+  wikilinks_json TEXT,
   attachment_refs_json TEXT,
   body_text TEXT,
   oversized INTEGER NOT NULL DEFAULT 0,
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS chunks (
   char_end INTEGER NOT NULL,
   lexical_text TEXT NOT NULL,
   embedding_input_text TEXT NOT NULL,
+  embedding_key TEXT DEFAULT 'legacy',
   FOREIGN KEY (note_id) REFERENCES notes(note_id) ON DELETE CASCADE
 );
 
@@ -83,6 +85,12 @@ CREATE TABLE IF NOT EXISTS trigrams (
   chunk_id TEXT NOT NULL,
   gram TEXT NOT NULL,
   FOREIGN KEY (chunk_id) REFERENCES chunks(chunk_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS embedding_cache (
+  key TEXT PRIMARY KEY,
+  values_json TEXT NOT NULL,
+  created REAL NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_trigrams_gram ON trigrams(gram);

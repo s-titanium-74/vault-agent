@@ -98,3 +98,6 @@ semantic policy is cloud-specific; lexical filtering remains complete.
 Source adapters are not required to use R2. A future pCloud or other source
 must provide the same scoped revision reads, or reject unsupported consistency
 requirements. Such adapters, OAuth setup, and polling are follow-up work.
+
+Index mutation policy and prepared data are shared across local and cloud runtimes:
+[shared index updates](shared-index-updates.md).

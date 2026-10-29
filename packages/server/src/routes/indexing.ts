@@ -113,7 +113,14 @@ export function registerIndexRoutes(
       const result = await reindexVault(appConfig, { requireEmbeddings });
       const reopenedStore = await IndexStore.open(store.getDbPath());
       store.close();
-      initApp(reopenedStore, appConfig);
+      const state = getAppState();
+      initApp(
+        reopenedStore,
+        appConfig,
+        state.watcher ?? undefined,
+        state.gitSync ?? undefined,
+        state.freshnessMachine ?? undefined,
+      );
 
       return {
         data: {

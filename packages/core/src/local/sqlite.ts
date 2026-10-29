@@ -97,7 +97,7 @@ export class SqliteVectorStore implements VectorStore {
     return this.metadata.vaultId;
   }
   async available() {
-    return this.metadata.store.isVecAvailable();
+    return this.metadata.store.isEmbeddingReady();
   }
   async query(
     vector: Float32Array,
@@ -108,7 +108,13 @@ export class SqliteVectorStore implements VectorStore {
     const chunkIds = noteIds?.flatMap((id) =>
       this.metadata.store.getChunks(id).map((c) => c.chunk_id as string),
     );
-    return this.metadata.store.searchEmbeddingVectors(vector, limit, chunkIds);
+    return this.metadata.store
+      .searchEmbeddingVectors(vector, limit, chunkIds)
+      .filter((match) => {
+        const chunk = this.metadata.store.getChunkById(match.chunk_id);
+        // Legacy rows remain readable; newly replaced chunks require current vectors.
+        return chunk !== null && chunk.embedding_key !== null;
+      });
   }
   async upsert(entries: Parameters<VectorStore["upsert"]>[0]) {
     if (entries.length && !this.metadata.store.isVecAvailable())

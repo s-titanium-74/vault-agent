@@ -665,7 +665,9 @@ describe("getRelated", () => {
         details: "",
       }),
       isVecAvailable: () => true,
+      isEmbeddingReady: () => true,
       getNote: () => ({ links_json: "[]" }),
+      getChunkById: () => ({ embedding_key: "legacy" }),
       getChunks: (noteId: string) =>
         noteId === sourceId
           ? [

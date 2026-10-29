@@ -5,8 +5,19 @@ import {
 } from "@vault-agent/core/portable";
 import { authenticate, config, type Env } from "./config.js";
 import { CloudError, boundedBytes, failure } from "./errors.js";
-import { RetrievalService } from "./service.js";
+import { RetrievalService, cloudStatus } from "./service.js";
 import { mcp } from "./mcp.js";
+import {
+  ingestionEnabled,
+  createUpload,
+  addManifest,
+  uploadFile,
+  commitUpload,
+  jobStatus,
+  advance,
+  requestIndex,
+  tick,
+} from "./ingestion.js";
 async function body(request: Request) {
   if (
     !request.headers
@@ -53,14 +64,76 @@ async function dispatch(request: Request, env: Env) {
   if (new TextEncoder().encode(request.url).length > 8192)
     throw new CloudError("QUERY_TOO_LARGE", 413);
   if (url.protocol !== "https:") throw new CloudError("HTTPS_REQUIRED", 403);
-  const admin = /^\/(index|reindex|upload|sync|watch)(\/|$)/.test(url.pathname);
+  const admin =
+    /^\/(index|reindex|uploads?|sync|watch)(\/|$)/.test(url.pathname) ||
+    (/^\/jobs\//.test(url.pathname) && request.method !== "GET");
   await authenticate(request, env, admin);
   const origin = request.headers.get("Origin");
   if (origin && !settings.origins.includes(origin))
     throw new CloudError("ORIGIN_FORBIDDEN", 403);
   if (!(await env.REQUEST_LIMITER.limit({ key: env.VAULT_ID })).success)
     throw new CloudError("RATE_LIMITED", 429);
-  if (admin) throw new CloudError("CAPABILITY_UNSUPPORTED", 501);
+  if (ingestionEnabled(env)) {
+    const job = /^\/jobs\/([^/]+)(\/advance)?$/.exec(url.pathname);
+    const upload = /^\/uploads\/([^/]+)\/(manifest|commit|files\/(.+))$/.exec(
+      url.pathname,
+    );
+    let data: unknown;
+    if (url.pathname === "/uploads" && request.method === "POST")
+      data = await createUpload(
+        env,
+        request.headers.get("Idempotency-Key") ?? "",
+        await body(request),
+      );
+    else if (upload && request.method === "PUT" && upload[2] === "manifest")
+      data = await addManifest(env, upload[1]!, await body(request));
+    else if (upload && request.method === "PUT" && upload[3])
+      data = await uploadFile(
+        env,
+        upload[1]!,
+        decodeURIComponent(upload[3]),
+        request,
+      );
+    else if (upload && request.method === "POST" && upload[2] === "commit")
+      data = await commitUpload(env, upload[1]!);
+    else if (job && request.method === "GET" && !job[2])
+      data = await jobStatus(env, job[1]!);
+    else if (job && request.method === "POST" && job[2]) {
+      const p = await body(request);
+      if (!Number.isSafeInteger(p?.checkpoint) || p.checkpoint < 0)
+        throw new CloudError("INVALID_PARAMETER");
+      data = await advance(env, job[1]!, p.checkpoint);
+    } else if (
+      ["/index", "/reindex"].includes(url.pathname) &&
+      request.method === "POST"
+    ) {
+      const p = await body(request);
+      if (
+        p?.requireEmbeddings !== undefined &&
+        typeof p.requireEmbeddings !== "boolean"
+      )
+        throw new CloudError("INVALID_PARAMETER");
+      data = await requestIndex(
+        env,
+        url.pathname === "/reindex",
+        p.requireEmbeddings === true,
+        p.newScan === true,
+      );
+    }
+    if (data !== undefined) return Response.json({ data, warnings: [] });
+    if (url.pathname === "/status" && request.method === "GET") {
+      const pointer = await env.DB.prepare(
+        "SELECT revision FROM deployment WHERE id=1",
+      ).first();
+      if (!pointer)
+        return Response.json({
+          data: await cloudStatus(env, url.hostname, null, null),
+          warnings: [],
+        });
+    }
+  }
+  if (admin || /^\/jobs\//.test(url.pathname))
+    throw new CloudError("CAPABILITY_UNSUPPORTED", 501);
   if (url.pathname === "/mcp") {
     if (request.method !== "POST")
       return new Response(null, { status: 405, headers: { Allow: "POST" } });
@@ -159,6 +232,9 @@ async function dispatch(request: Request, env: Env) {
   return Response.json({ ...result, revision });
 }
 export default {
+  async scheduled(_event: ScheduledController, env: Env) {
+    await tick(env);
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     let response: Response;
     try {

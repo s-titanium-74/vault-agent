@@ -100,3 +100,32 @@ client before #32 closes. Do not port Fastify's raw-stream transport or its
 in-memory sessions into Workers. Clients must support manual bearer headers;
 OAuth discovery/interactive login and stdio-to-cloud proxying are out of scope.
 Document these client constraints in #35; do not imply every MCP host works.
+
+## Implemented #34 administration protocol
+
+The [scoped ingestion specification](scoped-ingestion.md) supersedes the older
+CLI-only advancement proposal. With ingestion enabled:
+
+| Route                                     | Behavior                                                                                                                                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /uploads`                           | Admin + UUID `Idempotency-Key`; `{vaultId,parentRevision,includes,entries,deletes,requireEmbeddings?}`. At most 100 total entries/deletes; returns job status. |
+| `PUT /uploads/{job}/manifest`             | Admin; additional immutable `{entries,deletes}` page of up to 100 operations; at most 500 paths total. Identical pages may be retried.                         |
+| `PUT /uploads/{job}/files/{encoded-path}` | Admin; raw bytes matching declared size and digest. Retries are deterministic.                                                                                 |
+| `POST /uploads/{job}/commit`              | Admin; requires all declared bodies; seals source application. Cron or advance applies one operation per step.                                                 |
+| `GET /jobs/{job}`                         | Read auth; bounded checkpoint/state/error metadata.                                                                                                            |
+| `POST /jobs/{job}/advance`                | Admin; `{checkpoint}`. Old checkpoint returns current status without repeating the step.                                                                       |
+| `POST /index`                             | Admin; `{requireEmbeddings?,newScan?}`. Resumes current reconciliation unless `newScan:true`, which conflicts while busy.                                      |
+| `POST /reindex`                           | Admin; reparses all notes in a new snapshot; conflicts while busy.                                                                                             |
+
+Manifest entries are `{path,kind,size,digest,updated}`. Job states are preparing,
+uploading, applying, scanning, planning, files, chunks, links, counting, vectors,
+validating, publishing, complete and failed. A complete upload job means source
+intent was applied; the CLI also waits for a subsequent index job before
+reporting overall success. Job cancellation is not exposed in this milestone;
+uncommitted plans expire after 24 hours. `--resume` takes the private local plan
+UUID rather than an arbitrary remote job ID. Failed source intents require a
+new plan so conflicting direct edits are never silently overwritten.
+
+Explicit rebuild, new-scan and mandatory-embedding requests that lose writer
+admission return 409 `INDEX_BUSY`. They must retry admission so the caller's
+requirements are preserved when another writer starts concurrently.

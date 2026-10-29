@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { vaultIdentity } from "./identifiers.js";
 import { Config } from "./config.js";
-import { IndexManifest, Note, Chunk } from "./types.js";
+import { IndexManifest, Note } from "./types.js";
 import {
   INDEX_SCHEMA_VERSION,
   DEFAULT_EXCLUDE_PATTERNS,
@@ -13,10 +13,8 @@ import {
   INDEXED_EXTENSIONS,
 } from "./schemas.js";
 import { resolveIndexDir } from "./paths.js";
-import {
-  generateLexicalIndexText,
-  generateEmbeddingInputText,
-} from "./markdown.js";
+import { prepareIndexRows } from "./portable/index-data.js";
+import type { IndexRow, PreparedEmbedding } from "./portable/index.js";
 import { escapeFTSQuery, textToTrigrams } from "./index-store-fts.js";
 import { SCHEMA_SQL, VEC_SCHEMA_SQL } from "./index-store-sql.js";
 import {
@@ -56,6 +54,17 @@ export class IndexStore {
       db.exec("ALTER TABLE notes ADD COLUMN frontmatter_fields_json TEXT");
     } catch {
       // Column already exists; ignore.
+    }
+
+    for (const sql of [
+      "ALTER TABLE notes ADD COLUMN wikilinks_json TEXT",
+      "ALTER TABLE chunks ADD COLUMN embedding_key TEXT DEFAULT 'legacy'",
+    ]) {
+      try {
+        db.exec(sql);
+      } catch {
+        /* Additive column already exists. */
+      }
     }
 
     try {
@@ -259,122 +268,102 @@ export class IndexStore {
   }
 
   upsertNote(note: Note): void {
-    const existing = this.db
-      .prepare("SELECT note_id FROM notes WHERE note_id = ?")
-      .get(note.noteId);
-    if (existing) {
-      this.deleteNoteChunks(note.noteId);
-    }
+    const prepared = prepareIndexRows(note);
+    this.upsertPreparedNote(prepared.note, prepared.chunks);
+  }
 
-    const linksJson = JSON.stringify(note.links ?? []);
-    const attachmentRefsJson = JSON.stringify(note.attachmentReferences ?? []);
-    const aliasesJson = JSON.stringify(note.frontmatter?.aliases ?? []);
-    const tagsJson = JSON.stringify(note.frontmatter?.tags ?? []);
-
-    const knownFrontmatterKeys = new Set([
+  upsertPreparedNote(note: IndexRow, chunks: readonly IndexRow[]): void {
+    this.deleteNoteChunks(String(note.note_id));
+    const columns = [
+      "note_id",
+      "path",
       "title",
-      "aliases",
-      "tags",
-      "date",
-      "created",
-      "updated",
-    ]);
-    const extraFields: Record<string, unknown> = {};
-    if (note.frontmatter) {
-      for (const [key, value] of Object.entries(note.frontmatter)) {
-        if (!knownFrontmatterKeys.has(key)) {
-          extraFields[key] = value;
-        }
-      }
-    }
-    const frontmatterFieldsJson =
-      Object.keys(extraFields).length > 0 ? JSON.stringify(extraFields) : null;
-
+      "file_size",
+      "content_hash",
+      "mtime_ms",
+      "frontmatter_title",
+      "aliases_json",
+      "tags_json",
+      "date_value",
+      "created_value",
+      "updated_value",
+      "has_frontmatter",
+      "frontmatter_degraded",
+      "frontmatter_fields_json",
+      "links_json",
+      "wikilinks_json",
+      "attachment_refs_json",
+      "body_text",
+      "oversized",
+      "empty",
+    ];
     this.db
       .prepare(
-        `
-      INSERT OR REPLACE INTO notes (note_id, path, title, file_size, content_hash, mtime_ms,
-        frontmatter_title, aliases_json, tags_json, date_value, created_value, updated_value,
-        has_frontmatter, frontmatter_degraded, frontmatter_fields_json, links_json, attachment_refs_json, body_text,
-        oversized, empty)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
+        `INSERT OR REPLACE INTO notes (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
       )
-      .run(
-        note.noteId,
-        note.vaultRelativePath,
-        note.title,
-        note.size,
-        note.contentHash,
-        note.mtimeMs,
-        note.frontmatter?.title ?? null,
-        aliasesJson,
-        tagsJson,
-        note.frontmatter?.date ?? null,
-        note.frontmatter?.created ?? null,
-        note.frontmatter?.updated ?? null,
-        note.frontmatter ? 1 : 0,
-        note.frontmatterDegraded ? 1 : 0,
-        frontmatterFieldsJson,
-        linksJson,
-        attachmentRefsJson,
-        note.chunks.map((c) => c.content).join("\n"),
-        note.chunks.length === 0 && note.size > 2 * 1024 * 1024 ? 1 : 0,
-        note.chunks.length === 0 && note.size <= 2 * 1024 * 1024 ? 1 : 0,
-      );
-
-    for (const chunk of note.chunks) {
-      this.insertChunk(
-        chunk,
-        note.frontmatter?.aliases ?? [],
-        note.frontmatter?.tags ?? [],
-      );
+      .run(...columns.map((k) => note[k] ?? null));
+    const keys = [
+      "chunk_id",
+      "note_id",
+      "chunk_index",
+      "path",
+      "title",
+      "heading",
+      "heading_path_json",
+      "content",
+      "content_hash",
+      "char_start",
+      "char_end",
+      "lexical_text",
+      "embedding_input_text",
+    ];
+    const insert = this.db.prepare(
+      `INSERT INTO chunks (${keys.join(",")},embedding_key) VALUES (${keys.map(() => "?").join(",")},NULL)`,
+    );
+    for (const chunk of chunks) {
+      insert.run(...keys.map((k) => chunk[k] ?? null));
+      this.insertTrigrams(String(chunk.chunk_id), String(chunk.lexical_text));
     }
   }
 
-  private insertChunk(chunk: Chunk, aliases: string[], tags: string[]): void {
-    const headingPathJson = JSON.stringify(chunk.headingPath);
-    const chunkId = `${chunk.noteId}:${chunk.chunkIndex}`;
-
-    const lexicalText = generateLexicalIndexText({
-      title: chunk.title,
-      aliases,
-      tags,
-      headingPath: chunk.headingPath,
-      content: chunk.content,
-    });
-
-    const embeddingInputText = generateEmbeddingInputText({
-      title: chunk.title,
-      headingPath: chunk.headingPath,
-      content: chunk.content,
-    });
-
+  updateNoteLinks(row: IndexRow): void {
     this.db
-      .prepare(
-        `
-      INSERT OR REPLACE INTO chunks (chunk_id, note_id, chunk_index, path, title, heading,
-        heading_path_json, content, content_hash, char_start, char_end, lexical_text, embedding_input_text)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-      )
-      .run(
-        chunkId,
-        chunk.noteId,
-        chunk.chunkIndex,
-        chunk.vaultRelativePath,
-        chunk.title,
-        chunk.heading,
-        headingPathJson,
-        chunk.content,
-        chunk.contentHash,
-        chunk.charStart,
-        chunk.charEnd,
-        lexicalText,
-        embeddingInputText,
+      .prepare("UPDATE notes SET links_json=?,wikilinks_json=? WHERE note_id=?")
+      .run(row.links_json, row.wikilinks_json, row.note_id);
+  }
+  updateNoteObservation(row: IndexRow): void {
+    this.db
+      .prepare("UPDATE notes SET file_size=?,mtime_ms=? WHERE note_id=?")
+      .run(row.file_size, row.mtime_ms, row.note_id);
+  }
+  getEmbeddingCache(key: string): Float32Array | null {
+    try {
+      const row = this.db
+        .prepare("SELECT values_json FROM embedding_cache WHERE key=?")
+        .get(key) as { values_json: string } | undefined;
+      return row ? Float32Array.from(JSON.parse(row.values_json)) : null;
+    } catch {
+      return null;
+    }
+  }
+  storePreparedEmbeddings(entries: readonly PreparedEmbedding[]): void {
+    const cache = this.db.prepare(
+      "INSERT OR REPLACE INTO embedding_cache VALUES(?,?,?)",
+    );
+    for (const entry of entries)
+      cache.run(
+        entry.cacheKey,
+        JSON.stringify(Array.from(entry.values)),
+        Date.now(),
       );
-
-    this.insertTrigrams(chunkId, lexicalText);
+    const writes = entries.filter((e) => e.needsWrite);
+    if (writes.length)
+      this.storeEmbeddings(
+        writes.map((e) => e.chunkId),
+        writes.map((e) => e.values),
+        writes.map((e) => e.contentHash),
+        writes.map((e) => e.cacheKey),
+      );
   }
 
   private insertTrigrams(chunkId: string, text: string): void {
@@ -399,7 +388,12 @@ export class IndexStore {
     const deleteChunks = this.db.prepare(
       "DELETE FROM chunks WHERE note_id = ?",
     );
+    const deleteVector =
+      this.vecLoaded && this.getEmbeddingDimension() !== null
+        ? this.db.prepare("DELETE FROM vec_chunks WHERE chunk_id=?")
+        : null;
     for (const chunk of chunks) {
+      deleteVector?.run(chunk.chunk_id);
       deleteTrigram.run(chunk.chunk_id);
     }
     deleteChunks.run(noteId);
@@ -611,6 +605,7 @@ export class IndexStore {
     chunkIds: string[],
     embeddings: Float32Array[],
     contentHashes: string[],
+    cacheKeys?: string[],
   ): void {
     if (!this.vecLoaded) return;
 
@@ -619,7 +614,7 @@ export class IndexStore {
     );
 
     const insertHash = this.db.prepare(
-      "UPDATE chunks SET content_hash = ? WHERE chunk_id = ?",
+      "UPDATE chunks SET content_hash = CASE WHEN ? <> '' THEN ? ELSE content_hash END, embedding_key=? WHERE chunk_id = ?",
     );
 
     const transaction = this.db.transaction(() => {
@@ -628,9 +623,7 @@ export class IndexStore {
         const embedding = embeddings[i]!;
         const hash = contentHashes[i] ?? "";
         insertVec.run(chunkId, float32ArrayToBuffer(embedding));
-        if (hash) {
-          insertHash.run(hash, chunkId);
-        }
+        insertHash.run(hash, hash, cacheKeys?.[i] ?? "legacy", chunkId);
       }
     });
 
@@ -734,6 +727,24 @@ export class IndexStore {
       return parseVectorDimension(row.sql);
     } catch {
       return null;
+    }
+  }
+
+  isEmbeddingReady(): boolean {
+    return (
+      this.isVecAvailable() &&
+      this.getEmbeddingDimension() !== null &&
+      !this.hasPendingEmbeddings()
+    );
+  }
+
+  hasPendingEmbeddings(): boolean {
+    try {
+      return !!this.db
+        .prepare("SELECT 1 FROM chunks WHERE embedding_key IS NULL LIMIT 1")
+        .get();
+    } catch {
+      return false;
     }
   }
 

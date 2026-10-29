@@ -50,7 +50,7 @@ export function registerStatusRoute(app: FastifyInstance): void {
         index: {
           freshness: freshnessInfo,
           embeddingState: config.embedding.enabled
-            ? store.isVecAvailable()
+            ? store.isEmbeddingReady()
               ? "ready"
               : "unavailable"
             : "disabled",
@@ -106,7 +106,7 @@ export function registerStatusRoute(app: FastifyInstance): void {
       index: {
         freshness: freshnessInfo,
         embeddingState: config.embedding.enabled
-          ? store.isVecAvailable()
+          ? store.isEmbeddingReady()
             ? "ready"
             : "unavailable"
           : "disabled",

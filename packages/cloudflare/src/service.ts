@@ -1,3 +1,4 @@
+import { detectionStatus, ingestionEnabled } from "./ingestion.js";
 import mime from "mime/lite";
 import * as core from "@vault-agent/core/portable";
 import type { Env } from "./config.js";
@@ -327,6 +328,13 @@ export class RetrievalService {
       data = result.data;
       warnings = result.warnings;
     }
+    const detection = await detectionStatus(this.env);
+    if (detection && detection.state !== "observed")
+      warnings.push({
+        code: detection.state === "updating" ? "INDEX_UPDATING" : "INDEX_STALE",
+        message:
+          "Serving the last published snapshot while source reconciliation is pending.",
+      });
     await this.current();
     return {
       data,
@@ -356,64 +364,85 @@ export class RetrievalService {
   }
   async status(host: string) {
     const ready = this.settings.semantic && (await this.vectors.available());
-    return {
-      server: { running: true, host, port: 443, apiKeyRequired: true },
-      index: {
-        freshness: {
-          state: "fresh",
-          lastSuccessfulUpdateAt: this.metadata.manifest.indexedAt,
-          pendingChangeCount: 0,
-          reindexRequired: false,
-          reindexReasons: [],
-        },
-        embeddingState: ready
-          ? "ready"
-          : this.settings.semantic
-            ? "unavailable"
-            : "disabled",
-      },
-      watch: {
-        enabled: false,
-        state: "disabled",
-        lastEventAt: null,
-        pending: false,
-        lastError: null,
-      },
-      sync: {
-        enabled: false,
-        configured: false,
-        state: "idle",
-        pending: false,
-        lastSuccessfulSyncAt: null,
-        consecutiveFailures: 0,
-        lastError: null,
-      },
-      deployment: {
-        runtime: "cloudflare",
-        vaultId: this.env.VAULT_ID,
-        activeRevision: this.snapshot,
-        targetRevision: null,
-        activeJobId: null,
-        cleanupPending: false,
-        capabilities: {
-          lexical: true,
-          semantic: ready,
-          attachments: true,
-          related: true,
-          orientation: true,
-          filters: true,
-          links: true,
-          guidance: true,
-          profiles: true,
-          mcpHttp: true,
-          upload: false,
-          indexJobs: false,
-          watch: false,
-          gitSync: false,
-        },
-      },
-    };
+    return cloudStatus(
+      this.env,
+      host,
+      this.snapshot,
+      this.metadata.manifest.indexedAt,
+      ready,
+    );
   }
+}
+export async function cloudStatus(
+  env: Env,
+  host: string,
+  snapshot: string | null,
+  indexedAt: number | null,
+  ready = false,
+) {
+  const detection = await detectionStatus(env);
+  return {
+    server: { running: true, host, port: 443, apiKeyRequired: true },
+    index: {
+      freshness: {
+        state: snapshot
+          ? detection?.state === "observed"
+            ? "fresh"
+            : (detection?.state ?? "fresh")
+          : "unknown",
+        lastSuccessfulUpdateAt: indexedAt,
+        pendingChangeCount: 0,
+        reindexRequired: false,
+        reindexReasons: [],
+      },
+      embeddingState: ready
+        ? "ready"
+        : config(env).semantic
+          ? "unavailable"
+          : "disabled",
+    },
+    watch: {
+      enabled: false,
+      state: "disabled",
+      lastEventAt: null,
+      pending: false,
+      lastError: null,
+    },
+    sync: {
+      enabled: false,
+      configured: false,
+      state: "idle",
+      pending: false,
+      lastSuccessfulSyncAt: null,
+      consecutiveFailures: 0,
+      lastError: null,
+    },
+    deployment: {
+      runtime: "cloudflare",
+      vaultId: env.VAULT_ID,
+      activeRevision: snapshot,
+      targetRevision: detection?.targetRevision ?? null,
+      activeJobId: detection?.activeJobId ?? null,
+      detection,
+      cleanupPending: detection?.cleanupPending ?? false,
+      capabilities: {
+        lexical: true,
+        semantic: ready,
+        attachments: true,
+        related: true,
+        orientation: true,
+        filters: true,
+        links: true,
+        guidance: true,
+        profiles: true,
+        mcpHttp: true,
+        upload: ingestionEnabled(env),
+        indexJobs: ingestionEnabled(env),
+        watch: false,
+        gitSync: false,
+      },
+    },
+  };
 }
 export function attachmentType(path: string) {
   return mime.getType(path) ?? "application/octet-stream";

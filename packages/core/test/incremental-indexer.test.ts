@@ -155,7 +155,7 @@ describe("incrementalIndexUpdate", () => {
     expect(newNote).not.toBeNull();
   });
 
-  it("indexes excluded paths when called directly (watcher filters exclusions separately)", async () => {
+  it("rejects excluded paths even when called directly", async () => {
     const configWithExclude = structuredClone(DEFAULT_CONFIG);
     configWithExclude.vault.root = tmpDir;
     configWithExclude.vault.exclude = ["**/secret/**"];
@@ -176,7 +176,8 @@ describe("incrementalIndexUpdate", () => {
       },
     );
 
-    expect(result.notesIndexed).toBe(1);
+    expect(result.notesIndexed).toBe(0);
+    expect(storeWithExclude.getNoteByPath("secret/note.md")).toBeNull();
     storeWithExclude.close();
   });
 

@@ -79,3 +79,5 @@ Acceptance for #30:
   attachments, with semantic processing separately enabled.
 
 Implementation milestone #32: [Workers retrieval](specifications/workers-retrieval.md).
+
+Implementation milestone #34: [scoped autonomous ingestion](specifications/scoped-ingestion.md).

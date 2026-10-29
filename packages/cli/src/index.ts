@@ -1,3 +1,4 @@
+import { registerUploadCommand } from "./commands/upload.js";
 import { Command } from "commander";
 import { registerConfigCommands } from "./commands/config.js";
 import { registerIndexingCommands } from "./commands/indexing.js";
@@ -29,6 +30,7 @@ program
 
 registerServeCommand(program, context);
 registerIndexingCommands(program, context);
+registerUploadCommand(program, context);
 registerSearchCommands(program, context);
 registerLinkCommands(program, context);
 registerOrientationCommands(program, context);

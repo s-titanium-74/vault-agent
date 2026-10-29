@@ -230,6 +230,7 @@ describe("Embedding provider integration", () => {
           details: "",
         }),
         isVecAvailable: () => true,
+        isEmbeddingReady: () => true,
         searchEmbeddingVectors: () => vectorResults,
         getChunkById: (chunkId: string) => ({
           chunk_id: chunkId,

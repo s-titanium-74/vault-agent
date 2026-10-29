@@ -4,6 +4,8 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-28",
   "workers_dev": false,
+  "limits": { "cpu_ms": 1000 },
+  "triggers": { "crons": ["* * * * *"] },
   "observability": { "enabled": false },
   "d1_databases": [
     {
@@ -24,6 +26,7 @@
     { "binding": "SOURCE", "bucket_name": "vault-agent-synthetic" },
   ],
   "vars": {
+    "INGESTION_ENABLED": "true",
     "EXTERNAL_EMBEDDING_CONSENT": "false",
     "EMBEDDING_MODEL": "@cf/baai/bge-m3",
     "EMBEDDING_MODEL_REVISION": "operator-v1",
@@ -37,6 +40,7 @@
   "env": {
     "semantic": {
       "name": "vault-agent-synthetic-semantic",
+      "triggers": { "crons": ["* * * * *"] },
       "ai": { "binding": "AI" },
       "vectorize": [
         {
@@ -63,6 +67,7 @@
         },
       ],
       "vars": {
+        "INGESTION_ENABLED": "true",
         "EXTERNAL_EMBEDDING_CONSENT": "true",
         "EMBEDDING_MODEL": "@cf/baai/bge-m3",
         "EMBEDDING_MODEL_REVISION": "operator-v1",
