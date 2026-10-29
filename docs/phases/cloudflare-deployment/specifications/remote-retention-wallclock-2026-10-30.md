@@ -1,7 +1,14 @@
 # Real-time retention validation (2026-10-30 JST)
 
-Status: preparation in progress. This is a real 24-hour observation, not a
-completed validation or the earlier timestamp-aging experiment.
+Status: prepared and waiting for real expiry. This is a real 24-hour observation,
+not a completed validation or the earlier timestamp-aging experiment.
+
+Preparation completed on 2026-10-30 at 08:21:39 JST. The old snapshot was created
+at 08:18:25 JST and the abandoned upload at 08:21:38 JST. Their 24-hour cutoffs
+are therefore 2026-10-31 at 08:18:25 and 08:21:38 JST respectively. The baseline
+observation at 08:21:52 JST passed: old rows/FTS/copy and staging remained,
+active/source/excluded/unrelated objects were preserved, and search/get returned
+the replacement. These timestamps do not establish post-expiry reclamation.
 
 ## Method
 
@@ -22,6 +29,9 @@ object and entry remain. Read-only follow-up checks observe real Cron cleanup
 after the cutoffs. Cleanup is bounded and need not finish at exactly 24 hours.
 Record the last observation before expiry and first observation of completion;
 do not infer an exact deletion time from the polling interval.
+The operator chose to check again about 30 hours later rather than hourly;
+the preparation baseline is the available pre-expiry observation. A later
+successful check will not prove preservation immediately before the cutoff.
 
 Throughout the trial, verify the active revision, its immutable note copy,
 mutable source, excluded source probe and unrelated bucket prefix remain.
@@ -33,9 +43,11 @@ by this lexical-only trial; the earlier synthetic bookkeeping test is separate.
 ## Follow-up and teardown
 
 Private operator state, credentials and read-only observation tooling are kept
-in an ignored operator directory with restricted permissions. An hourly thread
-follow-up is registered to observe the trial, finish verification and remove
-its owned resources. Local app/host availability affects observation timing;
+in an ignored operator directory with restricted permissions. The thread
+follow-up was moved from hourly checks to about 30 hours after the operator's
+request (2026-10-31 afternoon JST), to finish verification and remove its owned
+resources. It is instructed to stop after that check and reporting, rather than
+continue a recurring trial. Local app/host availability affects observation timing;
 the deployed Cron itself runs remotely. No result is inferred if a follow-up
 does not run.
 
