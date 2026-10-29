@@ -1,7 +1,8 @@
 # Remaining hosted validation (#35)
 
 Status: Compact-workload and age-equivalent native retention follow-up completed;
-Paid-plan validation is explicitly on hold at the operator's request. A fresh isolated deployment rejected `limits.cpu_ms=1000` with provider
+Paid-plan validation is deferred until the #43 idle-reconciliation optimization
+and is not a #35 completion gate. A fresh isolated deployment rejected `limits.cpu_ms=1000` with provider
 code `100328`; removing that setting did not change account billing.
 
 The follow-up adds 100 compact atomic bilingual notes (one short line per note)
@@ -40,3 +41,7 @@ phases retain their own clean measurement windows. Wrangler logs are stored
 alongside private reports, not a required writable home directory.
 
 Recorded results and limitations: [hosted follow-up](remote-follow-up-2026-10-29.md).
+
+A [real-time retention trial](remote-retention-wallclock-2026-10-30.md) is now
+being prepared with production Cron and unmodified timestamps. It remains
+pending until the 24-hour cutoffs, subsequent cleanup and teardown are observed.

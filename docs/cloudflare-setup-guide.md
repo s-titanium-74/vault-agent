@@ -1,8 +1,11 @@
 # Deploy your own Cloudflare edition
 
 Status: #35 implementation in progress. Wrangler provisioning in an existing
-account with new isolated resources has been validated; clean-account and
-Deploy-button execution are separate, outstanding release gates. Use synthetic content first. See [measurement evidence](phases/cloudflare-deployment/specifications/cost-and-limits.md).
+account with new isolated resources has been validated. Account creation, R2
+activation and required billing/authentication setup are manual prerequisites;
+their complete automation is not required. Deployment after those prerequisites
+and Deploy-button execution still need separate validation. Use synthetic
+content first. See [measurement evidence](phases/cloudflare-deployment/specifications/cost-and-limits.md).
 
 ## Prerequisites and data scope
 

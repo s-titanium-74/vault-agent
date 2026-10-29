@@ -2,7 +2,10 @@
 
 Status: In progress. Wrangler provisioning and the new-template hosted synthetic
 walkthrough are validated; clean-account and Deploy-button validation remain
-open. Recorded hosted #34 evidence remains separate.
+open. Account creation, R2 activation and required billing/authentication setup
+are documented manual prerequisites; fully automating those account actions is
+not a release gate. Validate deployment after those prerequisites. Recorded
+hosted #34 evidence remains separate.
 
 ## Delivery contract
 
@@ -84,4 +87,7 @@ The [compact-workload follow-up](remote-follow-up-2026-10-29.md) adds hosted
 100-note update/rebuild/deletion with interruption recovery and native
 age-equivalent snapshot/staging/cache cleanup. Its much smaller corpus and
 explicit timestamp aging do not replace the remaining original-size/timer
-measurements. Paid execution is on hold at the operator's request.
+measurements. Paid execution validation is deferred until the #43 optimization,
+outside #35's completion gates; document its unverified limits. This does not
+authorize a plan change. A [real-time retention trial](remote-retention-wallclock-2026-10-30.md)
+is in preparation and has no completed 24-hour result yet.
