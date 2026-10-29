@@ -12,6 +12,9 @@ function measured(env: Env) {
     r2List: 0,
     r2Put: 0,
     r2Delete: 0,
+    aiCalls: 0,
+    aiInputs: 0,
+    vectorUpserts: 0,
   };
   const originals = new WeakMap<D1PreparedStatement, D1PreparedStatement>();
   const result = (r: D1Result) => {
@@ -75,7 +78,37 @@ function measured(env: Env) {
       };
     },
   });
-  return { env: { ...env, DB, SOURCE }, counts };
+  const AI = env.AI
+    ? new Proxy(env.AI, {
+        get(target, key) {
+          const value = Reflect.get(target, key);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            if (key === "run") {
+              counts.aiCalls++;
+              const input = args[1] as { text?: unknown };
+              if (Array.isArray(input?.text))
+                counts.aiInputs += input.text.length;
+            }
+            return Reflect.apply(value, target, args);
+          };
+        },
+      })
+    : undefined;
+  const VECTORS = env.VECTORS
+    ? new Proxy(env.VECTORS, {
+        get(target, key) {
+          const value = Reflect.get(target, key);
+          if (typeof value !== "function") return value;
+          return (...args: unknown[]) => {
+            if (key === "upsert" && Array.isArray(args[0]))
+              counts.vectorUpserts += args[0].length;
+            return Reflect.apply(value, target, args);
+          };
+        },
+      })
+    : undefined;
+  return { env: { ...env, DB, SOURCE, AI, VECTORS }, counts };
 }
 async function record(env: Env, kind: string, start: number, counts: unknown) {
   await env.DB.prepare(

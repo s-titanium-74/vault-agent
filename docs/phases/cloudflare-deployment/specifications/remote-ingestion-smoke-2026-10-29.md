@@ -35,7 +35,7 @@ image bytes. Its resolved link graph targeted the newly created note. Hidden,
 user-excluded and out-of-scope objects were absent from the published manifest.
 Local tests also verify that revision-pinned gets cannot route to an old snapshot.
 
-## Semantic observation and bounded operation counts
+## Initial semantic observation and bounded operation counts
 
 A separate disposable `test/remote-ingestion-worker.ts` entrypoint wraps the
 same production handlers with content-free D1/R2 operation counters. It adds
@@ -68,19 +68,69 @@ release gate under #35; no plan upgrade was performed.
 
 Local workerd tests separately verify exact-input embedding cache reuse,
 visibility delay, unavailable-provider fallback, mandatory-embedding failure
-and exclusion of retained old vectors after deletion. A second real semantic
-rebuild/cache-reuse and post-deletion query test remains unverified. Treat it
-as an additional hosted verification gap rather than extrapolating from this
-single real generation. The test Cron was disabled after observation; already
-admitted work could finish while the schedule change propagated.
+and exclusion of retained old vectors after deletion. The initial hosted run
+validated one actual generation; the additional run below verifies hosted cache
+reuse and post-deletion queries. The first test Cron was disabled after
+observation; already admitted work could finish while the schedule change
+propagated.
+
+## Additional hosted semantic validation
+
+A second isolated deployment ran the reusable
+`scripts/remote-ingestion-semantic-smoke.ts` against two synthetic notes with
+real Workers AI and Vectorize. Its wrapper added content-free counters around
+the native bindings; it did not replace provider responses. The production
+handlers came from `0b7ef9f` with that instrumentation. The later writer-admission
+fix described below has separate workerd regression coverage.
+
+| Phase                                   | Additional ingestion AI calls / inputs | Result                                                   | Runner wall time |
+| --------------------------------------- | -------------------------------------- | -------------------------------------------------------- | ---------------- |
+| Initial mandatory-embedding rebuild     | 2 / 2                                  | Two query-visible vectors; published ready generation    | 191,103 ms       |
+| Mandatory rebuild with identical source | 0 / 0                                  | Reused exact model/input cache; new ready generation     | 180,611 ms       |
+| Incremental update of one note          | 1 / 1                                  | Only the changed input was embedded; ready generation    | 124,735 ms       |
+| Direct R2 deletion of the other note    | 0 / 0                                  | Real Cron published deletion without advance/index calls | 319,440 ms       |
+
+The deletion runner was waiting before the source object was removed; its wall
+time includes that short setup interval. After publication, explicit note and
+chunk retrieval returned 404. An actual embedding search returned only the
+surviving note. A separate native Vectorize `get_by_ids` confirmed that the
+removed note's vector from the first generation was still stored: retrieval
+revocation therefore did not depend on physical vector cleanup. The old vector
+and all other disposable data were removed during teardown.
+
+The four generations stored seven query-visible vector records and three
+exact-input cache entries. Total native AI calls/inputs were four: three from
+ingestion plus one explicitly requested search query after deletion. The
+scheduled deletion processing itself made zero AI calls.
+
+The second run's instrumented operation sample was:
+
+| Invocation kind | Count | Wall time range | Maximum D1 statements | Total D1 rows read / written |
+| --------------- | ----- | --------------- | --------------------- | ---------------------------- |
+| GET             | 36    | 79–1,282 ms     | 7                     | 377 / 0                      |
+| POST            | 296   | 289–1,876 ms    | 12                    | 3,173 / 1,687                |
+| Scheduled       | 5     | 3,325–15,336 ms | 81                    | 440 / 249                    |
+
+Counters exclude the appended telemetry-row write. The sample does not measure
+CPU or establish maximum-vault cost limits. The account stayed on its existing
+Free plan, with the custom paid-plan CPU setting omitted. The R2 managed public
+domain was verified disabled.
+
+Review during validation also found a writer-admission race: a losing explicit
+rebuild/new-scan/mandatory-embedding request could receive a different job.
+Fault-injected workerd tests reproduced the incorrect 200 response. The publisher
+now returns 409 `INDEX_BUSY` for those requests after losing admission, preserving
+the caller's work requirements. All 45 cloud tests passed after the fix.
 
 ## Cleanup
 
 The disposable Worker, its secrets and Cron, Vectorize index, D1 database,
 R2 objects and bucket are removed after observation. Teardown is checked by
 resource reads: Worker, database and bucket returned 404; Vectorize returned
-410 `vectorize.index.deleted`. No account configuration or existing project resource
-is modified. Resource deletion is distinct from provider backup retention.
+410 `vectorize.index.deleted`. The additional run also removed its Worker,
+secrets/Cron, eight R2 objects and bucket, database and Vectorize index, with
+absence checked through the same resource reads. No account configuration or
+existing project resource is modified. Resource deletion is distinct from provider backup retention.
 
 ## Reproduction
 
@@ -101,3 +151,37 @@ do not call advance/index/upload to drive that change. The runner only polls
 explicit get while waiting for the synthetic marker. Never use existing vault
 bindings for this procedure. Remove the disposable resources and credentials
 at the end of every run.
+
+For the additional semantic run, provision a dedicated Vectorize index and its
+`chunkId` string metadata index, apply the migrations, enable embedding consent
+and add only these synthetic source files under the configured source prefix:
+
+```json
+{
+  "Notes/Apple.md": "# Apple\nSynthetic apple trees grow in an orchard.\n",
+  "Notes/Pear.md": "# Pear\nSynthetic pear trees bear fruit in summer.\n"
+}
+```
+
+For the changed-input phase, replace only Apple with
+`# Apple\nSynthetic orchard apples need winter pruning and spring water.\n`.
+The instrumented entrypoint requires a synthetic-only table:
+
+```sql
+CREATE TABLE synthetic_telemetry(kind TEXT, wall_ms INTEGER, counts TEXT);
+```
+
+Run `rebuild` twice, comparing native AI-call/input counters in that private D1
+table between phases; both runs must publish ready generations and the second
+must add zero calls. Change only the Apple note and run `index`; it must add one
+ingestion input. Start `wait-deleted`, wait for its `REPORT_JSON.ready` signal,
+then delete only the Pear source object through the R2 API/dashboard. That mode
+polls reads and issues a single explicit embedding query after deletion. It
+never drives a job. Always compare counters before that query so query inference
+is not mistaken for an ingestion cache miss.
+
+```sh
+node --import tsx packages/cloudflare/scripts/remote-ingestion-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON rebuild
+node --import tsx packages/cloudflare/scripts/remote-ingestion-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON index
+node --import tsx packages/cloudflare/scripts/remote-ingestion-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON wait-deleted
+```

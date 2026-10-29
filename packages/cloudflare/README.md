@@ -253,3 +253,8 @@ resources using an operator-local credential JSON; it exercises the actual CLI
 and optionally waits for a direct R2 edit to appear through real Cron.
 
 Hosted #34 results and limits: [deployed ingestion smoke](../../docs/phases/cloudflare-deployment/specifications/remote-ingestion-smoke-2026-10-29.md).
+
+`scripts/remote-ingestion-semantic-smoke.ts` adds hosted mandatory rebuild,
+cache-reuse and autonomous deletion/query checks for two synthetic notes. It
+uses the disposable instrumentation entrypoint and private operator state from
+the recorded procedure; it must not be run against an existing vault.
