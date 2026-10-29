@@ -194,9 +194,41 @@ compatible note/chunk rows after create, edit, rename and delete. Regression
 coverage also verifies exact-input reuse, invalid-cache repair, legacy SQLite
 migration, link re-resolution and mandatory/optional provider failure.
 
-The hosted measurements above describe the earlier implementation revisions;
-they are not evidence of a hosted run of the shared-core refactor. A fresh
-hosted run is pending explicit authorization to create disposable resources
-and send the same two synthetic notes to Workers AI. Automatic approval review
-rejected the attempted resource creation before execution; no resources were
-created for this follow-up.
+After explicit authorization, a third isolated deployment ran the same two
+synthetic notes against the production handlers from `7c90137` with the existing
+content-free instrumentation. Both GitHub workflows passed for that revision.
+All 715 local checks passed (661 root tests, 8 distribution tests and 46 Worker
+tests), along with type checks, lint, formatting and builds.
+
+| Phase                       | Additional ingestion AI calls / inputs | Result                             | Runner wall time |
+| --------------------------- | -------------------------------------- | ---------------------------------- | ---------------- |
+| Initial mandatory rebuild   | 2 / 2                                  | Ready generation, two vectors      | 112,674 ms       |
+| Identical mandatory rebuild | 0 / 0                                  | Reused cache, new ready generation | 146,451 ms       |
+| Edit Apple only             | 1 / 1                                  | Only the changed input regenerated | 133,041 ms       |
+| Direct R2 deletion of Pear  | 0 / 0                                  | Actual Cron published deletion     | 246,669 ms       |
+
+The deletion runner started before the direct R2 removal and performed zero
+administration checkpoints. Real scheduled invocations published a ready
+replacement. Explicit note and chunk retrieval returned 404; an actual embedding
+query returned only Apple. Native Vectorize `get_by_ids` separately confirmed
+that Pear's first-generation vector was still stored, proving that retrieval
+revocation did not depend on physical cleanup. The explicit search added one
+AI call/input, bringing the total to four; scheduled processing added zero.
+Four ready generations, three exact-input cache entries and seven vector
+upserts were observed.
+
+The follow-up operation sample was:
+
+| Invocation kind | Count | Wall time range | Maximum D1 statements | Total D1 rows read / written |
+| --------------- | ----- | --------------- | --------------------- | ---------------------------- |
+| GET             | 30    | 103–466 ms      | 7                     | 311 / 0                      |
+| POST            | 236   | 287–1,585 ms    | 12                    | 2,573 / 1,447                |
+| Scheduled       | 6     | 4,706–16,212 ms | 82                    | 439 / 247                    |
+
+These counters exclude the wrapper's telemetry insert and cover a functional
+sample, not a cost or CPU benchmark. Cron configuration propagation is included
+in the deletion wait. The R2 managed public domain remained disabled, and no
+account plan was changed. After observation the Worker/secrets/Cron, all eight
+R2 objects and bucket, D1 database and Vectorize index were removed. Resource
+reads verified 404 for Worker/bucket/database and 410 for Vectorize. The private
+operator credential file was removed as well.
