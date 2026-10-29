@@ -1,3 +1,4 @@
+import { driveCloudJob } from "./upload.js";
 import { Command } from "commander";
 import { loadConfig } from "@vault-agent/core";
 import { CliContext } from "../context.js";
@@ -53,7 +54,7 @@ function registerIndexCommand(
           INDEXING_TIMEOUT_MS,
         );
 
-        const data = await response.json();
+        let data = await response.json();
         const commandResult = getCommandResultFromHttpResponse(
           response.status,
           data,
@@ -67,10 +68,20 @@ function registerIndexCommand(
           process.exit(commandResult.exitCode);
         }
 
+        if (data?.data?.jobId) {
+          const result = await driveCloudJob(endpoint, apiKey, data.data);
+          data = { data: result, warnings: [] };
+        }
         if (opts.json) {
           console.log(JSON.stringify(data, null, 2));
         } else {
           const result = data.data ?? data;
+          if (result.jobId) {
+            console.log(
+              `Cloud indexing: ${result.state} (${result.targetRevision})`,
+            );
+            return;
+          }
           console.log(`Indexing mode: ${result.mode}`);
           console.log(`Notes indexed: ${result.notesIndexed}`);
           console.log(`Chunks indexed: ${result.chunksIndexed}`);

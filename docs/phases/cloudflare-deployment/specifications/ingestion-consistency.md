@@ -1,6 +1,8 @@
 # Cloudflare Ingestion And Consistency
 
-Status: Ready for Review
+Status: Superseded for #34 orchestration and source layout by
+[scoped autonomous ingestion](scoped-ingestion.md).
+The revision isolation and privacy requirements below remain applicable.
 
 ## Explicit Upload Workflow
 

@@ -47,3 +47,5 @@ export {
   getLinkSummary,
 } from "../link-graph-shared.js";
 export { getMetadataProfile, getStyleProfile } from "../profile-shared.js";
+
+export { prepareSourceNote, uploadKind, uploadLimit } from "./ingestion.js";

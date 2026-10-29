@@ -86,9 +86,8 @@ never bypasses the hard source or MCP transport budgets.
 
 The base configuration serves lexical search with hybrid fallback warnings;
 explicit embedding returns 503 until semantic processing is configured and a
-complete generation is ready. Upload/index jobs return 501 after admin
-authentication. Watch and Git sync are unsupported; `/status` advertises these
-capabilities as false. Link/orientation/profile data comes from bounded indexed
+complete generation is ready. Explicit upload and resumable indexing jobs are
+available when `INGESTION_ENABLED=true`. Watch and Git sync remain unsupported. Link/orientation/profile data comes from bounded indexed
 rows. Guidance is untrusted vault context, retrieved only by explicit calls.
 See [admission budgets](../../docs/phases/cloudflare-deployment/specifications/workers-retrieval.md).
 
@@ -113,10 +112,9 @@ unavailable. Search/related responses include content-free `usage` counts when
 semantic processing is configured.
 
 Applying migration 0002 or selecting an environment does not create embeddings.
-The #34 publisher must stage a matching `embedding_generations` descriptor,
-call bounded adapter writes and visibility probes, then publish a complete
-ready snapshot. Existing lexical snapshots remain usable. This change provides
-the adapters and read path; upload/index HTTP jobs still return 501. Model or
+The publisher stages a matching `embedding_generations` descriptor,
+calls bounded adapter writes and visibility probes, then publishes a complete
+ready snapshot. Existing lexical snapshots remain usable. Model or
 input-format changes require a new generation and full rebuild. See the
 [semantic contract](../../docs/phases/cloudflare-deployment/specifications/semantic-retrieval.md)
 for model selection, budgets, readiness, migration and hosted validation results.
@@ -187,7 +185,8 @@ Check the following using a private client environment for credentials:
 1. `/health` discloses no identity or counts. Every other read, status, MCP,
    and admin route rejects missing/invalid credentials before storage access.
 2. A read token receives `ADMIN_REQUIRED` on `/index`, `/reindex`, `/sync/pull`,
-   and `/upload`; an admin token receives `CAPABILITY_UNSUPPORTED` for these.
+   and `/uploads`; an admin token can run ingestion jobs while Git sync remains
+   `CAPABILITY_UNSUPPORTED`.
 3. Search `apple` lexically, apply `tags: [garden]` and path/type/status filters,
    then get one returned note/chunk with its snapshot pin. Compare ordering
    with the local fixture tests. Check the Japanese trigram and empty note.
@@ -196,7 +195,7 @@ Check the following using a private client environment for credentials:
 5. Use an actual remote MCP SDK client: initialize, list tools, call search,
    get note/chunk, guidance/profile/link tools, and attachment base64. Repeat
    requests across connections without a session ID; reject unlisted Origins.
-6. Check `/status` cloud capabilities and fresh active revision. Record measured
+6. Check `/status` cloud capabilities, observation age and active revision. Record measured
    D1/R2 behavior and timings without queries, bodies, credentials, or raw URLs.
 7. Remove the disposable Worker, secrets, D1 and R2 objects/bucket after testing.
    Worker deletion alone does not remove storage/backups. Provider retention
@@ -206,3 +205,51 @@ Remote smoke and cost/limit measurements must be recorded separately. This
 package does not claim those gates have passed based on simulation. Do not
 onboard private production content until authentication/exclusion/revision
 isolation and #34 publication/ingestion validation have passed.
+
+## Explicit upload and autonomous ingestion
+
+Apply migration 0003 before enabling `INGESTION_ENABLED=true`. The provided
+cloud configurations include a once-per-minute Cron Trigger and a paid-plan
+1000 ms CPU limit. A Free-plan smoke requires omitting that custom limit; it
+does not validate the paid-plan CPU budget. Never change an account plan as
+part of setup without explicit authorization.
+
+Configure the deployment endpoint and admin API key in user-local settings or
+environment variables. From a configured local vault:
+
+```sh
+vault-agent upload --vault-id VAULT_UUID --include Notes images --dry-run
+vault-agent upload --resume PLAN_UUID
+vault-agent upload --vault-id VAULT_UUID --include Notes images --delete-removed
+```
+
+Dry run creates a private user-local plan, prints only selected relative paths,
+counts/bytes, rules and destinations, and performs no requests. Resume verifies
+that the selection is unchanged before sending bytes. The server revalidates
+its own include/exclude policy. Supply matching exclusions locally; if the
+server's narrower policy rejects a plan, no excluded bytes are accepted.
+
+Editing `<VAULT_UUID>/source/<path>` directly in the private R2 bucket also
+updates retrieval, without the CLI. Cron scans only this prefix and persists
+bounded parsing/indexing/validation checkpoints in D1. Source objects are
+mutable; `<VAULT_UUID>/<snapshot>/<path>` is reserved for immutable publication.
+Do not edit published or staging objects. Attachments remain retrieval-only.
+Optional hosted embeddings require separate deployment consent; unchanged exact
+model/input pairs reuse cached vectors. The CLI polls jobs at one-second minimum
+intervals; Cron continues committed work after it disconnects.
+
+Retrieval serves the last immutable snapshot during detection/building/failure.
+Status reports `deployment.detection.lastObservedAt` and observed/updating/stale
+state, rather than claiming instantaneous synchronization. Deleted content can
+remain accessible until a deletion snapshot publishes; afterward old IDs and
+vectors cannot authorize retrieval. Cleanup retains obsolete snapshots for at
+least 24 hours, then removes bounded batches on Cron. Ingestion never scans or
+deletes unrelated bucket prefixes.
+
+Protocol, concurrency, latency targets, budgets and recovery:
+[scoped ingestion](../../docs/phases/cloudflare-deployment/specifications/scoped-ingestion.md).
+The reusable `scripts/remote-ingestion-smoke.ts` operates only against disposable
+resources using an operator-local credential JSON; it exercises the actual CLI
+and optionally waits for a direct R2 edit to appear through real Cron.
+
+Hosted #34 results and limits: [deployed ingestion smoke](../../docs/phases/cloudflare-deployment/specifications/remote-ingestion-smoke-2026-10-29.md).

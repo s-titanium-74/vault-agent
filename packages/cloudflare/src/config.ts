@@ -42,6 +42,11 @@ export function config(env: Env) {
       )
     )
       throw new Error();
+    if (
+      env.INGESTION_ENABLED !== undefined &&
+      !["true", "false"].includes(String(env.INGESTION_ENABLED))
+    )
+      throw new Error();
     const includes = strings(env.INCLUDE_PATHS);
     if (!includes.length) throw new Error();
     const origins = strings(env.ALLOWED_ORIGINS);

@@ -148,7 +148,7 @@ export async function fixture(extra: Record<string, string> = {}) {
   const statements: string[] = [];
   const add = (sql: string) => statements.push(sql);
   add(
-    `INSERT INTO snapshots VALUES(${quote(revision)},${quote(VAULT_ID)},${quote(JSON.stringify(manifest))},${notes.length},${chunks.length},${entries.length},${new TextEncoder().encode(JSON.stringify([...notes, ...chunks])).length})`,
+    `INSERT INTO snapshots(revision,vault_id,manifest,note_count,chunk_count,entry_count,indexed_bytes) VALUES(${quote(revision)},${quote(VAULT_ID)},${quote(JSON.stringify(manifest))},${notes.length},${chunks.length},${entries.length},${new TextEncoder().encode(JSON.stringify([...notes, ...chunks])).length})`,
   );
   add(
     `CREATE VIRTUAL TABLE fts_${revision} USING fts5(chunk_id UNINDEXED,lexical_text,tokenize='unicode61')`,
