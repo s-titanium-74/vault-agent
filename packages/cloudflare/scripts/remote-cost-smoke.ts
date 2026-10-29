@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { noteIdFromPath } from "../../core/src/portable/identifiers.js";
 const execute = promisify(execFile);
 const state = JSON.parse(await readFile(process.argv[2]!, "utf8"));
@@ -15,12 +16,19 @@ assert(/^vault-agent-trial-[a-f0-9]{10}$/.test(state.name));
 assert(
   ["initial", "update", "rebuild", "delete", "search", "get"].includes(phase),
 );
+const scheduledDriver = process.argv.includes("--scheduled-driver");
+const resume = process.argv.includes("--resume");
 const settings = JSON.parse(await readFile(config, "utf8"));
 assert.equal(settings.name, state.name);
 assert(
-  settings.main.endsWith("test/remote-ingestion-worker.ts"),
-  "Use only the instrumented synthetic entrypoint",
+  ["test/remote-ingestion-worker.ts", "test/remote-retention-worker.ts"].some(
+    (entry) => settings.main.endsWith(entry),
+  ),
+  "Use only a synthetic instrumentation entrypoint",
 );
+if (scheduledDriver)
+  assert(settings.main.endsWith("test/remote-retention-worker.ts"));
+
 const wrangler = fileURLToPath(
   new URL("../node_modules/wrangler/bin/wrangler.js", import.meta.url),
 );
@@ -28,11 +36,29 @@ const report: Record<string, unknown> = {
   date: new Date().toISOString(),
   hosted: true,
   phase,
+  driver: scheduledDriver
+    ? "synthetic-http-production-tick"
+    : "http-single-checkpoint",
+  retries: 0,
   passed: false,
   checkpoints: 0,
   cpuMs: null,
   peakMemoryBytes: null,
 };
+if (resume) {
+  const prior = JSON.parse(await readFile(reportFile, "utf8"));
+  assert.equal(prior.phase, phase);
+  assert.equal(prior.passed, false);
+  Object.assign(report, prior, {
+    previousDriver: prior.driver,
+    driver: scheduledDriver
+      ? "synthetic-http-production-tick"
+      : "http-single-checkpoint",
+    resumed: true,
+    passed: false,
+    knownTelemetryGap: true,
+  });
+}
 const started = Date.now();
 async function sql(command: string) {
   const { stdout } = await execute(
@@ -50,7 +76,13 @@ async function sql(command: string) {
       "--json",
     ],
     {
-      env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
+      env: {
+        ...process.env,
+        WRANGLER_SEND_METRICS: "false",
+        WRANGLER_LOG_PATH:
+          process.env.WRANGLER_LOG_PATH ??
+          path.join(path.dirname(path.resolve(reportFile)), "wrangler-logs"),
+      },
       timeout: 60000,
       maxBuffer: 8 * 1024 * 1024,
     },
@@ -58,18 +90,52 @@ async function sql(command: string) {
   return JSON.parse(stdout)[0].results as Record<string, unknown>[];
 }
 async function call(route: string, body?: unknown) {
-  const r = await fetch(state.endpoint + route, {
-    method: body === undefined ? "GET" : "POST",
-    redirect: "error",
-    headers: {
-      Authorization: `Bearer ${state.adminToken}`,
-      "Content-Type": "application/json",
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    signal: AbortSignal.timeout(30000),
-  });
-  const result = (await r.json()) as any;
-  return { status: r.status, body: result };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let r: Response;
+    try {
+      r = await fetch(state.endpoint + route, {
+        method: body === undefined ? "GET" : "POST",
+        redirect: "error",
+        headers: {
+          Authorization: `Bearer ${state.adminToken}`,
+          "Content-Type": "application/json",
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(30000),
+      });
+    } catch (error) {
+      const safe =
+        body === undefined ||
+        route === "/search" ||
+        /^\/jobs\/[^/]+\/advance$/.test(route);
+      if (!safe || attempt === 2) throw error;
+      report.retries = Number(report.retries) + 1;
+      report.knownTelemetryGap = true;
+      await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 1000));
+      continue;
+    }
+    if (r.status === 429 && attempt < 2) {
+      const seconds = Number(r.headers.get("Retry-After") ?? 60);
+      if (!Number.isFinite(seconds) || seconds < 0 || seconds > 300)
+        throw new Error("Rate limit requires operator retry");
+      report.retries = Number(report.retries) + 1;
+      await r.body?.cancel();
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(1000, seconds * 1000)),
+      );
+      continue;
+    }
+    const result = r.headers.get("Content-Type")?.includes("json")
+      ? ((await r.json()) as any)
+      : {};
+    if (r.status >= 400) {
+      report.lastHttpStatus = r.status;
+      if (/^[A-Z_]{1,64}$/.test(result.error?.code ?? ""))
+        report.errorCode = result.error.code;
+    }
+    return { status: r.status, body: result };
+  }
+  throw new Error("Request retry budget exhausted");
 }
 async function drive(job: any) {
   for (
@@ -78,13 +144,23 @@ async function drive(job: any) {
     n++
   ) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const r = await call(`/jobs/${job.jobId}/advance`, {
-      checkpoint: job.checkpoint,
-    });
-    assert.equal(r.status, 200, r.body.error?.code);
-    job = r.body.data;
+    if (scheduledDriver) {
+      const tick = await call("/__retention/tick", {});
+      assert.equal(tick.status, 200, tick.body.error?.code);
+      report.tickInvocations = Number(report.tickInvocations ?? 0) + 1;
+      const r = await call(`/jobs/${job.jobId}`);
+      assert.equal(r.status, 200, r.body.error?.code);
+      job = r.body.data;
+    } else {
+      const r = await call(`/jobs/${job.jobId}/advance`, {
+        checkpoint: job.checkpoint,
+      });
+      assert.equal(r.status, 200, r.body.error?.code);
+      job = r.body.data;
+    }
+    report.jobCheckpoints = job.checkpoint;
     report.checkpoints = Number(report.checkpoints) + 1;
-    if (Number(report.checkpoints) % 100 === 0)
+    if (Number(report.checkpoints) % (scheduledDriver ? 10 : 100) === 0)
       console.log(
         JSON.stringify({
           phase,
@@ -93,6 +169,7 @@ async function drive(job: any) {
         }),
       );
   }
+  if (job.error?.code) report.errorCode = job.error.code;
   assert.equal(job.state, "complete", job.error?.code);
   return job;
 }
@@ -100,10 +177,15 @@ try {
   // Complete already-admitted Cron work before beginning the measured phase.
   const current = await call("/status");
   const pending = current.body.data?.deployment?.activeJobId;
-  if (pending) await drive((await call(`/jobs/${pending}`)).body.data);
-  report.checkpoints = 0;
-  await sql("DELETE FROM synthetic_telemetry");
-  const measuredStart = Date.now();
+  if (pending && !resume)
+    await drive((await call(`/jobs/${pending}`)).body.data);
+  if (!resume) {
+    report.checkpoints = 0;
+    await sql("DELETE FROM synthetic_telemetry");
+  }
+  const measuredStart = resume
+    ? Date.parse(String(report.measuredStartedAt))
+    : Date.now();
   report.measuredStartedAt = new Date(measuredStart).toISOString();
   if (["search", "get"].includes(phase)) {
     const id = await noteIdFromPath("Notes/Note-0000.md");
@@ -121,9 +203,16 @@ try {
     }
     report.operations = 20;
   } else {
-    const created = await call(phase === "rebuild" ? "/reindex" : "/index", {
-      newScan: true,
-    });
+    const jobId =
+      current.body.data?.deployment?.activeJobId ??
+      current.body.data?.deployment?.detection?.lastJobId;
+    if (resume)
+      assert(jobId, "No matching job to resume in this isolated deployment");
+    const created = resume
+      ? await call(`/jobs/${jobId}`)
+      : await call(phase === "rebuild" ? "/reindex" : "/index", {
+          newScan: true,
+        });
     assert.equal(created.status, 200, created.body.error?.code);
     const complete = await drive(created.body.data);
     report.notes = complete.notesIndexed;
@@ -173,6 +262,12 @@ try {
     }),
   );
 } catch (error) {
+  if (error && typeof error === "object" && "stderr" in error) {
+    await writeFile(reportFile + ".private-error.log", String(error.stderr), {
+      mode: 0o600,
+    });
+    report.operatorCommandFailed = true;
+  }
   console.error(
     JSON.stringify({
       phase,

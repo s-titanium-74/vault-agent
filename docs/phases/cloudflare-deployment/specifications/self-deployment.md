@@ -79,3 +79,9 @@ full teardown. It also adds native 1-note mutation and 100-note initial/read
 counters, platform CPU/V8-memory quantiles and a safe 2 MiB admission failure.
 This is existing-account evidence; button/clean-account/Paid/remaining scale
 phases still require separate validation.
+
+The [compact-workload follow-up](remote-follow-up-2026-10-29.md) adds hosted
+100-note update/rebuild/deletion with interruption recovery and native
+age-equivalent snapshot/staging/cache cleanup. Its much smaller corpus and
+explicit timestamp aging do not replace the remaining original-size/timer
+measurements. Paid execution is on hold at the operator's request.

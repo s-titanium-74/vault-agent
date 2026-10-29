@@ -186,3 +186,8 @@ Paid-plan execution; hosted 100-note update/rebuild/deletion, full 24-hour clean
 repeat latency/retry/reconciliation distributions and optional AI/Vectorize billed
 usage. The local 100-note mutation measurements remain separate. This run advances
 the draft PR; it does not close #35 or imply all release gates passed.
+
+A later [compact-workload follow-up](remote-follow-up-2026-10-29.md) completed
+100 one-chunk atomic-note mutation cases and age-equivalent native retention.
+Those observations do not replace the original larger-corpus or real timer
+gates above. Paid testing is now explicitly on hold.

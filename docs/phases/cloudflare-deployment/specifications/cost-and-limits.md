@@ -155,7 +155,7 @@ Keep the following #35 gates open:
 
 - Actual clean-account and Deploy-button provisioning, including resource
   configuration, migrations, secrets, native clients and Cron.
-- Hosted 100-note update/rebuild/deletion phases, repeat latency/retry and
+- Hosted original larger-corpus 100-note update/rebuild/deletion phases, repeat latency/retry and
   reconciliation samples, full 24-hour cleanup and optional AI/Vectorize billed
   usage. The earlier local phases and #34 semantic smoke remain separate evidence.
 - Paid 1,000 ms CPU configuration and plan-specific limits, plus worst-case
@@ -163,3 +163,11 @@ Keep the following #35 gates open:
 
 No blanket Free or Paid cost/capacity guarantee follows from this partial
 measurement set. Keep issue #35 open until the outstanding results are recorded.
+
+An additional [compact-workload run](remote-follow-up-2026-10-29.md) completed
+100 one-chunk short notes through update/rebuild/deletion and age-equivalent
+native cleanup. Interrupted phases have telemetry gaps; their counts are lower
+bounds. Cleanup alone read 204,870 rows while writing 2,823 rows for two obsolete
+compact snapshots and staging/cache work. Do not extrapolate cleanup from write
+counts alone or combine these results with the original larger corpus. Paid
+validation is explicitly on hold.
