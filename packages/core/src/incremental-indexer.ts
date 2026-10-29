@@ -1,24 +1,14 @@
+import { updateLocalIndex } from "./local/index-updates.js";
 import { Config } from "./config.js";
 import { IndexStore } from "./index-store.js";
-import { IndexResult, IndexWarning, Note } from "./types.js";
-import { parseMarkdown, resolveWikilinks } from "./markdown.js";
-import { chunkNote } from "./chunking.js";
-import { noteIdFromPath } from "./identifiers.js";
+import { IndexResult, IndexWarning } from "./types.js";
 import { IndexError } from "./errors.js";
-import {
-  MAX_MARKDOWN_SIZE_FOR_INDEXING,
-  INDEXED_EXTENSIONS,
-} from "./schemas.js";
-import { VaultDiscovery } from "./discovery.js";
 import {
   PathSafetyError,
   resolveVaultRelativePath,
   toVaultRelative,
 } from "./pathsafety.js";
-import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
-import { TextDecoder } from "node:util";
 
 export interface IncrementalIndexOptions {
   paths: string[];
@@ -49,9 +39,6 @@ export async function incrementalIndexUpdate(
   }
 
   const warnings: IndexWarning[] = [];
-  let notesIndexed = 0;
-  let chunksIndexed = 0;
-  let notesSkipped = 0;
 
   const staleness = store.checkStaleness(config);
   if (staleness.incompatible) {
@@ -86,235 +73,15 @@ export async function incrementalIndexUpdate(
   }
 
   const vaultRoot = path.resolve(config.vault.root);
-
-  const markdownPaths = new Set<string>();
-  const attachmentPaths = new Set<string>();
-
-  for (const p of paths) {
-    const normalizedPath = normalizeIncrementalPath(vaultRoot, p);
-    if (!normalizedPath || normalizedPath === ".") continue;
-
-    const ext = path.extname(normalizedPath).toLowerCase();
-    if (INDEXED_EXTENSIONS.includes(ext)) {
-      markdownPaths.add(normalizedPath);
-    } else {
-      attachmentPaths.add(normalizedPath);
-    }
-  }
-
-  const deletedPaths: string[] = [];
-  const modifiedPaths: string[] = [];
-
-  for (const p of markdownPaths) {
-    const absolutePath = path.join(vaultRoot, p);
-    if (!fs.existsSync(absolutePath)) {
-      deletedPaths.push(p);
-    } else {
-      modifiedPaths.push(p);
-    }
-  }
-
-  const existingNoteStems = store.getAllNoteStems();
-  const affectedNoteIds = new Set<string>();
-  const newNoteIds = new Set<string>();
-
-  for (const modifiedPath of modifiedPaths) {
-    const existing = store.getNoteByPath(modifiedPath);
-    if (!existing) {
-      const candidateId = noteIdFromPath(modifiedPath);
-      if (newNoteIds.has(candidateId)) {
-        throw new IndexError(
-          "INDEX_ID_COLLISION",
-          `ID collision detected for path: ${modifiedPath}. A full reindex is required.`,
-        );
-      }
-      newNoteIds.add(candidateId);
-    }
-  }
-
-  store.beginTransaction();
-  try {
-    for (const deletedPath of deletedPaths) {
-      const noteId = noteIdFromPath(deletedPath);
-      store.deleteNoteByPath(deletedPath);
-      affectedNoteIds.add(noteId);
-
-      const filename = deletedPath.split("/").pop() ?? "";
-      const stem = filename.replace(/\.(md|markdown)$/i, "");
-      const stemEntries = existingNoteStems
-        .get(stem)
-        ?.filter((e) => e.noteId !== noteId);
-      if (stemEntries && stemEntries.length > 0) {
-        existingNoteStems.set(stem, stemEntries);
-      } else {
-        existingNoteStems.delete(stem);
-      }
-    }
-
-    for (const vaultRelativePath of modifiedPaths) {
-      const absolutePath = path.join(vaultRoot, vaultRelativePath);
-
-      try {
-        const stat = fs.statSync(absolutePath);
-        const existing = store.getNoteByPath(vaultRelativePath);
-
-        if (
-          existing &&
-          existing.file_size === stat.size &&
-          existing.mtime_ms === stat.mtimeMs
-        ) {
-          notesSkipped++;
-          continue;
-        }
-
-        const content = new TextDecoder("utf-8", { fatal: false }).decode(
-          fs.readFileSync(absolutePath),
-        );
-
-        if (content.includes("\0")) {
-          warnings.push({
-            code: "INDEX_FILE_BINARY",
-            message: `File contains null bytes: ${vaultRelativePath}`,
-            path: vaultRelativePath,
-          });
-          continue;
-        }
-
-        const parsed = parseMarkdown(content);
-        const noteId = existing
-          ? (existing.note_id as string)
-          : noteIdFromPath(vaultRelativePath);
-        const contentHash = hashContent(content);
-
-        const chunkResult = chunkNote({
-          noteId,
-          vaultRelativePath,
-          title: parsed.title,
-          headingPath: [],
-          body: parsed.body,
-          fileSize: stat.size,
-        });
-
-        if (stat.size > MAX_MARKDOWN_SIZE_FOR_INDEXING) {
-          warnings.push({
-            code: "INDEX_FILE_TOO_LARGE",
-            message: `File too large for indexing: ${vaultRelativePath}`,
-            path: vaultRelativePath,
-            size: stat.size,
-          });
-        }
-
-        if (parsed.frontmatterDegraded) {
-          warnings.push({
-            code: "INDEX_FRONTMATTER_PARSE_FAILED",
-            message: `Malformed frontmatter in: ${vaultRelativePath}`,
-            path: vaultRelativePath,
-          });
-        }
-
-        const filename = vaultRelativePath.split("/").pop() ?? "";
-        const stem = filename.replace(/\.(md|markdown)$/i, "");
-        const stemEntries =
-          existingNoteStems.get(stem)?.filter((e) => e.noteId !== noteId) ?? [];
-        stemEntries.push({
-          noteId,
-          title: parsed.title,
-          aliases: parsed.aliases,
-        });
-        existingNoteStems.set(stem, stemEntries);
-
-        const resolver = resolveWikilinks(existingNoteStems);
-        const note: Note = {
-          noteId,
-          vaultRelativePath,
-          title: parsed.title,
-          filePath: absolutePath,
-          frontmatter: parsed.frontmatter,
-          frontmatterDegraded: parsed.frontmatterDegraded,
-          size: stat.size,
-          contentHash,
-          mtimeMs: stat.mtimeMs,
-          chunks: chunkResult.chunks,
-          links: parsed.wikilinks.map((link) =>
-            resolver(link, vaultRelativePath),
-          ),
-          attachmentReferences: parsed.attachmentReferences,
-        };
-
-        store.upsertNote(note);
-        notesIndexed++;
-        chunksIndexed += note.chunks.length;
-        affectedNoteIds.add(noteId);
-      } catch (err) {
-        if (err instanceof Error && err.message.includes("encoding")) {
-          warnings.push({
-            code: "INDEX_FILE_NOT_UTF8",
-            message: `Failed to read file: ${vaultRelativePath}`,
-            path: vaultRelativePath,
-          });
-        } else {
-          warnings.push({
-            code: "INDEX_FILE_READ_FAILED",
-            message: `Failed to process file: ${vaultRelativePath}: ${(err as Error).message}`,
-            path: vaultRelativePath,
-          });
-        }
-      }
-    }
-
-    for (const attachmentPath of attachmentPaths) {
-      const absolutePath = path.join(vaultRoot, attachmentPath);
-      if (!fs.existsSync(absolutePath)) {
-        continue;
-      }
-      try {
-        fs.statSync(absolutePath);
-        if (
-          VaultDiscovery.isAttachmentAllowed(
-            vaultRoot,
-            attachmentPath,
-            config.vault.exclude,
-          )
-        ) {
-          // Attachments are tracked via note's attachmentReferences
-          // No direct attachment indexing needed for search
-        }
-      } catch {
-        // Ignore attachment stat errors
-      }
-    }
-
-    const manifest = store.getManifest();
-    if (manifest) {
-      store.setManifest({
-        ...manifest,
-        noteCount: store.getAllNotes().length,
-        chunkCount: store.getAllChunkIds().length,
-        indexedAt: Date.now(),
-      });
-    }
-
-    store.commit();
-  } catch (err) {
-    store.rollback();
-    throw err;
-  }
-
+  const result = await updateLocalIndex(store, config, {
+    paths: paths.map((p) => normalizeIncrementalPath(vaultRoot, p)),
+    vaultIdentity: store.getManifest()!.vaultIdentity,
+    requireEmbeddings: options.requireEmbeddings,
+  });
   return {
-    mode: "incremental",
-    notesIndexed,
-    chunksIndexed,
-    notesSkipped,
-    warnings: warnings.slice(0, 100),
+    ...result,
+    warnings: [...warnings, ...result.warnings].slice(0, 100),
   };
-}
-
-function hashContent(content: string): string {
-  return crypto
-    .createHash("sha-256")
-    .update(content)
-    .digest("hex")
-    .slice(0, 32);
 }
 
 function normalizeIncrementalPath(

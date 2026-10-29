@@ -69,3 +69,7 @@ bundle test rejects Node/native transitive imports and checks all dependencies
 are bundled. A separate TypeScript build with DOM/ES types and no Node types
 validates the public portable declarations. Existing local and dist tests
 continue to verify HTTP/CLI/MCP behavior.
+
+The post-detection mutation boundary is extended by [shared index updates](shared-index-updates.md):
+source deltas, prepared rows, links and embedding reuse are portable; transactions,
+checkpoints and publication remain runtime-owned.

@@ -31,6 +31,7 @@ type Data = {
   filesProcessed?: number;
   chunksProcessed?: number;
   notesSkipped?: number;
+  removedPaths?: string[];
 };
 type Job = {
   id: string;
@@ -660,6 +661,35 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     ).results;
     if (entries.length > 500)
       throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
+    const previousSources = d.parent
+      ? (
+          await env.DB.prepare(
+            "SELECT path,kind,digest AS revision FROM sources WHERE revision=? LIMIT 501",
+          )
+            .bind(d.parent)
+            .all<core.IndexedSource>()
+        ).results
+      : [];
+    if (previousSources.length > 500)
+      throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
+    d.removedPaths = core
+      .planSourceChanges(
+        previousSources,
+        entries.map((entry) => ({
+          path: entry.path,
+          source: {
+            path: entry.path,
+            kind:
+              previousSources.find((p) => p.path === entry.path)?.kind ??
+              "note",
+            revision: null,
+          },
+        })),
+        { complete: true },
+      )
+      .filter((change) => change.action === "remove")
+      .map((change) => change.path);
+
     d.signature = await core.contentRevision(
       JSON.stringify([
         entries,
@@ -741,36 +771,38 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     if (entry.kind === "note") {
       const old = d.parent
         ? await env.DB.prepare(
-            "SELECT n.data FROM notes n JOIN sources s ON n.revision=s.revision AND n.path=s.path WHERE n.revision=? AND n.path=? AND s.digest=?",
+            "SELECT data FROM notes WHERE revision=? AND path=?",
           )
-            .bind(d.parent, entry.path, digest)
+            .bind(d.parent, entry.path)
             .first<{ data: string }>()
         : null;
-      if (
-        !d.force &&
-        old &&
-        JSON.parse(old.data).wikilinks_json !== undefined
-      ) {
+      const prepared = await core.prepareNoteUpdate(
+        { ...entry, revision: digest },
+        old ? JSON.parse(old.data) : null,
+        async () => {
+          try {
+            return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+          } catch {
+            throw new CloudError("SOURCE_NOT_UTF8", 409);
+          }
+        },
+        { force: d.force },
+      );
+      if (prepared.action === "reuse") {
         d.notesSkipped = (d.notesSkipped ?? 0) + 1;
         sql.push(
-          env.DB.prepare(
-            "INSERT INTO notes SELECT ?,note_id,path,data FROM notes WHERE revision=? AND path=?",
-          ).bind(d.revision, d.parent, entry.path),
+          env.DB.prepare("INSERT INTO notes VALUES(?,?,?,?)").bind(
+            d.revision,
+            prepared.note.note_id,
+            entry.path,
+            JSON.stringify(prepared.note),
+          ),
           env.DB.prepare(
             "INSERT INTO chunks SELECT ?,chunk_id,note_id,chunk_index,data FROM chunks WHERE revision=? AND note_id=?",
-          ).bind(d.revision, d.parent, JSON.parse(old.data).note_id),
+          ).bind(d.revision, d.parent, prepared.note.note_id),
         );
       } else {
-        let text: string;
-        try {
-          text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        } catch {
-          throw new CloudError("SOURCE_NOT_UTF8", 409);
-        }
-        const { note, chunks } = await core.prepareSourceNote(
-          { ...entry, revision: digest },
-          text,
-        );
+        const { note, chunks } = prepared;
         if (
           jsonSize(note) > 262144 ||
           chunks.some((c) => jsonSize(c) > 262144) ||
@@ -850,43 +882,13 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
     const all = (
       await env.DB.prepare(
-        "SELECT note_id,path,json_extract(data,'$.title') AS title,json_extract(data,'$.aliases_json') AS aliases FROM notes WHERE revision=? LIMIT 501",
+        "SELECT note_id,path,json_extract(data,'$.title') AS title,json_extract(data,'$.aliases_json') AS aliases_json FROM notes WHERE revision=? LIMIT 501",
       )
         .bind(d.revision)
-        .all<{
-          note_id: string;
-          path: string;
-          title: string | null;
-          aliases: string;
-        }>()
+        .all<core.IndexRow>()
     ).results;
     if (all.length > 500) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
-    const stems = new Map<
-      string,
-      { noteId: string; title: string | null; aliases: string[] }[]
-    >();
-    const paths = new Map<string, string>();
-    for (const n of all) {
-      paths.set(n.path, n.note_id);
-      const stem = n.path
-        .split("/")
-        .at(-1)!
-        .replace(/\.(md|markdown)$/i, "");
-      stems.set(stem, [
-        ...(stems.get(stem) ?? []),
-        { noteId: n.note_id, title: n.title, aliases: JSON.parse(n.aliases) },
-      ]);
-    }
-    const resolve = core.createWikilinkResolver(
-      stems,
-      (p) => paths.get(p) ?? "",
-    );
-    const n = JSON.parse(row.data) as core.IndexRow;
-    n.links_json = JSON.stringify(
-      (JSON.parse(String(n.wikilinks_json ?? "[]")) as core.WikilinkInfo[]).map(
-        (l) => resolve(l, String(n.path)),
-      ),
-    );
+    const n = core.createIndexLinkResolver(all)(JSON.parse(row.data));
     d.linkCursor = row.note_id;
     await save("links", [
       env.DB.prepare(
@@ -896,6 +898,18 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     return;
   }
   if (job.state === "counting") {
+    const revoked = await env.DB.prepare(
+      "SELECT (SELECT count(*) FROM sources WHERE revision=? AND path IN (SELECT value FROM json_each(?)))+(SELECT count(*) FROM notes WHERE revision=? AND path IN (SELECT value FROM json_each(?))) AS n",
+    )
+      .bind(
+        d.revision,
+        JSON.stringify(d.removedPaths ?? []),
+        d.revision,
+        JSON.stringify(d.removedPaths ?? []),
+      )
+      .first<{ n: number }>();
+    if (revoked!.n) throw new CloudError("REVISION_CONFLICT", 409);
+
     const counts = await env.DB.prepare(
       "SELECT (SELECT count(*) FROM notes WHERE revision=?) AS notes,(SELECT count(*) FROM chunks WHERE revision=?) AS chunks,(SELECT count(*) FROM sources WHERE revision=?) AS entries,(SELECT coalesce(sum(length(CAST(data AS BLOB))),0) FROM notes WHERE revision=?)+(SELECT coalesce(sum(length(CAST(data AS BLOB))),0) FROM chunks WHERE revision=?) AS bytes",
     )
@@ -962,31 +976,53 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
     const c = JSON.parse(row.data) as core.IndexRow;
     try {
-      const input = String(c.embedding_input_text);
-      const cacheKey = await core.contentRevision(
-        JSON.stringify([descriptor(env.EMBEDDING_MODEL_REVISION), input]),
+      const [prepared] = await core.prepareEmbeddingBatch(
+        [
+          {
+            chunkId: row.chunk_id,
+            contentHash: String(c.content_hash),
+            text: String(c.embedding_input_text),
+          },
+        ],
+        {
+          enabled: config(env).semantic,
+          provider: new WorkersAIEmbeddingProvider(
+            env.AI!,
+            env.EMBEDDING_MODEL_REVISION,
+          ),
+          cache: {
+            get: async (key) => {
+              const cached = await env.DB.prepare(
+                "SELECT values_json FROM embedding_cache WHERE key=?",
+              )
+                .bind(key)
+                .first<{ values_json: string }>();
+              try {
+                return cached
+                  ? Float32Array.from(JSON.parse(cached.values_json))
+                  : null;
+              } catch {
+                return null;
+              }
+            },
+          },
+        },
       );
-      let cached = await env.DB.prepare(
-        "SELECT values_json FROM embedding_cache WHERE key=?",
-      )
-        .bind(cacheKey)
-        .first<{ values_json: string }>();
-      if (!cached) {
-        const result = await new WorkersAIEmbeddingProvider(
-          env.AI!,
-          env.EMBEDDING_MODEL_REVISION,
-        ).embed([input]);
-        cached = {
-          values_json: JSON.stringify(Array.from(result.embeddings[0]!)),
-        };
+      if (!prepared) throw new CloudError("EMBEDDING_UNAVAILABLE", 503);
+      const cacheKey = prepared.cacheKey;
+      if (prepared.generated) {
         await fenced(
           env,
           job,
           token,
           [
             env.DB.prepare(
-              "INSERT OR IGNORE INTO embedding_cache VALUES(?,?,?)",
-            ).bind(cacheKey, cached.values_json, Date.now()),
+              "INSERT OR REPLACE INTO embedding_cache VALUES(?,?,?)",
+            ).bind(
+              cacheKey,
+              JSON.stringify(Array.from(prepared.values)),
+              Date.now(),
+            ),
           ],
           "vectors",
           d,
@@ -1007,7 +1043,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       const entry = {
         chunkId: row.chunk_id,
         contentHash: String(c.content_hash),
-        values: Float32Array.from(JSON.parse(cached.values_json)),
+        values: prepared.values,
       };
       const receipt = await env.DB.prepare(
         "SELECT receipt FROM ingestion_vectors WHERE revision=? AND chunk_id=?",

@@ -32,7 +32,7 @@ import { registerOrientationRoutes } from "./routes/orientation.js";
 import { registerGuidanceRoutes } from "./routes/guidance.js";
 import { registerLinkGraphRoutes } from "./routes/link-graph.js";
 import { registerProfileRoutes } from "./routes/profiles.js";
-import { initApp, resetApp } from "./state.js";
+import { getAppState, initApp, resetApp } from "./state.js";
 import { createMcpServer, McpAdapterContext } from "./mcp/adapter.js";
 import { registerMcpStreamableHttpRoute } from "./mcp/streamable-http.js";
 
@@ -211,18 +211,23 @@ export async function startServer(
       },
     );
 
-    watcher.setUpdateCallback(async (paths: string[]) => {
+    let watchedUpdates = Promise.resolve();
+    watcher.setUpdateCallback((paths: string[]) => {
       freshnessMachine.changesDetected(paths.length);
-      try {
-        freshnessMachine.writerStarted();
-        await incrementalIndexUpdate(appStore, preparedConfig, { paths });
-        freshnessMachine.writerSucceeded();
-      } catch (updateErr) {
-        freshnessMachine.writerFailed((updateErr as Error).message);
-        console.error(
-          `Incremental index update failed: ${(updateErr as Error).message}`,
-        );
-      }
+      watchedUpdates = watchedUpdates.then(async () => {
+        const currentStore = getAppState().store;
+        if (!currentStore) return;
+        try {
+          freshnessMachine.writerStarted();
+          await incrementalIndexUpdate(currentStore, preparedConfig, { paths });
+          freshnessMachine.writerSucceeded();
+        } catch (updateErr) {
+          freshnessMachine.writerFailed((updateErr as Error).message);
+          console.error(
+            `Incremental index update failed: ${(updateErr as Error).message}`,
+          );
+        }
+      });
     });
 
     await watcher.start();

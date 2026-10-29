@@ -185,3 +185,18 @@ node --import tsx packages/cloudflare/scripts/remote-ingestion-semantic-smoke.ts
 node --import tsx packages/cloudflare/scripts/remote-ingestion-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON index
 node --import tsx packages/cloudflare/scripts/remote-ingestion-semantic-smoke.ts PRIVATE_STATE_JSON REPORT_JSON wait-deleted
 ```
+
+## Shared update core follow-up
+
+The subsequent shared-core refactor has separate local coverage: the same
+synthetic corpus runs through SQLite/watch and workerd/D1/R2 and produces
+compatible note/chunk rows after create, edit, rename and delete. Regression
+coverage also verifies exact-input reuse, invalid-cache repair, legacy SQLite
+migration, link re-resolution and mandatory/optional provider failure.
+
+The hosted measurements above describe the earlier implementation revisions;
+they are not evidence of a hosted run of the shared-core refactor. A fresh
+hosted run is pending explicit authorization to create disposable resources
+and send the same two synthetic notes to Workers AI. Automatic approval review
+rejected the attempted resource creation before execution; no resources were
+created for this follow-up.

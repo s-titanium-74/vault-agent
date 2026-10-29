@@ -49,3 +49,21 @@ export {
 export { getMetadataProfile, getStyleProfile } from "../profile-shared.js";
 
 export { prepareSourceNote, uploadKind, uploadLimit } from "./ingestion.js";
+export {
+  prepareIndexRows,
+  createIndexLinkResolver,
+  indexLinkInputs,
+  type IndexNote,
+} from "./index-data.js";
+export {
+  planSourceChanges,
+  prepareNoteUpdate,
+  prepareEmbeddingBatch,
+  embeddingInputKey,
+  type IndexedSource,
+  type SourceObservation,
+  type SourceChange,
+  type IndexEmbeddingInput,
+  type IndexEmbeddingCache,
+  type PreparedEmbedding,
+} from "./index-updates.js";

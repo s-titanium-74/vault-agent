@@ -166,3 +166,10 @@ Index update error codes:
 
 Error messages must not include raw note content, full chunks, raw queries,
 secrets, provider credentials, or private absolute paths.
+
+## Shared update implementation
+
+Local manual indexing and watcher updates delegate to the same update adapter and
+portable mutation policy used by Workers. See [shared index updates](../../cloudflare-deployment/specifications/shared-index-updates.md).
+The adapter preserves SQLite atomicity and local provider opt-in; it does not
+enable cloud upload or hosted embedding processing.

@@ -157,6 +157,23 @@ it("caches unchanged embedding inputs, waits for visibility and revokes deleted 
     expect(
       (await db.prepare("SELECT revision FROM deployment").first())!.revision,
     ).not.toBe(firstRevision);
+    // Invalid persisted vectors are regenerated and repaired before retrying the step.
+    const callsBeforeRepair = Number(
+      (await db.prepare("SELECT calls FROM synthetic_usage").first())!.calls,
+    );
+    await db.prepare("UPDATE embedding_cache SET values_json='[1]'").run();
+    await finish((await req("/reindex", { requireEmbeddings: true })).data);
+    expect(
+      Number(
+        (await db.prepare("SELECT calls FROM synthetic_usage").first())!.calls,
+      ),
+    ).toBe(callsBeforeRepair + 1);
+    await finish((await req("/reindex", { requireEmbeddings: true })).data);
+    expect(
+      Number(
+        (await db.prepare("SELECT calls FROM synthetic_usage").first())!.calls,
+      ),
+    ).toBe(callsBeforeRepair + 1);
     // Provider failure publishes a consistent lexical-only target with explicit state.
     await db.prepare("UPDATE synthetic_usage SET fail=1").run();
     await bucket.put(
