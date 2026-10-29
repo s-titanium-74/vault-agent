@@ -2,7 +2,7 @@
 // Collects operation counts and wall time only, without paths/content/secrets.
 import worker from "../src/index.js";
 import type { Env } from "../src/config.js";
-function measured(env: Env) {
+export function measured(env: Env) {
   const counts = {
     queries: 0,
     rowsRead: 0,
@@ -14,6 +14,9 @@ function measured(env: Env) {
     r2Delete: 0,
     aiCalls: 0,
     aiInputs: 0,
+    aiInputBytes: 0,
+    vectorQueries: 0,
+    vectorQueryDimensions: 0,
     vectorUpserts: 0,
   };
   const originals = new WeakMap<D1PreparedStatement, D1PreparedStatement>();
@@ -87,8 +90,17 @@ function measured(env: Env) {
             if (key === "run") {
               counts.aiCalls++;
               const input = args[1] as { text?: unknown };
-              if (Array.isArray(input?.text))
+              if (Array.isArray(input?.text)) {
                 counts.aiInputs += input.text.length;
+                counts.aiInputBytes += input.text.reduce(
+                  (sum: number, text: unknown) =>
+                    sum +
+                    (typeof text === "string"
+                      ? new TextEncoder().encode(text).length
+                      : 0),
+                  0,
+                );
+              }
             }
             return Reflect.apply(value, target, args);
           };
@@ -101,6 +113,10 @@ function measured(env: Env) {
           const value = Reflect.get(target, key);
           if (typeof value !== "function") return value;
           return (...args: unknown[]) => {
+            if (key === "query" && Array.isArray(args[0])) {
+              counts.vectorQueries++;
+              counts.vectorQueryDimensions += args[0].length;
+            }
             if (key === "upsert" && Array.isArray(args[0]))
               counts.vectorUpserts += args[0].length;
             return Reflect.apply(value, target, args);
@@ -110,7 +126,12 @@ function measured(env: Env) {
     : undefined;
   return { env: { ...env, DB, SOURCE, AI, VECTORS }, counts };
 }
-async function record(env: Env, kind: string, start: number, counts: unknown) {
+export async function record(
+  env: Env,
+  kind: string,
+  start: number,
+  counts: unknown,
+) {
   await env.DB.prepare(
     "INSERT INTO synthetic_telemetry(kind,wall_ms,counts) VALUES(?,?,?)",
   )

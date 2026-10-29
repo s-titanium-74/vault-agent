@@ -12,3 +12,7 @@ logs/
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# Operator-local cloud deployment configuration and reports
+.cloudflare/
+!.dev.vars.example

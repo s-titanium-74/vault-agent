@@ -1,0 +1,420 @@
+{
+  "runtime": "local-workerd",
+  "date": "2026-10-29T07:35:02.750Z",
+  "cpuMs": null,
+  "peakMemoryBytes": null,
+  "hosted": false,
+  "semantic": false,
+  "workloads": [
+    {
+      "notes": 1,
+      "sourceBytes": 1699,
+      "directSourcePuts": 3,
+      "phases": [
+        {
+          "name": "initial-index",
+          "wallMs": 466,
+          "invocations": 16,
+          "maxInvocationWallMs": 36,
+          "totals": {
+            "queries": 133,
+            "rowsRead": 251,
+            "rowsWritten": 292,
+            "r2Get": 2,
+            "r2Head": 2,
+            "r2List": 1,
+            "r2Put": 2,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "state": "complete",
+            "error": null,
+            "checkpoints": 15
+          }
+        },
+        {
+          "name": "lexical-search-20",
+          "wallMs": 821,
+          "invocations": 20,
+          "maxInvocationWallMs": 43,
+          "totals": {
+            "queries": 240,
+            "rowsRead": 730,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "name": "explicit-get-20",
+          "wallMs": 500,
+          "invocations": 20,
+          "maxInvocationWallMs": 23,
+          "totals": {
+            "queries": 140,
+            "rowsRead": 240,
+            "rowsWritten": 0,
+            "r2Get": 20,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "name": "one-file-update",
+          "wallMs": 360,
+          "invocations": 15,
+          "maxInvocationWallMs": 25,
+          "totals": {
+            "queries": 127,
+            "rowsRead": 186,
+            "rowsWritten": 156,
+            "r2Get": 2,
+            "r2Head": 2,
+            "r2List": 1,
+            "r2Put": 2,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "checkpoints": 14
+          }
+        },
+        {
+          "name": "rebuild",
+          "wallMs": 323,
+          "invocations": 15,
+          "maxInvocationWallMs": 22,
+          "totals": {
+            "queries": 127,
+            "rowsRead": 181,
+            "rowsWritten": 156,
+            "r2Get": 2,
+            "r2Head": 2,
+            "r2List": 1,
+            "r2Put": 2,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "checkpoints": 14
+          }
+        },
+        {
+          "name": "deletion",
+          "wallMs": 237,
+          "invocations": 13,
+          "maxInvocationWallMs": 19,
+          "totals": {
+            "queries": 94,
+            "rowsRead": 108,
+            "rowsWritten": 57,
+            "r2Get": 1,
+            "r2Head": 1,
+            "r2List": 1,
+            "r2Put": 1,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "checkpoints": 10,
+            "staleRetrievalRevoked": true
+          }
+        },
+        {
+          "name": "idle-reconciliation",
+          "wallMs": 46,
+          "invocations": 1,
+          "maxInvocationWallMs": 41,
+          "totals": {
+            "queries": 29,
+            "rowsRead": 38,
+            "rowsWritten": 15,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "retained": {
+        "retainedNotes": 3,
+        "retainedChunks": 4,
+        "retainedGrams": 169,
+        "snapshots": 4,
+        "r2Objects": 9,
+        "r2Bytes": 2295
+      }
+    },
+    {
+      "notes": 100,
+      "sourceBytes": 152278,
+      "directSourcePuts": 102,
+      "phases": [
+        {
+          "name": "initial-index",
+          "wallMs": 11426,
+          "invocations": 512,
+          "maxInvocationWallMs": 37,
+          "totals": {
+            "queries": 4693,
+            "rowsRead": 30760,
+            "rowsWritten": 24175,
+            "r2Get": 101,
+            "r2Head": 101,
+            "r2List": 2,
+            "r2Put": 101,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "state": "complete",
+            "error": null,
+            "checkpoints": 511
+          }
+        },
+        {
+          "name": "lexical-search-20",
+          "wallMs": 1267,
+          "invocations": 20,
+          "maxInvocationWallMs": 72,
+          "totals": {
+            "queries": 380,
+            "rowsRead": 37500,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "name": "explicit-get-20",
+          "wallMs": 479,
+          "invocations": 20,
+          "maxInvocationWallMs": 25,
+          "totals": {
+            "queries": 140,
+            "rowsRead": 240,
+            "rowsWritten": 0,
+            "r2Get": 20,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "name": "one-file-update",
+          "wallMs": 11039,
+          "invocations": 511,
+          "maxInvocationWallMs": 88,
+          "totals": {
+            "queries": 4786,
+            "rowsRead": 31289,
+            "rowsWritten": 24037,
+            "r2Get": 101,
+            "r2Head": 101,
+            "r2List": 2,
+            "r2Put": 101,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "checkpoints": 510
+          }
+        },
+        {
+          "name": "rebuild",
+          "wallMs": 10719,
+          "invocations": 511,
+          "maxInvocationWallMs": 125,
+          "totals": {
+            "queries": 4786,
+            "rowsRead": 30994,
+            "rowsWritten": 24037,
+            "r2Get": 101,
+            "r2Head": 101,
+            "r2List": 2,
+            "r2Put": 101,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "checkpoints": 510
+          }
+        },
+        {
+          "name": "deletion",
+          "wallMs": 10615,
+          "invocations": 509,
+          "maxInvocationWallMs": 66,
+          "totals": {
+            "queries": 4753,
+            "rowsRead": 30812,
+            "rowsWritten": 23938,
+            "r2Get": 100,
+            "r2Head": 100,
+            "r2List": 2,
+            "r2Put": 100,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "checkpoints": 506,
+            "staleRetrievalRevoked": true
+          }
+        },
+        {
+          "name": "idle-reconciliation",
+          "wallMs": 62,
+          "invocations": 1,
+          "maxInvocationWallMs": 58,
+          "totals": {
+            "queries": 134,
+            "rowsRead": 243,
+            "rowsWritten": 217,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "retained": {
+        "retainedNotes": 399,
+        "retainedChunks": 796,
+        "retainedGrams": 40598,
+        "snapshots": 4,
+        "r2Objects": 504,
+        "r2Bytes": 755190
+      }
+    },
+    {
+      "notes": 1000,
+      "sourceBytes": 1521178,
+      "directSourcePuts": 1002,
+      "phases": [
+        {
+          "name": "initial-index",
+          "wallMs": 361,
+          "invocations": 13,
+          "maxInvocationWallMs": 34,
+          "totals": {
+            "queries": 1081,
+            "rowsRead": 591,
+            "rowsWritten": 2054,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 11,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "result": {
+            "state": "failed",
+            "error": "INDEX_BUDGET_EXCEEDED",
+            "checkpoints": 11
+          }
+        }
+      ],
+      "retained": {
+        "retainedNotes": 0,
+        "retainedChunks": 0,
+        "retainedGrams": 0,
+        "snapshots": 0,
+        "r2Objects": 1002,
+        "r2Bytes": 1521178
+      }
+    }
+  ]
+}

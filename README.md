@@ -189,3 +189,11 @@ npm run dev:server
 
 This repository is in the Phase 3 MCP bridge stage. See the
 [product plan](docs/product-plan.md) for the full roadmap.
+
+## Optional Cloudflare deployment
+
+Deploy one explicitly selected vault copy in your own Cloudflare account.
+The [self-deployment guide](docs/cloudflare-setup-guide.md) covers the full-repository
+template, Wrangler fallback, synthetic trial, authenticated HTTP/MCP, optional
+AI processing, costs and complete teardown. This edition is installed separately;
+ordinary local installation and search remain local and require no cloud account.

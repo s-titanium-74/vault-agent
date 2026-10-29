@@ -1,5 +1,7 @@
 # Cloudflare retrieval adapter
 
+For an operator deployment, start with the [self-deployment guide](../../docs/cloudflare-setup-guide.md). It covers the root template, ignored local configuration, synthetic onboarding, native MCP, rotation and teardown. The package configuration below remains the development/smoke example.
+
 This independent package serves one explicitly configured vault through private
 R2 + D1 bindings, authenticated HTTP reads, and stateless read-only MCP. It uses
 `@vault-agent/core/portable` source through the package tsconfig; no local core
