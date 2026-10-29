@@ -260,3 +260,12 @@ Hosted #34 results and limits: [deployed ingestion smoke](../../docs/phases/clou
 cache-reuse and autonomous deletion/query checks for two synthetic notes. It
 uses the disposable instrumentation entrypoint and private operator state from
 the recorded procedure; it must not be run against an existing vault.
+
+## Hosted self-deployment evidence
+
+[The #35 Wrangler run](../../docs/phases/cloudflare-deployment/specifications/remote-self-deployment-2026-10-29.md)
+records actual provisioning, client access, four real-Cron source mutation phases,
+rotation, native cost/CPU/V8-memory measurements and verified teardown. The
+reusable `remote-client-smoke.ts`, `remote-autonomous-smoke.ts` and
+`remote-cost-smoke.ts` runners are synthetic-only operator tools and are not run
+by ordinary tests. Clean-account/button/Paid validation remains open.

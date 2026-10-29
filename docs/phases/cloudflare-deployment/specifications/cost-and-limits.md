@@ -1,7 +1,10 @@
 # Cost and runtime limits (#35)
 
 Date: 2026-10-29. Currency: USD before tax. Status: **partial evidence**.
-Neither clean-account deployment nor Paid capacity is certified. Ordinary
+The [hosted Wrangler follow-up](remote-self-deployment-2026-10-29.md) validates
+isolated resource provisioning, clients, autonomous changes, rotation and teardown
+and adds native CPU/V8-memory and selected 1/100-note counters. Neither
+clean-account deployment nor Paid capacity is certified. Ordinary
 installation continues to require no Cloudflare account or services.
 
 ## Reproducible local operation measurements
@@ -136,23 +139,27 @@ AI inputs across initial/rebuild/update/deletion/query, including zero ingestion
 AI inputs for identical rebuild/deletion; it did not measure provider-billed
 neurons/tokens or CPU. Do not turn four inputs into a dollar estimate.
 
-## Remaining hosted release gates
+## Hosted follow-up and remaining release gates
 
-- Clean-account button provisioning: full-repository clone/build, independently
-  supplied secrets/UUID, D1 migrations, private R2 and actual Cron configuration.
-- Wrangler resource creation/migrations/deploy with current operator credentials.
-  This run found the existing Wrangler OAuth token expired; it did not refresh
-  credentials or claim that an API deployment validates the CLI path.
-- Native HTTP CLI and MCP initialization/search/get against the new template,
-  real Cron source create/overwrite/rename/delete and attachment updates with no
-  CLI process driving indexing; full teardown and provider absence checks.
-- Hosted 1/100-note phase counters, maximum-size/Japanese notes, detection and
-  publication latency, retries/reconciliation/24-hour cleanup, AI billed usage
-  and Vectorize dimensions. CPU and peak memory are **unmeasured (null)** in the
-  local report; wall time cannot substitute for either. Use native platform
-  metrics/CPU and heap profiling on synthetic data, with content logging off.
-- Paid CPU budget and plan-specific limits. No plan change was performed.
+The [new hosted run](remote-self-deployment-2026-10-29.md) passed Wrangler resource
+creation/migrations/deployment, actual CLI and native MCP clients, real Cron
+create/overwrite/rename/delete plus attachment changes, rotation and full
+provider-verified teardown. It measured one-note mutation/rebuild/deletion,
+100-note initial indexing/search/get, and an exact 2 MiB multilingual failure
+that preserved the published revision. Native CPU/V8-memory quantiles are now
+recorded separately from the local report's deliberately null fields. The
+observed 100-note search CPU P99 was 64.793 ms; successful completion does not
+prove Free-plan capacity. No account plan was changed.
 
-The earlier deployed #34 smoke demonstrates the previous production handlers'
-autonomous processing and teardown; it does not close these template or scale
-gates. Keep issue #35 open until these results are recorded.
+Keep the following #35 gates open:
+
+- Actual clean-account and Deploy-button provisioning, including resource
+  configuration, migrations, secrets, native clients and Cron.
+- Hosted 100-note update/rebuild/deletion phases, repeat latency/retry and
+  reconciliation samples, full 24-hour cleanup and optional AI/Vectorize billed
+  usage. The earlier local phases and #34 semantic smoke remain separate evidence.
+- Paid 1,000 ms CPU configuration and plan-specific limits, plus worst-case
+  capacity/maximum heap validation. Invocation memory quantiles are not heap peaks.
+
+No blanket Free or Paid cost/capacity guarantee follows from this partial
+measurement set. Keep issue #35 open until the outstanding results are recorded.

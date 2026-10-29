@@ -1,7 +1,8 @@
 # Self-deployment and measurement (#35)
 
-Status: In progress. This specification does not assert clean-account or
-Deploy-button validation. Recorded hosted #34 evidence remains separate.
+Status: In progress. Wrangler provisioning and the new-template hosted synthetic
+walkthrough are validated; clean-account and Deploy-button validation remain
+open. Recorded hosted #34 evidence remains separate.
 
 ## Delivery contract
 
@@ -70,3 +71,11 @@ overwrite protection and migration failure preventing deployment. The deploy
 script refuses `--dry-run` before any remote migration; use the build command
 for a write-free dry run. See [cost and limits](cost-and-limits.md) for measured
 local workloads and explicit remaining hosted gates.
+
+The [2026-10-29 hosted follow-up](remote-self-deployment-2026-10-29.md) records
+new isolated Wrangler provisioning, migrations, actual CLI/native MCP, four
+real-Cron R2 mutation phases with no admin advancement, token rotation and verified
+full teardown. It also adds native 1-note mutation and 100-note initial/read
+counters, platform CPU/V8-memory quantiles and a safe 2 MiB admission failure.
+This is existing-account evidence; button/clean-account/Paid/remaining scale
+phases still require separate validation.

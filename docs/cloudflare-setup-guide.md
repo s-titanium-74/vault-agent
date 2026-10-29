@@ -1,8 +1,8 @@
 # Deploy your own Cloudflare edition
 
-Status: #35 implementation in progress. The Wrangler template builds locally;
-clean-account and Deploy-button execution are separate, outstanding release
-gates. Use synthetic content first. See [measurement evidence](phases/cloudflare-deployment/specifications/cost-and-limits.md).
+Status: #35 implementation in progress. Wrangler provisioning in an existing
+account with new isolated resources has been validated; clean-account and
+Deploy-button execution are separate, outstanding release gates. Use synthetic content first. See [measurement evidence](phases/cloudflare-deployment/specifications/cost-and-limits.md).
 
 ## Prerequisites and data scope
 
@@ -229,8 +229,11 @@ Rotate without mixing privileges: install `PREVIOUS_READ_TOKEN` with the old
 read value and `PREVIOUS_ADMIN_TOKEN` with the old admin value, set new distinct
 current secrets, update clients, test new tokens, then delete both previous
 secrets. Use `wrangler secret put/delete NAME --config .cloudflare/wrangler.jsonc`;
-verify revoked tokens fail on HTTP and MCP. There are no sessions retaining
-revoked access. Separately rotate/revoke Cloudflare API tokens, R2 S3 credentials
+allow secret deployment changes to propagate and verify revoked tokens fail on
+HTTP and MCP. The hosted trial observed an old credential still accepted
+immediately after secret deletion, then confirmed both old credentials rejected
+on a later check. There are no application sessions retaining revoked access;
+provider deployment propagation is a separate delay. Separately rotate/revoke Cloudflare API tokens, R2 S3 credentials
 and Workers Builds integration credentials if you created them. Cron uses native
 bindings and requires no separate external credential.
 

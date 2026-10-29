@@ -1,0 +1,597 @@
+{
+  "date": "2026-10-29",
+  "flow": "Wrangler provisioning with new isolated resources in an existing account",
+  "accountPlanChanged": false,
+  "privateVaultUsed": false,
+  "paidCpuLimitConfigured": false,
+  "cli": {
+    "groups": [
+      "actual-cli-upload-and-retrieval",
+      "actual-cli-change-rename-delete-and-stale-id-revocation",
+      "remote-authentication",
+      "final-explicit-deletion"
+    ],
+    "requests": 8,
+    "elapsedMs": 93372,
+    "checkpoints": 50
+  },
+  "clients": {
+    "date": "2026-10-29T07:58:42.087Z",
+    "groups": [
+      "authenticated-http-and-read-admin-separation",
+      "http-search-and-revision-pinned-explicit-get",
+      "native-remote-mcp-initialize-list-search-explicit-get"
+    ],
+    "tools": 18,
+    "passed": true
+  },
+  "autonomous": {
+    "date": "2026-10-29T07:59:47.582Z",
+    "hosted": true,
+    "driver": "real-cron-no-admin-requests",
+    "adminRequests": 0,
+    "directPuts": 5,
+    "directDeletes": 2,
+    "pollRequests": 87,
+    "passed": true,
+    "phases": [
+      {
+        "name": "direct-create",
+        "mutationWallMs": 3888,
+        "firstUpdatingObservedMs": null,
+        "publicationObservedMs": 314960,
+        "failedJobsObserved": 0
+      },
+      {
+        "name": "direct-overwrite-and-attachment",
+        "mutationWallMs": 4473,
+        "firstUpdatingObservedMs": 43175,
+        "publicationObservedMs": 177239,
+        "failedJobsObserved": 0
+      },
+      {
+        "name": "direct-rename",
+        "mutationWallMs": 3268,
+        "firstUpdatingObservedMs": 51317,
+        "publicationObservedMs": 163695,
+        "failedJobsObserved": 0
+      },
+      {
+        "name": "direct-delete",
+        "mutationWallMs": 1363,
+        "firstUpdatingObservedMs": 62135,
+        "publicationObservedMs": 123687,
+        "failedJobsObserved": 0
+      }
+    ]
+  },
+  "rotationOverlap": {
+    "mode": "overlap",
+    "passed": true
+  },
+  "rotationRevoked": {
+    "mode": "revoked",
+    "passed": true,
+    "polls": 1,
+    "propagationWaitObservedMs": 224230
+  },
+  "maximumNote": {
+    "hosted": true,
+    "noteBytes": 2097152,
+    "passed": true,
+    "startedAt": "2026-10-29T08:57:28.169Z",
+    "jobState": "failed",
+    "errorCode": "INDEX_BUDGET_EXCEEDED",
+    "publishedRevisionUnchanged": true,
+    "lastPublishedNoteStillReadable": true,
+    "finishedAt": "2026-10-29T08:57:35.060Z"
+  },
+  "storageBeforeTeardown": {
+    "objects": 237,
+    "bytes": 2405833
+  },
+  "resourceInspection": {
+    "publicR2Enabled": false,
+    "replication": {
+      "mode": "disabled"
+    },
+    "d1Bytes": 4587520,
+    "crons": {
+      "schedules": []
+    },
+    "workerSubdomain": {
+      "enabled": true,
+      "previews_enabled": false
+    }
+  },
+  "costPhases": [
+    {
+      "date": "2026-10-29T08:20:40.428Z",
+      "hosted": true,
+      "phase": "delete",
+      "passed": true,
+      "checkpoints": 11,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:20:41.733Z",
+      "notes": 0,
+      "chunks": 0,
+      "staleRetrievalRevoked": true,
+      "measuredEndedAt": "2026-10-29T08:20:55.757Z",
+      "invocations": 15,
+      "scheduledInvocations": 1,
+      "maxInvocationWallMs": 2119,
+      "totals": {
+        "queries": 105,
+        "rowsRead": 151,
+        "rowsWritten": 57,
+        "r2Get": 1,
+        "r2Head": 1,
+        "r2List": 1,
+        "r2Put": 1,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 15005,
+      "elapsedMs": 16309
+    },
+    {
+      "date": "2026-10-29T08:19:25.682Z",
+      "hosted": true,
+      "phase": "initial",
+      "passed": true,
+      "checkpoints": 15,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:19:27.189Z",
+      "notes": 1,
+      "chunks": 2,
+      "measuredEndedAt": "2026-10-29T08:19:48.029Z",
+      "invocations": 18,
+      "scheduledInvocations": 0,
+      "maxInvocationWallMs": 1102,
+      "totals": {
+        "queries": 154,
+        "rowsRead": 311,
+        "rowsWritten": 292,
+        "r2Get": 3,
+        "r2Head": 2,
+        "r2List": 1,
+        "r2Put": 2,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 21695,
+      "elapsedMs": 23202
+    },
+    {
+      "date": "2026-10-29T08:20:17.829Z",
+      "hosted": true,
+      "phase": "rebuild",
+      "passed": true,
+      "checkpoints": 14,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:20:19.338Z",
+      "notes": 1,
+      "chunks": 1,
+      "measuredEndedAt": "2026-10-29T08:20:38.650Z",
+      "invocations": 17,
+      "scheduledInvocations": 0,
+      "maxInvocationWallMs": 682,
+      "totals": {
+        "queries": 145,
+        "rowsRead": 256,
+        "rowsWritten": 192,
+        "r2Get": 3,
+        "r2Head": 2,
+        "r2List": 1,
+        "r2Put": 2,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 20301,
+      "elapsedMs": 21810
+    },
+    {
+      "date": "2026-10-29T08:19:49.959Z",
+      "hosted": true,
+      "phase": "update",
+      "passed": true,
+      "checkpoints": 19,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:19:51.454Z",
+      "notes": 1,
+      "chunks": 1,
+      "measuredEndedAt": "2026-10-29T08:20:16.536Z",
+      "invocations": 23,
+      "scheduledInvocations": 1,
+      "maxInvocationWallMs": 17700,
+      "totals": {
+        "queries": 188,
+        "rowsRead": 326,
+        "rowsWritten": 192,
+        "r2Get": 3,
+        "r2Head": 2,
+        "r2List": 1,
+        "r2Put": 2,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 26275,
+      "elapsedMs": 27770
+    },
+    {
+      "date": "2026-10-29T08:51:08.829Z",
+      "hosted": true,
+      "phase": "get",
+      "passed": true,
+      "checkpoints": 0,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:51:10.118Z",
+      "operations": 20,
+      "measuredEndedAt": "2026-10-29T08:51:20.854Z",
+      "invocations": 20,
+      "scheduledInvocations": 0,
+      "maxInvocationWallMs": 563,
+      "totals": {
+        "queries": 140,
+        "rowsRead": 220,
+        "rowsWritten": 0,
+        "r2Get": 20,
+        "r2Head": 0,
+        "r2List": 0,
+        "r2Put": 0,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 11611,
+      "elapsedMs": 12900
+    },
+    {
+      "date": "2026-10-29T08:21:24.206Z",
+      "hosted": true,
+      "phase": "initial",
+      "passed": true,
+      "checkpoints": 529,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:21:26.393Z",
+      "notes": 100,
+      "chunks": 200,
+      "measuredEndedAt": "2026-10-29T08:40:45.370Z",
+      "invocations": 540,
+      "scheduledInvocations": 8,
+      "maxInvocationWallMs": 22629,
+      "totals": {
+        "queries": 5069,
+        "rowsRead": 33123,
+        "rowsWritten": 23961,
+        "r2Get": 102,
+        "r2Head": 101,
+        "r2List": 2,
+        "r2Put": 101,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 1160291,
+      "elapsedMs": 1162477
+    },
+    {
+      "date": "2026-10-29T08:50:53.182Z",
+      "hosted": true,
+      "phase": "search",
+      "passed": true,
+      "checkpoints": 0,
+      "cpuMs": null,
+      "peakMemoryBytes": null,
+      "measuredStartedAt": "2026-10-29T08:50:55.692Z",
+      "operations": 20,
+      "measuredEndedAt": "2026-10-29T08:51:07.823Z",
+      "invocations": 20,
+      "scheduledInvocations": 0,
+      "maxInvocationWallMs": 435,
+      "totals": {
+        "queries": 380,
+        "rowsRead": 37540,
+        "rowsWritten": 0,
+        "r2Get": 0,
+        "r2Head": 0,
+        "r2List": 0,
+        "r2Put": 0,
+        "r2Delete": 0,
+        "aiCalls": 0,
+        "aiInputs": 0,
+        "aiInputBytes": 0,
+        "vectorQueries": 0,
+        "vectorQueryDimensions": 0,
+        "vectorUpserts": 0
+      },
+      "measuredWallMs": 13035,
+      "elapsedMs": 15545
+    }
+  ],
+  "platformQuantiles": {
+    "cost-1-delete": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 7508,
+            "cpuTimeP99": 18684,
+            "memoryUsageBytesP50": 11206182,
+            "memoryUsageBytesP99": 11514718,
+            "wallTimeP50": 136574,
+            "wallTimeP99": 2310049
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 15
+          }
+        }
+      ]
+    },
+    "cost-1-initial": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 7064,
+            "cpuTimeP99": 12498,
+            "memoryUsageBytesP50": 11250371,
+            "memoryUsageBytesP99": 13434261,
+            "wallTimeP50": 170471,
+            "wallTimeP99": 1144162
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 18
+          }
+        }
+      ]
+    },
+    "cost-1-rebuild": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 11330,
+            "cpuTimeP99": 21349,
+            "memoryUsageBytesP50": 11248310,
+            "memoryUsageBytesP99": 13160457,
+            "wallTimeP50": 181363,
+            "wallTimeP99": 736230
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 17
+          }
+        }
+      ]
+    },
+    "cost-1-update": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 11693,
+            "cpuTimeP99": 34970,
+            "memoryUsageBytesP50": 11256352,
+            "memoryUsageBytesP99": 13194198,
+            "wallTimeP50": 201219,
+            "wallTimeP99": 18499388
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 23
+          }
+        }
+      ]
+    },
+    "cost-100-get": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 15341,
+            "cpuTimeP99": 20092,
+            "memoryUsageBytesP50": 26643918,
+            "memoryUsageBytesP99": 26779258,
+            "wallTimeP50": 465110,
+            "wallTimeP99": 640356
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 18
+          }
+        }
+      ]
+    },
+    "cost-100-initial": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 8140,
+            "cpuTimeP99": 45058,
+            "memoryUsageBytesP50": 7752597,
+            "memoryUsageBytesP99": 13820183,
+            "wallTimeP50": 951727,
+            "wallTimeP99": 14448184
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 533
+          }
+        },
+        {
+          "dimensions": {
+            "status": "clientDisconnected"
+          },
+          "quantiles": {
+            "cpuTimeP50": 16204,
+            "cpuTimeP99": 16204,
+            "memoryUsageBytesP50": 10879355,
+            "memoryUsageBytesP99": 10879355,
+            "wallTimeP50": 4554940,
+            "wallTimeP99": 4554940
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 1
+          }
+        }
+      ]
+    },
+    "cost-100-search": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 47843,
+            "cpuTimeP99": 64793,
+            "memoryUsageBytesP50": 17767096,
+            "memoryUsageBytesP99": 27959818,
+            "wallTimeP50": 529591,
+            "wallTimeP99": 925457
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 20
+          }
+        }
+      ]
+    },
+    "limit": {
+      "units": {
+        "cpuTime": "microseconds",
+        "wallTime": "microseconds",
+        "memoryUsageBytes": "bytes"
+      },
+      "groups": [
+        {
+          "dimensions": {
+            "status": "success"
+          },
+          "quantiles": {
+            "cpuTimeP50": 9998,
+            "cpuTimeP99": 113250,
+            "memoryUsageBytesP50": 11162351,
+            "memoryUsageBytesP99": 40577876,
+            "wallTimeP50": 143458,
+            "wallTimeP99": 925935
+          },
+          "sum": {
+            "errors": 0,
+            "requests": 8
+          }
+        }
+      ]
+    }
+  },
+  "tailSummary": {
+    "events": 770,
+    "maxCpuMs": 113,
+    "maxWallMs": 22974,
+    "outcomes": {
+      "canceled": 1,
+      "ok": 769
+    }
+  },
+  "cleanup": {
+    "resourceGetStatus": {
+      "worker": 404,
+      "d1": 404,
+      "r2": 404
+    },
+    "deletedTrialObjects": 237
+  },
+  "initialResourceInspection": {
+    "publicR2Enabled": false,
+    "readReplication": "disabled",
+    "cron": "* * * * *",
+    "previewUrlsEnabled": false
+  },
+  "operatorCredentialFilesRemoved": true
+}
