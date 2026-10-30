@@ -24,6 +24,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify local installation excludes cloud tooling
+        run: node scripts/check-local-install.mjs
+
       - run: npm run typecheck
 
       - run: npm run format:check

@@ -81,3 +81,5 @@ Acceptance for #30:
 Implementation milestone #32: [Workers retrieval](specifications/workers-retrieval.md).
 
 Implementation milestone #34: [scoped autonomous ingestion](specifications/scoped-ingestion.md).
+
+Implementation milestone #35: [self-deployment and measurement](specifications/self-deployment.md).

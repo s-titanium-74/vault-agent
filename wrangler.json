@@ -1,0 +1,50 @@
+{
+  "$schema": "packages/cloudflare/node_modules/wrangler/config-schema.json",
+  "name": "vault-agent-cloud",
+  "main": "packages/cloudflare/src/index.ts",
+  "tsconfig": "packages/cloudflare/tsconfig.json",
+  "compatibility_date": "2026-10-29",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": false
+  },
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "vault-agent-cloud",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "packages/cloudflare/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "SOURCE",
+      "bucket_name": "vault-agent-cloud"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "REQUEST_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ],
+  "vars": {
+    "VAULT_ID": "REPLACE_WITH_A_NEW_UUID_V4",
+    "INGESTION_ENABLED": "true",
+    "EXTERNAL_EMBEDDING_CONSENT": "false",
+    "EMBEDDING_MODEL": "@cf/baai/bge-m3",
+    "EMBEDDING_MODEL_REVISION": "operator-v1",
+    "INCLUDE_PATHS": "[\"Notes\",\"images\"]",
+    "EXCLUDE_PATHS": "[\"**/secret.md\"]",
+    "ALLOWED_ORIGINS": "[]",
+    "PROFILE_VALUE_ALLOWLIST": "[\"type\",\"status\"]"
+  }
+}

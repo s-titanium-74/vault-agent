@@ -23,3 +23,9 @@ jobs:
       - run: npm run typecheck --prefix packages/cloudflare
       - run: npm test --prefix packages/cloudflare
       - run: npm run build --prefix packages/cloudflare
+      - name: Build full-repository Deploy template
+        run: npm run build:cloudflare
+      - name: Build generated operator configuration
+        run: |
+          npm run configure --prefix packages/cloudflare -- vault-agent-ci 11111111-1111-4111-8111-111111111111 lexical free
+          npm run build --prefix packages/cloudflare -- --config ../../.cloudflare/wrangler.jsonc
