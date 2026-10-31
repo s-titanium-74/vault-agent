@@ -42,6 +42,10 @@ alongside private reports, not a required writable home directory.
 
 Recorded results and limitations: [hosted follow-up](remote-follow-up-2026-10-29.md).
 
-A [real-time retention trial](remote-retention-wallclock-2026-10-30.md) is now
-being prepared with production Cron and unmodified timestamps. It remains
-pending until the 24-hour cutoffs, subsequent cleanup and teardown are observed.
+A [real-time retention trial](remote-retention-wallclock-2026-10-30.md) completed
+with production Cron and unmodified timestamps. At the final observation about
+32.8 hours after preparation, obsolete snapshot/staging data were gone while
+current/source/unrelated data and search/get were intact. All trial resources
+and private operator credentials were removed, with provider 404 checks. There
+was no observation immediately before the cutoff and the exact deletion time
+is unknown; these limits are recorded separately from the earlier aging test.

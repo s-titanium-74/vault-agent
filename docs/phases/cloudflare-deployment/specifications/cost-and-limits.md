@@ -153,13 +153,15 @@ prove Free-plan capacity. No account plan was changed.
 
 Keep the following #35 gates open:
 
-- Actual clean-account and Deploy-button provisioning, including resource
-  configuration, migrations, secrets, native clients and Cron.
+- Deployment after documented manual account/R2/billing/auth prerequisites,
+  including the separate Deploy-button flow, resource configuration, migrations,
+  secrets, native clients and Cron. Fully automatic account activation is not required.
 - Hosted original larger-corpus 100-note update/rebuild/deletion phases, repeat latency/retry and
-  reconciliation samples, full 24-hour cleanup and optional AI/Vectorize billed
+  reconciliation samples and optional AI/Vectorize billed
   usage. The earlier local phases and #34 semantic smoke remain separate evidence.
-- Paid 1,000 ms CPU configuration and plan-specific limits, plus worst-case
-  capacity/maximum heap validation. Invocation memory quantiles are not heap peaks.
+- Worst-case capacity/maximum heap validation. Invocation memory quantiles are
+  not heap peaks. Paid 1,000 ms CPU configuration and plan-specific execution
+  validation are deferred until #43 optimization, outside #35 completion gates.
 
 No blanket Free or Paid cost/capacity guarantee follows from this partial
 measurement set. Keep issue #35 open until the outstanding results are recorded.
@@ -170,4 +172,11 @@ native cleanup. Interrupted phases have telemetry gaps; their counts are lower
 bounds. Cleanup alone read 204,870 rows while writing 2,823 rows for two obsolete
 compact snapshots and staging/cache work. Do not extrapolate cleanup from write
 counts alone or combine these results with the original larger corpus. Paid
-validation is explicitly on hold.
+validation is deferred to the #43 follow-up.
+
+The [real-time retention trial](remote-retention-wallclock-2026-10-30.md) observed
+native snapshot/staging reclamation after about 32.8 hours without timestamp
+edits or admin advancement. Active/source/excluded/unrelated data and search/get
+were preserved; all trial resources were removed with provider 404 checks.
+The exact reclamation time and preservation immediately before the cutoff were
+not observed. No new CPU or billing estimate is inferred from this trial.

@@ -1,0 +1,89 @@
+{
+  "date": "2026-10-31T08:09:28.654Z",
+  "passed": true,
+  "hosted": true,
+  "driver": "production-real-cron",
+  "timestampsModified": false,
+  "adminAdvanceRequests": 0,
+  "baseline": {
+    "at": "2026-10-29T23:21:52.062Z",
+    "oldBefore": true,
+    "stageBefore": true,
+    "oldExists": true,
+    "stageExists": true,
+    "stageEntries": 1,
+    "oldRows": {
+      "notes": 1,
+      "chunks": 1,
+      "sources": 1,
+      "grams": 30
+    },
+    "oldFts": true,
+    "activePreserved": true,
+    "sourcePreserved": true,
+    "unrelatedPreserved": true,
+    "excludedPreserved": true,
+    "searchAndGetPassed": true,
+    "reclamationComplete": false
+  },
+  "oldCreatedAt": "2026-10-29T23:18:25.710Z",
+  "stagingCreatedAt": "2026-10-29T23:21:38.184Z",
+  "bothEligibleAt": "2026-10-30T23:21:38.184Z",
+  "observedReclaimedAt": "2026-10-31T08:09:28.654Z",
+  "elapsedFromOldCreationHours": 32.85081777777778,
+  "elapsedFromStagingCreationHours": 32.797352777777775,
+  "verification": {
+    "oldSnapshotAbsent": true,
+    "oldNotesChunksSourcesGramsAbsent": true,
+    "oldFtsAbsent": true,
+    "oldR2PrefixAbsent": true,
+    "stagingJobAndEntriesAbsent": true,
+    "stagingR2PrefixAbsent": true,
+    "activeSnapshotPreserved": true,
+    "currentCopyAndMutableSourceUnchanged": true,
+    "excludedAndUnrelatedObjectsUnchanged": true,
+    "at": "2026-10-31T08:08:00.901Z",
+    "activeRevisionPreserved": true,
+    "searchPassed": true,
+    "pinnedGetPassed": true,
+    "newContentPassed": true,
+    "oldContentAbsent": true,
+    "detectionState": "observed",
+    "cleanupPending": false
+  },
+  "observation": {
+    "nearCutoffCheck": false,
+    "exactReclamationTimeKnown": false,
+    "reservationCompletionPreviouslyRecorded": false,
+    "wranglerObservationError": 7403,
+    "verificationFallback": "connected-cloudflare-api-and-read-only-worker-http"
+  },
+  "cleanup": {
+    "complete": true,
+    "verifiedAt": "2026-10-31T08:10:43.109Z",
+    "objectsRemoved": 4,
+    "bytesRemoved": 169,
+    "providerAbsence": [
+      {
+        "tag": "worker",
+        "status": 404
+      },
+      {
+        "tag": "cron",
+        "status": 404
+      },
+      {
+        "tag": "d1",
+        "status": 404
+      },
+      {
+        "tag": "r2",
+        "status": 404
+      }
+    ],
+    "automationStopped": true,
+    "operatorCredentialsRemoved": true
+  },
+  "paidValidation": false,
+  "semanticEnabled": false
+}
