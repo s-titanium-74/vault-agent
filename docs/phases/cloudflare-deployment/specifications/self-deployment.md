@@ -90,4 +90,6 @@ explicit timestamp aging do not replace the remaining original-size/timer
 measurements. Paid execution validation is deferred until the #43 optimization,
 outside #35's completion gates; document its unverified limits. This does not
 authorize a plan change. A [real-time retention trial](remote-retention-wallclock-2026-10-30.md)
-is in preparation and has no completed 24-hour result yet.
+completed after about 32.8 hours of real elapsed time, including native cleanup,
+preservation/search/get assertions and verified teardown. The precise deletion
+time and preservation immediately before the cutoff were not observed.
