@@ -1,0 +1,110 @@
+{
+  "date": "2026-10-31T12:08:23.270Z",
+  "hosted": true,
+  "driver": "real-cron-no-admin-advancement",
+  "temporaryReadCredential": {
+    "slotWasInitiallyAbsent": true,
+    "originalReadAndAdminUnchanged": true,
+    "removed": true,
+    "revocationHttpStatus": 403,
+    "bindingsRestored": true,
+    "cronRestored": true
+  },
+  "phases": {
+    "create": {
+      "startedAt": "2026-10-31T12:08:26.080Z",
+      "polls": 17,
+      "firstUpdatingMs": 60312,
+      "passed": true,
+      "publicationObservedMs": 193010,
+      "completedAt": "2026-10-31T12:11:39.090Z",
+      "failedJobsObserved": 0
+    },
+    "overwrite": {
+      "startedAt": "2026-10-31T12:12:28.863Z",
+      "polls": 18,
+      "firstUpdatingMs": 59015,
+      "attachmentMetadataUpdated": true,
+      "passed": true,
+      "publicationObservedMs": 191925,
+      "completedAt": "2026-10-31T12:15:40.788Z",
+      "failedJobsObserved": 0,
+      "attachmentBytesUpdated": true
+    },
+    "rename": {
+      "startedAt": "2026-10-31T12:16:31.271Z",
+      "polls": 18,
+      "firstUpdatingMs": 59275,
+      "passed": true,
+      "publicationObservedMs": 191882,
+      "completedAt": "2026-10-31T12:19:43.153Z",
+      "failedJobsObserved": 0
+    },
+    "delete": {
+      "startedAt": "2026-10-31T12:20:35.574Z",
+      "polls": 11,
+      "firstUpdatingMs": 51635,
+      "passed": true,
+      "publicationObservedMs": 123145,
+      "completedAt": "2026-10-31T12:22:38.719Z",
+      "failedJobsObserved": 0
+    }
+  },
+  "mcp": {
+    "at": "2026-10-31T12:08:25.687Z",
+    "passed": true,
+    "tools": 18,
+    "initialize": true,
+    "list": true,
+    "search": true,
+    "explicitGet": true
+  },
+  "initial": {
+    "at": "2026-10-31T12:08:24.789Z",
+    "authenticatedRead": true,
+    "readRejectedForAdmin": true,
+    "initialSearchAndGet": true,
+    "userDeletedNoteNotFound": true,
+    "staleRevisionRejected": true
+  },
+  "final": {
+    "at": "2026-10-31T12:22:39.536Z",
+    "excludedAndUnrelatedAbsent": true,
+    "probeOldAndRenamedIdsRevoked": true,
+    "probeAttachmentRevoked": true,
+    "baselineSearchPreserved": true
+  },
+  "temporaryReadRevoked": true,
+  "scopeCheck": {
+    "forbiddenNotesAndSourcesAbsentAcrossSnapshots": true,
+    "forbiddenGetRejected": true,
+    "unrelatedSourceNeverIndexed": true,
+    "fuzzyAuthorizedCandidatesMayRemain": true,
+    "zeroSearchCountNotRequired": true
+  },
+  "provisioning": {
+    "operatorPerformedDeployButton": true,
+    "rootBuildAndDeployCommandsSpecified": true,
+    "d1MigrationsApplied": 3,
+    "privateR2ManagedDomainDisabled": true,
+    "privateR2CustomDomains": 0,
+    "cronEveryMinute": true,
+    "semanticConsent": false
+  },
+  "operatorCliEvidence": {
+    "uploadComplete": true,
+    "notesInitiallyIndexed": 2,
+    "chunksInitiallyIndexed": 4,
+    "filesAccepted": 3,
+    "readTokenSearchAndGetPassed": true,
+    "updateMarkerFound": true,
+    "deletedNoteGetExitCode": 4,
+    "silentCliErrorTrackedInIssue": 46
+  },
+  "cleanup": {
+    "probeMutableObjectsRemoved": true,
+    "originalDeploymentPreserved": true,
+    "retainedSnapshotCopiesFollowNormalRetention": true,
+    "localTemporaryCredentialsRemoved": true
+  }
+}
