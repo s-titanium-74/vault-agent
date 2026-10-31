@@ -1,10 +1,13 @@
 # Cost and runtime limits (#35)
 
-Date: 2026-10-29. Currency: USD before tax. Status: **partial evidence**.
+Pricing assumptions dated 2026-10-29; workload evidence through 2026-10-31.
+Currency: USD before tax. Status: **measured with explicit limitations**.
 The [hosted Wrangler follow-up](remote-self-deployment-2026-10-29.md) validates
 isolated resource provisioning, clients, autonomous changes, rotation and teardown
-and adds native CPU/V8-memory and selected 1/100-note counters. Neither
-clean-account deployment nor Paid capacity is certified. Ordinary
+and adds native CPU/V8-memory and selected 1/100-note counters. The later
+[operator button/capacity follow-up](remote-deploy-button-2026-10-31.md) validates
+the button flow after manual prerequisites and original-size 100-note mutations.
+Paid capacity and optional semantic billing are not certified. Ordinary
 installation continues to require no Cloudflare account or services.
 
 ## Reproducible local operation measurements
@@ -151,20 +154,26 @@ recorded separately from the local report's deliberately null fields. The
 observed 100-note search CPU P99 was 64.793 ms; successful completion does not
 prove Free-plan capacity. No account plan was changed.
 
-Keep the following #35 gates open:
+The [2026-10-31 follow-up](remote-deploy-button-2026-10-31.md) records resource
+configuration/migrations/secrets, native clients and real Cron in the separate
+Deploy-button flow. Fully automatic account activation is not required.
+Original-size 100-note initial/update/rebuild/deletion now have hosted results:
+respectively 24,175 / 24,203 / 24,203 / >=23,934 measured D1 writes. Deletion
+recovered from an unconfirmed grouped HTTP 503; its counters are lower bounds.
+The updated body was retrieved and deleted note/chunk access was revoked.
+Separate source-admission operations and retained copies are explicitly counted.
 
-- Deployment after documented manual account/R2/billing/auth prerequisites,
-  including the separate Deploy-button flow, resource configuration, migrations,
-  secrets, native clients and Cron. Fully automatic account activation is not required.
-- Hosted original larger-corpus 100-note update/rebuild/deletion phases, repeat latency/retry and
-  reconciliation samples and optional AI/Vectorize billed
-  usage. The earlier local phases and #34 semantic smoke remain separate evidence.
-- Worst-case capacity/maximum heap validation. Invocation memory quantiles are
-  not heap peaks. Paid 1,000 ms CPU configuration and plan-specific execution
-  validation are deferred until #43 optimization, outside #35 completion gates.
+The two provisioning-flow mutation runs are separately reported small samples,
+not a reliable latency distribution or retry probability. Optional AI/Vectorize
+billed usage remains unverified in these lexical-only workloads; measured
+provider calls/dimensions were zero. Invocation memory quantiles are not peak
+heap or a worst-case capacity certificate. New CPU/memory analytics were
+rate-limited and remain null; wall time is not substituted. Paid 1,000 ms CPU
+execution is deferred until #43 optimization, outside #35 completion gates.
 
-No blanket Free or Paid cost/capacity guarantee follows from this partial
-measurement set. Keep issue #35 open until the outstanding results are recorded.
+No blanket Free or Paid cost/capacity guarantee follows from these measurements.
+The dated price scenarios above retain their unmeasured-input assumptions;
+the new results do not make the base-only estimate an account-wide bill.
 
 An additional [compact-workload run](remote-follow-up-2026-10-29.md) completed
 100 one-chunk short notes through update/rebuild/deletion and age-equivalent

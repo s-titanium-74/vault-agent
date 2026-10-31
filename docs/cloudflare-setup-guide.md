@@ -1,11 +1,12 @@
 # Deploy your own Cloudflare edition
 
-Status: #35 implementation in progress. Wrangler provisioning in an existing
-account with new isolated resources has been validated. Account creation, R2
+Status: Wrangler and operator-driven Deploy-button setup have been validated
+with synthetic HTTP/MCP, upload/update/delete and autonomous R2 checks.
+Account creation, R2
 activation and required billing/authentication setup are manual prerequisites;
-their complete automation is not required. Deployment after those prerequisites
-and Deploy-button execution still need separate validation. Use synthetic
-content first. See [measurement evidence](phases/cloudflare-deployment/specifications/cost-and-limits.md).
+their complete automation is not required. Use synthetic content first;
+successful tests are not a Free/Paid capacity guarantee. See
+[measurement evidence](phases/cloudflare-deployment/specifications/cost-and-limits.md).
 
 ## Prerequisites and data scope
 
@@ -34,8 +35,9 @@ Use the **entire repository**, without `/tree/main/packages/cloudflare` in the
 URL. The shared core is outside the cloud package. Cloudflare's [documented
 monorepo limitation](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
 makes a subdirectory-only clone insufficient. This button targets main; new
-changes become available after merge. This flow has not yet been validated in
-a clean account and is not a one-click compatibility claim.
+changes become available after merge. The [operator walkthrough](phases/cloudflare-deployment/specifications/remote-deploy-button-2026-10-31.md)
+validated setup after manual account prerequisites and explicit command/secret
+configuration; this is not a fully automated account-activation or one-click claim.
 
 Review the generated application before deploying:
 
@@ -66,6 +68,22 @@ A button-created clone is a deployment fork. Keep its resource bindings and
 vault UUID when upgrading. Automatic provisioning is distinct from the explicit
 resource creation below. The baseline button intentionally omits AI/Vectorize;
 use the explicit semantic steps after lexical setup succeeds.
+
+Additional fields in the setup screen:
+
+- **Preview command** runs for non-production builds. Leave its default and
+  disable preview/non-production branch builds for this baseline trial; do not
+  substitute the production deploy command into this field.
+- **API token** in Workers Builds is a Cloudflare deployment credential, separate
+  from READ_TOKEN and ADMIN_TOKEN. The dashboard can create one automatically.
+  It must authorize Worker deployment and the selected storage operations,
+  including D1 migrations. If migrations report a permissions error, review
+  D1 edit access on this build token; do not paste a vault read/admin token here.
+  See [Workers Builds configuration](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/).
+- **VAULT_ID** identifies this deployment's vault; it is not an API credential.
+  READ_TOKEN permits retrieval and ADMIN_TOKEN also permits upload/indexing.
+  Generate them independently and enter them as runtime secrets, not build-only
+  variables. No source vault files are uploaded just by deploying the template.
 
 ## Wrangler fallback
 

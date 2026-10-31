@@ -1,9 +1,23 @@
-# Remaining hosted validation (#35)
+# Hosted validation status and limitations (#35)
 
-Status: Compact-workload and age-equivalent native retention follow-up completed;
+Status: Baseline deployment and workload checks completed. The
+[operator Deploy-button and original-size capacity run](remote-deploy-button-2026-10-31.md)
+adds authenticated HTTP/MCP, real-Cron create/overwrite/rename/delete and
+100-note initial/update/rebuild/deletion. The original-size deletion recovered
+from a grouped HTTP 503 and has lower-bound counters. All isolated trials were
+removed; the operator-created deployment was preserved with its original keys.
+
+The [real-time retention run](remote-retention-wallclock-2026-10-30.md) is also
+complete. Remaining limits are missing new CPU/peak-memory analytics due to the
+provider query budget, unknown exact retention deletion time/no near-cutoff
+observation, small latency samples, and unverified optional semantic billing.
+None is converted to a Free/Paid or worst-case capacity guarantee.
+
 Paid-plan validation is deferred until the #43 idle-reconciliation optimization
 and is not a #35 completion gate. A fresh isolated deployment rejected `limits.cpu_ms=1000` with provider
 code `100328`; removing that setting did not change account billing.
+
+## Earlier compact-workload and age-equivalent method
 
 The follow-up adds 100 compact atomic bilingual notes (one short line per note)
 for update, rebuild and deletion, subject to actual remaining account quotas.

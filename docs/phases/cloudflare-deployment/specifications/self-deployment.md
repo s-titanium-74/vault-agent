@@ -1,10 +1,10 @@
 # Self-deployment and measurement (#35)
 
-Status: In progress. Wrangler provisioning and the new-template hosted synthetic
-walkthrough are validated; clean-account and Deploy-button validation remain
-open. Account creation, R2 activation and required billing/authentication setup
+Status: Baseline self-deployment validation recorded. Wrangler provisioning and
+the operator-driven Deploy-button walkthrough passed native HTTP/MCP, scoped
+upload/update/delete and autonomous R2 checks. Account creation, R2 activation and required billing/authentication setup
 are documented manual prerequisites; fully automating those account actions is
-not a release gate. Validate deployment after those prerequisites. Recorded
+not a release gate. Deployment was validated after those prerequisites. Recorded
 hosted #34 evidence remains separate.
 
 ## Delivery contract
@@ -54,10 +54,12 @@ unavailable metrics must be null, never inferred from wall time.
 
 Date official pricing assumptions. Estimate account-wide allowances and paid
 base charges separately; report daily Free constraints, monthly Paid charges,
-billing rounding and unmeasured inputs. No free-tier guarantee. The delivery
-gate remains open until clean-account setup, both provisioning flows, native
-client access, real Cron changes, full teardown and hosted cost/limit evidence
-have been recorded. No automatic account upgrade is authorized by this guide.
+billing rounding and unmeasured inputs. No free-tier guarantee. The baseline
+delivery evidence now covers both provisioning flows after manual prerequisites,
+native clients, real Cron changes, full isolated-trial teardown and hosted
+cost/limit observations. Unavailable CPU/peak-memory values and optional billed
+usage remain explicitly unverified. No automatic account upgrade is authorized
+by this guide.
 
 ## Validation recorded in this change
 
@@ -80,8 +82,9 @@ new isolated Wrangler provisioning, migrations, actual CLI/native MCP, four
 real-Cron R2 mutation phases with no admin advancement, token rotation and verified
 full teardown. It also adds native 1-note mutation and 100-note initial/read
 counters, platform CPU/V8-memory quantiles and a safe 2 MiB admission failure.
-This is existing-account evidence; button/clean-account/Paid/remaining scale
-phases still require separate validation.
+This is existing-account evidence; the later operator-driven button walkthrough
+and original-size cycle are recorded separately below. Paid execution remains
+deferred.
 
 The [compact-workload follow-up](remote-follow-up-2026-10-29.md) adds hosted
 100-note update/rebuild/deletion with interruption recovery and native
@@ -93,3 +96,12 @@ authorize a plan change. A [real-time retention trial](remote-retention-wallcloc
 completed after about 32.8 hours of real elapsed time, including native cleanup,
 preservation/search/get assertions and verified teardown. The precise deletion
 time and preservation immediately before the cutoff were not observed.
+
+The [2026-10-31 button and capacity follow-up](remote-deploy-button-2026-10-31.md)
+records the operator's setup, 18-tool MCP client, four real-Cron mutation
+phases, temporary read-key revocation, and original-size 100-note
+initial/update/rebuild/delete. Deletion recovered from an unconfirmed grouped
+HTTP 503 using the same job; its counters are lower bounds. The original
+operator environment was preserved; the separate capacity trial was completely
+removed and provider absence verified. New provider CPU/memory analytics were
+rate-limited, so earlier quantiles and this run's null fields stay distinct.
