@@ -1,5 +1,9 @@
 # Scoped Upload And Autonomous R2 Ingestion (#34)
 
+Follow-up #43: [read-only idle reconciliation](idle-reconciliation.md) supersedes
+the idle job admission, checkpoint cost and observation-age freshness rules
+below. Completed unchanged checks create no durable jobs or observation writes.
+
 This specification supersedes the CLI-driven orchestration proposal in
 [ingestion and consistency](ingestion-consistency.md). Public command:
 `vault-agent upload --vault-id <uuid> --include Notes --include images`.

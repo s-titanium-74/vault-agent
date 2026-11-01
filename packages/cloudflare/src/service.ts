@@ -16,6 +16,14 @@ import { VectorizeStore } from "./vectorize.js";
 import { semanticProgress } from "./semantic-work.js";
 
 const compatibility = { stale: false, incompatible: false, details: "" };
+function detectionFreshness(
+  detection: Awaited<ReturnType<typeof detectionStatus>>,
+): core.FreshnessState {
+  if (!detection) return "fresh";
+  return detection.state === "stale" || detection.state === "updating"
+    ? detection.state
+    : "unknown";
+}
 const getSchema = z.object({
   noteId: z.string().regex(/^[0-9a-f]{32}$/),
   chunkIndex: z.number().int().min(0).optional(),
@@ -173,11 +181,14 @@ export class RetrievalService {
       vectors: this.vectors,
     };
   }
-  async aggregate() {
+  async aggregate(detection: Awaited<ReturnType<typeof detectionStatus>>) {
     return {
       store: await this.metadata.aggregate(),
       compatibility,
       config: this.settings,
+      freshnessMachine: new core.FreshnessMachine(
+        detectionFreshness(detection),
+      ),
     };
   }
   async invoke(
@@ -196,6 +207,7 @@ export class RetrievalService {
     input: unknown,
   ): Promise<{ data: unknown; warnings: core.WarningItem[]; usage?: Usage }> {
     const args = (input ?? {}) as Record<string, unknown>;
+    const detection = await detectionStatus(this.env);
     let data: unknown;
     let warnings: core.WarningItem[] = [];
     if (operation === "search") {
@@ -302,7 +314,7 @@ export class RetrievalService {
           .map((e) => this.guidance(e)),
       };
     } else {
-      const ctx = await this.aggregate();
+      const ctx = await this.aggregate(detection);
       let result: { data: unknown; warnings: core.WarningItem[] };
       switch (operation) {
         case "vault_overview":
@@ -372,7 +384,6 @@ export class RetrievalService {
       data = result.data;
       warnings = result.warnings;
     }
-    const detection = await detectionStatus(this.env);
     if (
       this.incremental &&
       this.settings.semantic &&
@@ -387,11 +398,18 @@ export class RetrievalService {
             "Semantic updates are pending; results may omit changed notes.",
         });
     }
-    if (detection && detection.state !== "observed")
+    if (detection)
       warnings.push({
-        code: detection.state === "updating" ? "INDEX_UPDATING" : "INDEX_STALE",
+        code:
+          detection.state === "updating"
+            ? "INDEX_UPDATING"
+            : detection.state === "stale"
+              ? "INDEX_STALE"
+              : "INDEX_FRESHNESS_UNKNOWN",
         message:
-          "Serving the last published snapshot while source reconciliation is pending.",
+          detection.state === "updating" || detection.state === "stale"
+            ? "Serving the last published snapshot while source reconciliation is pending."
+            : "Serving a published snapshot; recent source checks and Cron health are not persisted.",
       });
     await this.current();
     return {
@@ -446,11 +464,7 @@ export async function cloudStatus(
     server: { running: true, host, port: 443, apiKeyRequired: true },
     index: {
       freshness: {
-        state: snapshot
-          ? detection?.state === "observed"
-            ? "fresh"
-            : (detection?.state ?? "fresh")
-          : "unknown",
+        state: snapshot ? detectionFreshness(detection) : "unknown",
         lastSuccessfulUpdateAt: indexedAt,
         pendingChangeCount: 0,
         reindexRequired: false,

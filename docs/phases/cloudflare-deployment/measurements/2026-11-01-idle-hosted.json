@@ -1,0 +1,1605 @@
+{
+  "date": "2026-11-01T10:27:34.588Z",
+  "runtime": "hosted",
+  "semantic": false,
+  "cpuMs": null,
+  "peakMemoryBytes": null,
+  "phases": [
+    {
+      "stage": "prepare",
+      "wallMs": 192511,
+      "publicationObservedMs": 191684,
+      "ticks": [
+        {
+          "kind": "retention-tick",
+          "wallMs": 3197,
+          "counts": {
+            "queries": 189,
+            "rowsRead": 204,
+            "rowsWritten": 308,
+            "r2Get": 5,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 5,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 3990,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 174,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4892,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 238,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4214,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 302,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 3962,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 366,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4332,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 430,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4544,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 494,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4760,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 558,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4264,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 622,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4399,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 686,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 5323,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 750,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 5805,
+          "counts": {
+            "queries": 101,
+            "rowsRead": 814,
+            "rowsWritten": 144,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 4928,
+          "counts": {
+            "queries": 99,
+            "rowsRead": 876,
+            "rowsWritten": 135,
+            "r2Get": 8,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 8,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 855,
+          "counts": {
+            "queries": 75,
+            "rowsRead": 545,
+            "rowsWritten": 781,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 888,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 949,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 886,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1013,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1080,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 883,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 898,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 483,
+            "rowsWritten": 858,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 964,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 912,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 483,
+            "rowsWritten": 858,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 897,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 483,
+            "rowsWritten": 858,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 926,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1087,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 483,
+            "rowsWritten": 858,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1029,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 483,
+            "rowsWritten": 858,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1213,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 483,
+            "rowsWritten": 858,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1152,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1043,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 963,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 967,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1017,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 956,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 996,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 484,
+            "rowsWritten": 860,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 928,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 481,
+            "rowsWritten": 854,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 887,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 925,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 482,
+            "rowsWritten": 856,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 997,
+          "counts": {
+            "queries": 75,
+            "rowsRead": 717,
+            "rowsWritten": 113,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1129,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1028,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1065,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 953,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 973,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1117,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 994,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1253,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 998,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1091,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 981,
+          "counts": {
+            "queries": 77,
+            "rowsRead": 882,
+            "rowsWritten": 40,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 1078,
+          "counts": {
+            "queries": 75,
+            "rowsRead": 1383,
+            "rowsWritten": 39,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 730,
+          "counts": {
+            "queries": 32,
+            "rowsRead": 442,
+            "rowsWritten": 18,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true,
+      "searchHits": 5
+    },
+    {
+      "stage": "idle",
+      "wallMs": 6435,
+      "publicationObservedMs": null,
+      "searchHits": 5,
+      "ticks": [
+        {
+          "kind": "retention-tick",
+          "wallMs": 510,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 528,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 517,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "stage": "update",
+      "wallMs": 7466,
+      "publicationObservedMs": 5822,
+      "searchHits": 5,
+      "ticks": [
+        {
+          "kind": "retention-tick",
+          "wallMs": 2934,
+          "counts": {
+            "queries": 187,
+            "rowsRead": 2308,
+            "rowsWritten": 343,
+            "r2Get": 1,
+            "r2Head": 0,
+            "r2List": 6,
+            "r2Put": 1,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 246,
+          "counts": {
+            "queries": 32,
+            "rowsRead": 11134,
+            "rowsWritten": 159,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "stage": "restore",
+      "wallMs": 7595,
+      "publicationObservedMs": 5680,
+      "searchHits": 5,
+      "ticks": [
+        {
+          "kind": "retention-tick",
+          "wallMs": 2808,
+          "counts": {
+            "queries": 187,
+            "rowsRead": 2314,
+            "rowsWritten": 343,
+            "r2Get": 1,
+            "r2Head": 0,
+            "r2List": 6,
+            "r2Put": 1,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 342,
+          "counts": {
+            "queries": 32,
+            "rowsRead": 11155,
+            "rowsWritten": 144,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "stage": "cron-update",
+      "wallMs": 555578,
+      "publicationObservedMs": 553994,
+      "searchHits": 5,
+      "ticks": [
+        {
+          "kind": "scheduled",
+          "wallMs": 14508,
+          "counts": {
+            "queries": 187,
+            "rowsRead": 2313,
+            "rowsWritten": 343,
+            "r2Get": 1,
+            "r2Head": 0,
+            "r2List": 6,
+            "r2Put": 1,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "scheduled",
+          "wallMs": 2778,
+          "counts": {
+            "queries": 32,
+            "rowsRead": 11142,
+            "rowsWritten": 158,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 0,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "stage": "cron-idle",
+      "wallMs": 183260,
+      "publicationObservedMs": null,
+      "searchHits": 5,
+      "ticks": [
+        {
+          "kind": "scheduled",
+          "wallMs": 2548,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 32,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "scheduled",
+          "wallMs": 2087,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 32,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "scheduled",
+          "wallMs": 3726,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 32,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "stage": "maintenance",
+      "wallMs": 5754,
+      "publicationObservedMs": null,
+      "searchHits": 5,
+      "ticks": [
+        {
+          "kind": "retention-tick",
+          "wallMs": 454,
+          "counts": {
+            "queries": 9,
+            "rowsRead": 54,
+            "rowsWritten": 1,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 471,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 32,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        },
+        {
+          "kind": "retention-tick",
+          "wallMs": 450,
+          "counts": {
+            "queries": 8,
+            "rowsRead": 32,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          }
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "counterBoundary": "Production operations only; synthetic telemetry receipt/reset writes are excluded. No private content.",
+  "setup": {
+    "notes": 100,
+    "chunks": 200,
+    "attachments": 1,
+    "region": "APAC",
+    "readReplication": "disabled",
+    "cron": "* * * * *",
+    "persistedLogs": false,
+    "semantic": false,
+    "cpuOverride": null,
+    "paidCpuAttempt": {
+      "cpuMs": 1000,
+      "accepted": false,
+      "providerCode": 100328
+    }
+  },
+  "versionBoundary": "First idle samples precede the aggregate-freshness presentation fix; later changed-source and actual Cron phases use the final production source. Probe/write behavior is unchanged by that fix.",
+  "finalSourceSha256": {
+    "packages/cloudflare/src/ingestion.ts": "b467b0bbc7812f2b8316f827ad5203f4bfd267217483187276883552ce440836",
+    "packages/cloudflare/src/service.ts": "7451e57c5e3e73d8d95d7bf6472cbce391cfc6d1ea429e551eadeda715d38910",
+    "packages/cloudflare/src/mcp.ts": "a9d206a84e92b901e2167da1d982e848894f1c287ef9a8ff0b3f9bf8e762392a"
+  },
+  "runtimeTailSamples": {
+    "events": [
+      {
+        "outcome": "ok",
+        "cpuMs": 68,
+        "wallMs": 3008,
+        "scheduled": false,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "changed",
+            "pages": 2,
+            "files": 101,
+            "elapsedMs": 2934
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 34,
+        "wallMs": 320,
+        "scheduled": false,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "resumed",
+            "files": 0,
+            "pages": 0,
+            "elapsedMs": 246
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 106,
+        "wallMs": 2903,
+        "scheduled": false,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "changed",
+            "pages": 2,
+            "files": 101,
+            "elapsedMs": 2808
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 31,
+        "wallMs": 413,
+        "scheduled": false,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "resumed",
+            "files": 0,
+            "pages": 0,
+            "elapsedMs": 342
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 138,
+        "wallMs": 14652,
+        "scheduled": true,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "changed",
+            "pages": 2,
+            "files": 101,
+            "elapsedMs": 14508
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 31,
+        "wallMs": 2944,
+        "scheduled": true,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "resumed",
+            "files": 0,
+            "pages": 0,
+            "elapsedMs": 2778
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 17,
+        "wallMs": 3436,
+        "scheduled": true,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "unchanged",
+            "pages": 2,
+            "files": 101,
+            "elapsedMs": 3186
+          }
+        ]
+      },
+      {
+        "outcome": "ok",
+        "cpuMs": 21,
+        "wallMs": 2787,
+        "scheduled": true,
+        "logs": [
+          {
+            "event": "reconciliation",
+            "result": "start"
+          },
+          {
+            "event": "reconciliation",
+            "result": "unchanged",
+            "pages": 2,
+            "files": 101,
+            "elapsedMs": 2548
+          }
+        ]
+      }
+    ]
+  },
+  "cpuBoundary": "Tail CPU/wall cover sampled instrumented invocations including wrapper overhead; only two of three idle scheduled invocations have tail CPU samples. No 24-hour or plan-capacity claim.",
+  "cleanup": {
+    "objects": 205,
+    "bytes": 309091,
+    "empty": true,
+    "workerAbsent": true,
+    "workerStatus": 404,
+    "bucketAbsent": true,
+    "bucketStatus": 404,
+    "databaseAbsent": true,
+    "databaseStatus": 404,
+    "cronAndSecretsRemoved": true,
+    "tailDeleted": true
+  }
+}

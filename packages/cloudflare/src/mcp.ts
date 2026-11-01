@@ -172,7 +172,17 @@ async function call(env: Env, name: string, args: Record<string, unknown>) {
     const payload = {
       ...(data as object),
       ...(["search", "related", "get_note", "get_chunk"].includes(name)
-        ? { freshness: "fresh" }
+        ? {
+            freshness: result.warnings.some((w) => w.code === "INDEX_UPDATING")
+              ? "updating"
+              : result.warnings.some((w) => w.code === "INDEX_STALE")
+                ? "stale"
+                : result.warnings.some(
+                      (w) => w.code === "INDEX_FRESHNESS_UNKNOWN",
+                    )
+                  ? "unknown"
+                  : "fresh",
+          }
         : {}),
       warnings: result.warnings,
       ...(result.usage ? { usage: result.usage } : {}),
