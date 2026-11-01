@@ -56,6 +56,14 @@ deletion, recovery, model migrations, and exclusions across independent stores.
 
 Details: [ingestion and consistency](specifications/ingestion-consistency.md).
 
+Changed-source optimization #48 follows
+[incremental publication](specifications/incremental-publication.md): shared-core
+delta preparation, one authoritative SQL transaction, and explicitly reported
+optional cloud vector lag. D1 body storage remains in scope; AI Search is excluded.
+The implementation is covered by local synthetic tests and a
+[matched hosted lexical comparison](specifications/remote-incremental-update-2026-11-01.md).
+Operator rollout, hosted semantic catch-up and actual Cron/CLI timing remain separate.
+
 ## Validation And Delivery Gates
 
 R2 + D1 + Workers AI + Vectorize is the selected initial composition subject

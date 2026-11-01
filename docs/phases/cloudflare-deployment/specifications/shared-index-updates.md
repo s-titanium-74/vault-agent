@@ -4,6 +4,12 @@ Local watch, local index/reindex and Workers ingestion use the same portable
 update policy and prepared index data. Storage adapters own I/O and completion.
 This extends the portable-core boundary in #31 and the ingestion work in #34.
 
+Accepted follow-up #48: [incremental publication](incremental-publication.md)
+defines a shared prepared delta and changed-row comparisons. Local SQLite keeps
+atomic vector/lexical writes; cloud optional vectors may catch up separately with
+current-version validation and explicit warnings. The runtime descriptions below
+document the original baseline; the linked follow-up specifies the new layout.
+
 ## Common decisions and data
 
 Portable core owns:

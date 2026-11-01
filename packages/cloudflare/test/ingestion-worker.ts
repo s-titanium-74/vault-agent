@@ -4,6 +4,83 @@ import { tick } from "../src/ingestion.js";
 import type { Env } from "../src/config.js";
 export default {
   async fetch(request: Request, env: Env) {
+    const sourceCounts = { get: 0, head: 0, list: 0, put: 0 };
+    if (request.headers.has("X-Synthetic-Measure-Source"))
+      env = {
+        ...env,
+        SOURCE: new Proxy(env.SOURCE, {
+          get(target, key) {
+            const value = Reflect.get(target, key);
+            if (typeof value !== "function") return value;
+            return (...args: unknown[]) => {
+              if (key in sourceCounts)
+                sourceCounts[key as keyof typeof sourceCounts]++;
+              return Reflect.apply(value, target, args);
+            };
+          },
+        }),
+      };
+    if (request.headers.has("X-Synthetic-Disable-Ingestion"))
+      env = { ...env, INGESTION_ENABLED: "false" } as Env;
+    if (request.headers.has("X-Synthetic-Disable-Semantic"))
+      env = { ...env, EXTERNAL_EMBEDDING_CONSENT: "false" } as Env;
+    if (request.headers.has("X-Synthetic-Read-Race")) {
+      const original = env.DB;
+      let changed = false;
+      env = {
+        ...env,
+        DB: new Proxy(original, {
+          get(target, key) {
+            if (key === "withSession")
+              return (constraint: string) => {
+                const session = target.withSession(constraint);
+                return new Proxy(session, {
+                  get(s, k) {
+                    if (k === "prepare")
+                      return (sql: string) => {
+                        const wrap = (
+                          statement: D1PreparedStatement,
+                        ): D1PreparedStatement =>
+                          new Proxy(statement, {
+                            get(t, p) {
+                              if (p === "bind")
+                                return (...args: unknown[]) =>
+                                  wrap(t.bind(...args));
+                              if (p === "all")
+                                return async () => {
+                                  const result = await t.all();
+                                  if (
+                                    !changed &&
+                                    sql.startsWith("SELECT data FROM notes")
+                                  ) {
+                                    changed = true;
+                                    await original
+                                      .prepare(
+                                        "UPDATE publications SET epoch=epoch+1 WHERE store=(SELECT revision FROM deployment)",
+                                      )
+                                      .run();
+                                  }
+                                  return result;
+                                };
+                              const value = Reflect.get(t, p);
+                              return typeof value === "function"
+                                ? value.bind(t)
+                                : value;
+                            },
+                          });
+                        return wrap(s.prepare(sql));
+                      };
+                    const value = Reflect.get(s, k);
+                    return typeof value === "function" ? value.bind(s) : value;
+                  },
+                });
+              };
+            const value = Reflect.get(target, key);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }),
+      };
+    }
     if (request.headers.has("X-Synthetic-Policy-Change"))
       env = { ...env, EXCLUDE_PATHS: '["Notes/**"]' } as Env;
     if (request.headers.has("X-Synthetic-Lost-Admission")) {
@@ -125,6 +202,12 @@ export default {
       await tick(env);
       return Response.json({ ok: true });
     }
-    return worker.fetch(request, env);
+    const response = await worker.fetch(request, env);
+    if (request.headers.has("X-Synthetic-Measure-Source"))
+      response.headers.set(
+        "X-Synthetic-Source-Counts",
+        JSON.stringify(sourceCounts),
+      );
+    return response;
   },
 };

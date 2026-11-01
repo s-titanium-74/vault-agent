@@ -4,6 +4,16 @@ import { CloudError, boundedBytes } from "./errors.js";
 import { D1MetadataStore } from "./d1.js";
 import { VectorizeStore } from "./vectorize.js";
 import {
+  publication,
+  stageDeltaFile,
+  prepareDeltaCommit,
+} from "./incremental.js";
+import {
+  advanceSemantic,
+  semanticProgress,
+  cleanupIncremental,
+} from "./semantic-work.js";
+import {
   WorkersAIEmbeddingProvider,
   descriptor,
   MODEL,
@@ -11,6 +21,12 @@ import {
 } from "./provider.js";
 
 type Data = {
+  layout?: number;
+  observations?: number;
+  parentSnapshot?: string | null;
+  parentEpoch?: number;
+  incremental?: boolean;
+  updatePath?: string;
   revision: string;
   parent: string | null;
   cursor?: string;
@@ -26,6 +42,7 @@ type Data = {
   linkCursor?: string;
   vectorCursor?: string;
   validateCursor?: string;
+  validateSeen?: string[];
   policy?: string;
   filesAccepted?: number;
   filesProcessed?: number;
@@ -51,10 +68,41 @@ type Entry = {
   etag: string | null;
   updated: string;
   processed: number;
+  object_version?: string | null;
 };
 export const ingestionEnabled = (env: Env) =>
   String(env.INGESTION_ENABLED) === "true";
 export const sourcePrefix = (env: Env) => `${env.VAULT_ID}/source/`;
+
+const reusableObservation =
+  "s.kind=e.kind AND s.size=e.size AND s.updated=e.updated AND o.digest=s.digest AND o.etag=e.etag AND o.object_version=e.object_version AND length(o.object_version)>0";
+function admitObservedObject(
+  env: Env,
+  obj: R2Object,
+  allowed: (path: string) => boolean,
+): Entry | null {
+  const path = obj.key.slice(sourcePrefix(env).length);
+  let kind: core.SourceKind | null;
+  try {
+    if (!allowed(path)) return null;
+    kind = core.uploadKind(path);
+  } catch {
+    return null;
+  }
+  if (!kind || obj.customMetadata?.deleted === "true") return null;
+  if (path.length > 512 || obj.size > core.uploadLimit(kind))
+    throw new CloudError("UPLOAD_TOO_LARGE", 413);
+  return {
+    path,
+    kind,
+    size: obj.size,
+    etag: obj.etag,
+    updated: obj.uploaded.toISOString(),
+    object_version: obj.version ?? null,
+    digest: null,
+    processed: 0,
+  };
+}
 const active = async (env: Env) =>
   (
     await env.DB.prepare("SELECT revision FROM deployment WHERE id=1").first<{
@@ -81,7 +129,7 @@ function publicJob(row: Job) {
     jobId: row.id,
     state: row.state,
     checkpoint: row.checkpoint,
-    parentRevision: d.parent,
+    parentRevision: d.parentSnapshot ?? d.parent,
     targetRevision: d.revision,
     retryAfterMs: 1000,
     error: row.error ? { code: row.error } : null,
@@ -94,10 +142,12 @@ function publicJob(row: Job) {
     chunksIndexed: d.manifest.chunkCount,
     notesSkipped: d.notesSkipped ?? 0,
     warningCount: d.embeddingError ? 1 : 0,
+    updatePath: d.updatePath ?? "rebuild",
   };
 }
 export async function jobStatus(env: Env, id: string) {
-  return publicJob(await getJob(env, id));
+  const row = await getJob(env, id);
+  return { ...publicJob(row), semantic: await semanticProgress(env) };
 }
 function emptyManifest(env: Env): core.IndexManifest {
   return {
@@ -120,7 +170,7 @@ function emptyManifest(env: Env): core.IndexManifest {
 async function policyDigest(env: Env) {
   return core.contentRevision(
     JSON.stringify([
-      "ingestion-v1",
+      "ingestion-v3",
       env.INCLUDE_PATHS,
       env.EXCLUDE_PATHS,
       config(env).semantic,
@@ -132,7 +182,12 @@ async function policyDigest(env: Env) {
   );
 }
 async function newData(env: Env, parent: string | null): Promise<Data> {
+  const current = await publication(env);
   return {
+    layout: 2,
+    observations: 1,
+    parentSnapshot: current?.snapshot ?? null,
+    parentEpoch: current?.epoch ?? 0,
     revision: await core.contentRevision(crypto.randomUUID()),
     parent,
     manifest: emptyManifest(env),
@@ -257,9 +312,11 @@ export async function createUpload(env: Env, id: string, input: unknown) {
     entries.length + deletes.length
   )
     throw new CloudError("INVALID_PARAMETER");
-  if ((await active(env)) !== p.parentRevision)
+  if (((await publication(env))?.snapshot ?? null) !== p.parentRevision)
     throw new CloudError("REVISION_CONFLICT", 409);
-  const data = await newData(env, p.parentRevision as string | null);
+  const data = await newData(env, await active(env));
+  if (data.parentSnapshot !== p.parentRevision)
+    throw new CloudError("REVISION_CONFLICT", 409);
   data.includes = includes;
   data.deletes = deletes;
   data.requireEmbeddings = p.requireEmbeddings === true;
@@ -505,7 +562,17 @@ export async function requestIndex(
 }
 export async function advance(env: Env, id: string, checkpoint?: number) {
   let job = await getJob(env, id);
-  if (["complete", "failed", "uploading", "preparing"].includes(job.state))
+  if (job.state === "complete") {
+    const completed = JSON.parse(job.data) as Data;
+    if (
+      job.kind === "scan" &&
+      config(env).semantic &&
+      (await publication(env))?.snapshot === completed.revision
+    )
+      await advanceSemantic(env);
+    return jobStatus(env, id);
+  }
+  if (["failed", "uploading", "preparing"].includes(job.state))
     return publicJob(job);
   if (checkpoint !== undefined && checkpoint !== job.checkpoint)
     return publicJob(job);
@@ -515,7 +582,15 @@ export async function advance(env: Env, id: string, checkpoint?: number) {
     .bind(id)
     .first<{ attempts: number; lease_until: number }>();
   if (attempts!.attempts >= 3 && attempts!.lease_until < Date.now()) {
+    const interrupted = JSON.parse(job.data) as Data;
     await env.DB.batch([
+      ...(interrupted.incremental && interrupted.signature
+        ? [
+            env.DB.prepare(
+              "INSERT OR IGNORE INTO delta_fallbacks VALUES(?)",
+            ).bind(interrupted.signature),
+          ]
+        : []),
       env.DB.prepare(
         "UPDATE ingestion_jobs SET state='failed',error='INDEX_BUDGET_EXCEEDED' WHERE id=? AND checkpoint=? AND lease_until<?",
       ).bind(id, job.checkpoint, Date.now()),
@@ -538,6 +613,16 @@ export async function advance(env: Env, id: string, checkpoint?: number) {
   } catch (error) {
     const code = error instanceof CloudError ? error.code : "INGESTION_FAILED";
     await env.DB.batch([
+      ...(d.incremental &&
+      job.state === "publishing" &&
+      d.signature &&
+      code !== "REVISION_CONFLICT"
+        ? [
+            env.DB.prepare(
+              "INSERT OR IGNORE INTO delta_fallbacks SELECT ? WHERE EXISTS(SELECT 1 FROM ingestion_jobs WHERE id=? AND lease=?)",
+            ).bind(d.signature, id, token),
+          ]
+        : []),
       env.DB.prepare(
         "UPDATE ingestion_state SET error=? WHERE id=1 AND job=? AND EXISTS(SELECT 1 FROM ingestion_jobs WHERE id=? AND lease=?)",
       ).bind(code, id, id, token),
@@ -547,9 +632,11 @@ export async function advance(env: Env, id: string, checkpoint?: number) {
     ]);
   }
   job = await getJob(env, id);
-  return publicJob(job);
+  return { ...publicJob(job), semantic: await semanticProgress(env) };
 }
 async function step(env: Env, job: Job, token: string, d: Data) {
+  if (job.kind === "scan" && (d.layout !== 2 || d.observations !== 1))
+    throw new CloudError("INGESTION_UPGRADE_REQUIRED", 409);
   if (job.kind === "scan" && d.policy && d.policy !== (await policyDigest(env)))
     throw new CloudError("CONFIGURATION_CHANGED", 409);
   const save = (state: string, sql: D1PreparedStatement[] = []) =>
@@ -622,27 +709,19 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     const rows: D1PreparedStatement[] = [];
     const allowed = config(env).allowed;
     for (const obj of page.objects) {
-      const path = obj.key.slice(sourcePrefix(env).length);
-      let kind: core.SourceKind | null;
-      try {
-        if (!allowed(path)) continue;
-        kind = core.uploadKind(path);
-      } catch {
-        continue;
-      }
-      if (!kind || obj.customMetadata?.deleted === "true") continue;
-      if (path.length > 512 || obj.size > core.uploadLimit(kind))
-        throw new CloudError("UPLOAD_TOO_LARGE", 413);
+      const observed = admitObservedObject(env, obj, allowed);
+      if (!observed) continue;
       rows.push(
         env.DB.prepare(
-          "INSERT OR REPLACE INTO ingestion_entries(job,path,kind,size,etag,updated) VALUES(?,?,?,?,?,?)",
+          "INSERT OR REPLACE INTO ingestion_entries(job,path,kind,size,etag,updated,object_version) VALUES(?,?,?,?,?,?,?)",
         ).bind(
           job.id,
-          path,
-          kind,
-          obj.size,
-          obj.etag,
-          obj.uploaded.toISOString(),
+          observed.path,
+          observed.kind,
+          observed.size,
+          observed.etag,
+          observed.updated,
+          observed.object_version,
         ),
       );
     }
@@ -654,13 +733,29 @@ async function step(env: Env, job: Job, token: string, d: Data) {
   if (job.state === "planning") {
     const entries = (
       await env.DB.prepare(
-        "SELECT path,etag FROM ingestion_entries WHERE job=? ORDER BY path LIMIT 501",
+        "SELECT path,kind,size,etag,object_version,updated FROM ingestion_entries WHERE job=? ORDER BY path LIMIT 501",
       )
         .bind(job.id)
-        .all<{ path: string; etag: string }>()
+        .all<Entry>()
     ).results;
     if (entries.length > 500)
       throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
+    const parentRow = d.parent
+      ? await env.DB.prepare("SELECT manifest FROM snapshots WHERE revision=?")
+          .bind(d.parent)
+          .first<{ manifest: string }>()
+      : null;
+    const parentManifest: core.IndexManifest | null = parentRow
+      ? JSON.parse(parentRow.manifest)
+      : null;
+    if (
+      parentManifest &&
+      (parentManifest.schemaVersion !== core.INDEX_SCHEMA_VERSION ||
+        parentManifest.targetChunkSize !== core.TARGET_CHUNK_SIZE ||
+        parentManifest.maxChunkSize !== core.MAX_CHUNK_SIZE)
+    )
+      d.force = true;
+
     const previousSources = d.parent
       ? (
           await env.DB.prepare(
@@ -709,14 +804,8 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       d.signature === previous?.signature
     ) {
       if (d.parent) {
-        d.revision = d.parent;
-        const previousManifest = await env.DB.prepare(
-          "SELECT manifest FROM snapshots WHERE revision=?",
-        )
-          .bind(d.parent)
-          .first<{ manifest: string }>();
-        if (previousManifest)
-          d.manifest = JSON.parse(previousManifest.manifest);
+        d.revision = d.parentSnapshot ?? d.parent;
+        if (parentManifest) d.manifest = parentManifest;
         d.notesSkipped = d.manifest.noteCount;
       }
       await save("complete", [
@@ -726,6 +815,58 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       ]);
       return;
     }
+    const fallback = await env.DB.prepare(
+      "SELECT signature FROM delta_fallbacks WHERE signature=?",
+    )
+      .bind(d.signature)
+      .first();
+    if (!d.force && !d.requireEmbeddings && d.parent && !fallback) {
+      const legacyRows = await env.DB.prepare(
+        "SELECT 1 FROM notes WHERE revision=? AND json_type(data,'$.wikilinks_json') IS NOT 'text' LIMIT 1",
+      )
+        .bind(d.parent)
+        .first();
+      const model = parentManifest!;
+      const generation = d.semantic
+        ? await env.DB.prepare(
+            "SELECT descriptor,state FROM embedding_generations WHERE revision=?",
+          )
+            .bind(d.parent)
+            .first<{ descriptor: string; state: string }>()
+        : null;
+      if (
+        !legacyRows &&
+        model.schemaVersion === core.INDEX_SCHEMA_VERSION &&
+        model.targetChunkSize === core.TARGET_CHUNK_SIZE &&
+        model.maxChunkSize === core.MAX_CHUNK_SIZE &&
+        ((!d.semantic && model.embeddingModel === null) ||
+          (d.semantic &&
+            generation?.state === "ready" &&
+            generation.descriptor ===
+              JSON.stringify(descriptor(env.EMBEDDING_MODEL_REVISION))))
+      ) {
+        d.incremental = true;
+        d.updatePath = "incremental";
+        d.manifest.embeddingModel = model.embeddingModel;
+        d.manifest.embeddingDimension = model.embeddingDimension;
+        const reusable = (
+          await env.DB.prepare(
+            `SELECT e.kind FROM ingestion_entries e JOIN sources s ON s.revision=? AND s.path=e.path JOIN source_observations o ON o.revision=s.revision AND o.path=s.path WHERE e.job=? AND ${reusableObservation}`,
+          )
+            .bind(d.parent, job.id)
+            .all<{ kind: string }>()
+        ).results;
+        d.filesProcessed = reusable.length;
+        d.notesSkipped = reusable.filter((e) => e.kind === "note").length;
+        await save("delta_files", [
+          env.DB.prepare(
+            `UPDATE ingestion_entries AS e SET processed=1,digest=s.digest FROM sources s JOIN source_observations o ON o.revision=s.revision AND o.path=s.path WHERE s.revision=? AND e.job=? AND e.path=s.path AND ${reusableObservation}`,
+          ).bind(d.parent, job.id),
+        ]);
+        return;
+      }
+    }
+    d.updatePath = fallback ? "rebuild-recovery" : "rebuild";
     await save("files", [
       env.DB.prepare(
         "INSERT INTO snapshots(revision,vault_id,manifest,note_count,chunk_count,entry_count,indexed_bytes,created) VALUES(?,?,?,0,0,0,0,?)",
@@ -734,6 +875,59 @@ async function step(env: Env, job: Job, token: string, d: Data) {
         `CREATE VIRTUAL TABLE fts_${d.revision} USING fts5(chunk_id UNINDEXED,lexical_text,tokenize='unicode61')`,
       ),
     ]);
+    return;
+  }
+  if (job.state === "delta_files") {
+    const entry = await env.DB.prepare(
+      "SELECT * FROM ingestion_entries WHERE job=? AND processed=0 ORDER BY path LIMIT 1",
+    )
+      .bind(job.id)
+      .first<Entry>();
+    if (!entry) {
+      await save("delta_prepare");
+      return;
+    }
+    const prepared = await stageDeltaFile(env, job.id, d.parent!, entry);
+    d.filesProcessed = (d.filesProcessed ?? 0) + 1;
+    if (prepared.reused && entry.kind === "note")
+      d.notesSkipped = (d.notesSkipped ?? 0) + 1;
+    await save("delta_files", prepared.statements);
+    return;
+  }
+  if (job.state === "delta_prepare") {
+    const delta = await prepareDeltaCommit(
+      env,
+      job.id,
+      d.parent!,
+      d.manifest,
+      !!d.semantic,
+    );
+    if (!delta.fits) {
+      d.incremental = false;
+      d.updatePath = "rebuild-budget";
+      d.filesProcessed = 0;
+      d.notesSkipped = 0;
+      d.chunksProcessed = 0;
+      await save("files", [
+        env.DB.prepare(
+          "UPDATE ingestion_entries SET processed=0 WHERE job=?",
+        ).bind(job.id),
+        env.DB.prepare(
+          "INSERT INTO snapshots(revision,vault_id,manifest,note_count,chunk_count,entry_count,indexed_bytes,created) VALUES(?,?,?,0,0,0,0,?)",
+        ).bind(
+          d.revision,
+          env.VAULT_ID,
+          JSON.stringify(d.manifest),
+          Date.now(),
+        ),
+        env.DB.prepare(
+          `CREATE VIRTUAL TABLE fts_${d.revision} USING fts5(chunk_id UNINDEXED,lexical_text,tokenize='unicode61')`,
+        ),
+      ]);
+      return;
+    }
+    d.chunksProcessed = delta.changedChunks;
+    await save("validating");
     return;
   }
   if (job.state === "files") {
@@ -755,6 +949,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       !obj ||
       !("body" in obj) ||
       obj.size !== entry.size ||
+      (entry.object_version && obj.version !== entry.object_version) ||
       obj.customMetadata?.deleted === "true"
     )
       throw new CloudError("REVISION_CONFLICT", 409);
@@ -839,6 +1034,18 @@ async function step(env: Env, job: Job, token: string, d: Data) {
         "UPDATE ingestion_entries SET processed=1,digest=? WHERE job=? AND path=?",
       ).bind(digest, job.id, entry.path),
     );
+    if (entry.object_version)
+      sql.push(
+        env.DB.prepare(
+          "INSERT OR REPLACE INTO source_observations VALUES(?,?,?,?,?)",
+        ).bind(
+          d.revision,
+          entry.path,
+          digest,
+          entry.etag,
+          entry.object_version,
+        ),
+      );
     d.filesProcessed = (d.filesProcessed ?? 0) + 1;
     await save("files", sql);
     return;
@@ -1083,38 +1290,114 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
   }
   if (job.state === "validating") {
-    const entry = await env.DB.prepare(
-      "SELECT * FROM ingestion_entries WHERE job=? AND path>? ORDER BY path LIMIT 1",
-    )
-      .bind(job.id, d.validateCursor ?? "")
-      .first<Entry>();
-    if (entry) {
-      const obj = await env.SOURCE.head(sourcePrefix(env) + entry.path);
+    const page = await env.SOURCE.list({
+      prefix: sourcePrefix(env),
+      limit: 100,
+      cursor: d.validateCursor,
+      include: ["customMetadata"],
+    });
+    const allowed = config(env).allowed;
+    const actual = page.objects
+      .map((o) => admitObservedObject(env, o, allowed))
+      .filter((e): e is Entry => e !== null);
+    const expected = (
+      await env.DB.prepare(
+        "SELECT * FROM ingestion_entries WHERE job=? AND path IN (SELECT value FROM json_each(?))",
+      )
+        .bind(job.id, JSON.stringify(actual.map((e) => e.path)))
+        .all<Entry>()
+    ).results;
+    const planned = new Map(expected.map((e) => [e.path, e]));
+    const seen = new Set(d.validateSeen ?? []);
+    for (const entry of actual) {
+      const old = planned.get(entry.path);
       if (
-        !obj ||
-        obj.etag !== entry.etag ||
-        obj.customMetadata?.deleted === "true" ||
-        !config(env).allowed(entry.path)
+        seen.has(entry.path) ||
+        !old ||
+        !core.indexRowsEqual(
+          [
+            old.kind,
+            old.size,
+            old.etag,
+            old.object_version ?? null,
+            old.updated,
+          ],
+          [
+            entry.kind,
+            entry.size,
+            entry.etag,
+            entry.object_version ?? null,
+            entry.updated,
+          ],
+        )
       )
         throw new CloudError("REVISION_CONFLICT", 409);
-      d.validateCursor = entry.path;
+      seen.add(entry.path);
+    }
+    if (seen.size > 500) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
+    if (page.truncated) {
+      d.validateCursor = page.cursor;
+      d.validateSeen = [...seen];
       await save("validating");
       return;
     }
+    const total = (await env.DB.prepare(
+      "SELECT count(*) AS n FROM ingestion_entries WHERE job=?",
+    )
+      .bind(job.id)
+      .first<{ n: number }>())!.n;
+    if (seen.size !== total) throw new CloudError("REVISION_CONFLICT", 409);
+    d.validateCursor = undefined;
+    d.validateSeen = undefined;
     await save("publishing");
     return;
   }
   if (job.state === "publishing") {
-    if ((await active(env)) !== d.parent)
+    const current = await publication(env);
+    if (
+      (current?.store ?? null) !== d.parent ||
+      (current?.snapshot ?? null) !== d.parentSnapshot ||
+      (current?.epoch ?? 0) !== d.parentEpoch
+    )
       throw new CloudError("REVISION_CONFLICT", 409);
+    const guard = env.DB.prepare(
+      "INSERT OR REPLACE INTO ingestion_guard VALUES(1,CASE WHEN coalesce((SELECT epoch FROM publications WHERE store=?),0)=? AND (SELECT revision FROM deployment WHERE id=1) IS ? THEN 1 ELSE 0 END)",
+    ).bind(d.parent, d.parentEpoch, d.parent);
+    if (d.incremental) {
+      const delta = await prepareDeltaCommit(
+        env,
+        job.id,
+        d.parent!,
+        d.manifest,
+        !!d.semantic,
+      );
+      if (!delta.fits) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
+      await save("complete", [
+        guard,
+        ...delta.statements,
+        env.DB.prepare(
+          "INSERT INTO publications VALUES(?,?,?) ON CONFLICT(store) DO UPDATE SET snapshot=excluded.snapshot,epoch=excluded.epoch",
+        ).bind(d.parent, d.revision, d.parentEpoch! + 1),
+        env.DB.prepare(
+          "UPDATE ingestion_state SET signature=?,observed=?,error=NULL WHERE id=1 AND job=?",
+        ).bind(d.signature, Date.now(), job.id),
+      ]);
+      return;
+    }
     // CAS is checked inside the same fenced D1 transaction as pointer publication.
     await save("complete", [
+      guard,
       env.DB.prepare(
         "INSERT OR REPLACE INTO ingestion_guard VALUES(1,CASE WHEN (SELECT revision FROM deployment WHERE id=1) IS ? THEN 1 ELSE 0 END)",
       ).bind(d.parent),
       env.DB.prepare(
         "INSERT INTO deployment VALUES(1,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision",
       ).bind(d.revision),
+      env.DB.prepare("INSERT INTO publications VALUES(?,?,?)").bind(
+        d.revision,
+        d.revision,
+        d.parentEpoch! + 1,
+      ),
       env.DB.prepare(
         "UPDATE ingestion_state SET signature=?,observed=?,error=NULL WHERE id=1 AND job=?",
       ).bind(d.signature, Date.now(), job.id),
@@ -1127,6 +1410,7 @@ export async function tick(env: Env) {
   if (!ingestionEnabled(env)) return;
   config(env);
   const deadline = Date.now() + 20000;
+  await cleanupIncremental(env);
   await cleanupStep(env);
   // Finish committed upload intents without requiring their local client.
   const uploads = (
@@ -1139,6 +1423,7 @@ export async function tick(env: Env) {
     const result = await advance(env, id);
     if (["complete", "failed"].includes(result.state)) break;
   }
+  if (Date.now() < deadline) await advanceSemantic(env);
 }
 export async function detectionStatus(env: Env) {
   if (!ingestionEnabled(env)) return null;
@@ -1194,12 +1479,29 @@ async function cleanupStep(env: Env) {
         .all<{ chunk_id: string }>()
     ).results;
     if (chunks.length) {
+      const work = (
+        await env.DB.prepare(
+          "SELECT vector_id FROM vector_work WHERE revision=? AND chunk_id IN (SELECT value FROM json_each(?))",
+        )
+          .bind(old.revision, JSON.stringify(chunks.map((c) => c.chunk_id)))
+          .all<{ vector_id: string }>()
+      ).results;
+      if (work.length && !config(env).semantic) return;
+      if (work.length) {
+        const remaining = await env.VECTORS!.getByIds(
+          work.map((w) => w.vector_id),
+        );
+        if (remaining.length) {
+          await env.VECTORS!.deleteByIds(remaining.map((w) => w.id));
+          return;
+        }
+      }
       const generation = await env.DB.prepare(
         "SELECT descriptor FROM embedding_generations WHERE revision=?",
       )
         .bind(old.revision)
         .first<{ descriptor: string }>();
-      if (generation && !env.VECTORS) return;
+      if (generation && !config(env).semantic) return;
       if (generation && env.VECTORS) {
         const desc = JSON.parse(generation.descriptor) as {
           modelRevision: string;
@@ -1228,6 +1530,9 @@ async function cleanupStep(env: Env) {
       await env.DB.batch(
         chunks.flatMap((c) => [
           env.DB.prepare(
+            "DELETE FROM vector_work WHERE revision=? AND chunk_id=?",
+          ).bind(old.revision, c.chunk_id),
+          env.DB.prepare(
             "DELETE FROM grams WHERE revision=? AND chunk_id=?",
           ).bind(old.revision, c.chunk_id),
           env.DB.prepare(
@@ -1249,6 +1554,15 @@ async function cleanupStep(env: Env) {
       env.DB.prepare(`DROP TABLE IF EXISTS fts_${old.revision}`),
       env.DB.prepare("DELETE FROM notes WHERE revision=?").bind(old.revision),
       env.DB.prepare("DELETE FROM sources WHERE revision=?").bind(old.revision),
+      env.DB.prepare("DELETE FROM source_objects WHERE revision=?").bind(
+        old.revision,
+      ),
+      env.DB.prepare("DELETE FROM source_observations WHERE revision=?").bind(
+        old.revision,
+      ),
+      env.DB.prepare("DELETE FROM publications WHERE store=?").bind(
+        old.revision,
+      ),
       env.DB.prepare("DELETE FROM ingestion_vectors WHERE revision=?").bind(
         old.revision,
       ),
@@ -1262,11 +1576,44 @@ async function cleanupStep(env: Env) {
     return;
   }
   const abandoned = await env.DB.prepare(
-    "SELECT id FROM ingestion_jobs WHERE created<? AND state IN ('complete','failed','uploading','preparing') AND id IS NOT (SELECT job FROM ingestion_state WHERE id=1) ORDER BY created LIMIT 1",
+    "SELECT id,kind,data FROM ingestion_jobs WHERE created<? AND state IN ('complete','failed','uploading','preparing') AND id IS NOT (SELECT job FROM ingestion_state WHERE id=1) ORDER BY created LIMIT 1",
   )
     .bind(cutoff)
-    .first<{ id: string }>();
+    .first<{ id: string; kind: string; data: string }>();
   if (abandoned) {
+    const data = JSON.parse(abandoned.data) as Data & {
+      cleanupCursor?: string;
+    };
+    // A crash after R2 PUT but before the fenced checkpoint can leave no receipt.
+    // Discover those objects by the owned job prefix; never delete published refs.
+    if (
+      abandoned.kind === "scan" &&
+      data.parent &&
+      revisionPattern.test(data.parent)
+    ) {
+      const page = await env.SOURCE.list({
+        prefix: `${env.VAULT_ID}/${data.parent}/.updates/${abandoned.id}/`,
+        limit: 100,
+        cursor: data.cleanupCursor,
+      });
+      if (page.objects.length)
+        await env.DB.prepare(
+          "INSERT OR IGNORE INTO retired_objects SELECT value,? FROM json_each(?) WHERE NOT EXISTS(SELECT 1 FROM source_objects WHERE object_key=value)",
+        )
+          .bind(
+            Date.now(),
+            JSON.stringify(page.objects.map((object) => object.key)),
+          )
+          .run();
+      if (page.truncated) {
+        await env.DB.prepare(
+          "UPDATE ingestion_jobs SET data=json_set(data,'$.cleanupCursor',?) WHERE id=?",
+        )
+          .bind(page.cursor, abandoned.id)
+          .run();
+        return;
+      }
+    }
     const prefix = `${env.VAULT_ID}/staging/${abandoned.id}/`;
     const objects = await env.SOURCE.list({ prefix, limit: 100 });
     if (objects.objects.length) {
@@ -1274,6 +1621,9 @@ async function cleanupStep(env: Env) {
       return;
     }
     await env.DB.batch([
+      env.DB.prepare("DELETE FROM prepared_deltas WHERE job=?").bind(
+        abandoned.id,
+      ),
       env.DB.prepare("DELETE FROM ingestion_entries WHERE job=?").bind(
         abandoned.id,
       ),
@@ -1285,7 +1635,7 @@ async function cleanupStep(env: Env) {
   }
   // Keep exact-input cache entries while a target can still reference them.
   await env.DB.prepare(
-    "DELETE FROM embedding_cache WHERE key IN (SELECT c.key FROM embedding_cache c WHERE c.created<? AND NOT EXISTS(SELECT 1 FROM ingestion_vectors v WHERE v.cache_key=c.key) LIMIT 16) AND NOT EXISTS(SELECT 1 FROM ingestion_jobs WHERE state NOT IN ('complete','failed','uploading','preparing'))",
+    "DELETE FROM embedding_cache WHERE key IN (SELECT c.key FROM embedding_cache c WHERE c.created<? AND NOT EXISTS(SELECT 1 FROM ingestion_vectors v WHERE v.cache_key=c.key) AND NOT EXISTS(SELECT 1 FROM vector_work w WHERE w.input_key=c.key) LIMIT 16) AND NOT EXISTS(SELECT 1 FROM ingestion_jobs WHERE state NOT IN ('complete','failed','uploading','preparing'))",
   )
     .bind(cutoff)
     .run();
@@ -1293,7 +1643,7 @@ async function cleanupStep(env: Env) {
 
 async function cleanupPending(env: Env) {
   const row = await env.DB.prepare(
-    "SELECT EXISTS(SELECT 1 FROM snapshots WHERE vault_id=? AND revision NOT IN (SELECT revision FROM deployment)) OR EXISTS(SELECT 1 FROM ingestion_entries e JOIN ingestion_jobs j ON e.job=j.id WHERE j.kind='upload' AND j.state IN ('complete','failed')) OR EXISTS(SELECT 1 FROM embedding_cache c WHERE NOT EXISTS(SELECT 1 FROM ingestion_vectors v WHERE v.cache_key=c.key)) AS pending",
+    "SELECT EXISTS(SELECT 1 FROM snapshots WHERE vault_id=? AND revision NOT IN (SELECT revision FROM deployment)) OR EXISTS(SELECT 1 FROM ingestion_entries e JOIN ingestion_jobs j ON e.job=j.id WHERE j.kind='upload' AND j.state IN ('complete','failed')) OR EXISTS(SELECT 1 FROM embedding_cache c WHERE NOT EXISTS(SELECT 1 FROM ingestion_vectors v WHERE v.cache_key=c.key) AND NOT EXISTS(SELECT 1 FROM vector_work w WHERE w.input_key=c.key)) OR EXISTS(SELECT 1 FROM retired_vectors) OR EXISTS(SELECT 1 FROM retired_objects r WHERE NOT EXISTS(SELECT 1 FROM source_objects o WHERE o.object_key=r.object_key)) AS pending",
   )
     .bind(env.VAULT_ID)
     .first<{ pending: number }>();

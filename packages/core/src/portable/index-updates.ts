@@ -10,6 +10,45 @@ import { contentRevision } from "./identifiers.js";
 import { prepareSourceNote } from "./ingestion.js";
 import { EmbeddingProviderError } from "./embedding.js";
 
+/** Compare prepared JSON rows without treating object key order as a change. */
+export function indexRowsEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object")
+    return false;
+  if (Array.isArray(left) || Array.isArray(right))
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, i) => indexRowsEqual(value, right[i]))
+    );
+  const a = left as Record<string, unknown>,
+    b = right as Record<string, unknown>;
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && indexRowsEqual(a[key], b[key]))
+  );
+}
+
+/** Storage-neutral row delta; callers provide the complete target membership. */
+export function prepareIndexDelta(
+  previous: readonly IndexRow[],
+  target: readonly IndexRow[],
+  id: "note_id" | "chunk_id",
+) {
+  const before = new Map(previous.map((row) => [String(row[id]), row]));
+  const after = new Map(target.map((row) => [String(row[id]), row]));
+  if (before.size !== previous.length || after.size !== target.length)
+    throw new Error("Duplicate prepared index identity.");
+  return {
+    upserts: target.filter(
+      (row) => !indexRowsEqual(before.get(String(row[id])), row),
+    ),
+    removals: previous.filter((row) => !after.has(String(row[id]))),
+  };
+}
+
 export interface IndexedSource {
   path: string;
   kind: SourceKind;

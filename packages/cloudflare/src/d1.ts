@@ -24,6 +24,7 @@ export class D1MetadataStore implements MetadataLexicalStore {
     readonly revision: string,
     readonly manifest: IndexManifest,
     readonly allowed: (path: string) => boolean,
+    readonly incremental = false,
   ) {}
   async getManifest() {
     return this.manifest;

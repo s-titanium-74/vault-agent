@@ -51,6 +51,28 @@ export function measured(env: Env) {
   };
   const DB = new Proxy(env.DB, {
     get(target, key) {
+      if (key === "withSession")
+        return (constraint?: string) => {
+          const session = target.withSession(constraint);
+          return new Proxy(session, {
+            get(s, k) {
+              if (k === "prepare") return (sql: string) => wrap(s.prepare(sql));
+              if (k === "batch")
+                return async (statements: D1PreparedStatement[]) => {
+                  counts.queries += statements.length;
+                  return (
+                    await s.batch(
+                      statements.map(
+                        (statement) => originals.get(statement) ?? statement,
+                      ),
+                    )
+                  ).map(result);
+                };
+              const value = Reflect.get(s, k);
+              return typeof value === "function" ? value.bind(s) : value;
+            },
+          });
+        };
       if (key === "prepare") return (sql: string) => wrap(target.prepare(sql));
       if (key === "batch")
         return async (statements: D1PreparedStatement[]) => {

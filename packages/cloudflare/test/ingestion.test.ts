@@ -79,7 +79,9 @@ async function create(
   id = randomUUID(),
 ) {
   const parent = await db
-    .prepare("SELECT revision FROM deployment WHERE id=1")
+    .prepare(
+      "SELECT coalesce(p.snapshot,d.revision) AS revision FROM deployment d LEFT JOIN publications p ON p.store=d.revision WHERE d.id=1",
+    )
     .first<{ revision: string }>();
   const input = {
     vaultId: VAULT_ID,
@@ -150,6 +152,8 @@ beforeAll(async () => {
     "0001_retrieval.sql",
     "0002_semantic.sql",
     "0003_ingestion.sql",
+    "0004_incremental.sql",
+    "0005_source_observations.sql",
   ])
     for (const sql of (await readFile("migrations/" + file, "utf8"))
       .replace(/--[^\n]*/g, "")

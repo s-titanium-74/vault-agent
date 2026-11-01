@@ -1,0 +1,332 @@
+{
+  "date": "2026-11-01",
+  "scope": "Issue #48 current source-observation reuse, final LIST validation retained",
+  "passed": true,
+  "sources": {
+    "algorithm": "sha256-path-null-content-null",
+    "sourceSha256": "1a37b556aa255523997565263b853492bfa02f57f818381852f3345bc59aec21",
+    "sourceFiles": 69,
+    "baseCommit": "0ceb48704ba7ff680c7ff5615010910fa759fcb3",
+    "migrations": {
+      "0001_retrieval.sql": "51ff78ca2f319a2bc70f4f214cebd0d8161a118545aa5c61c59a19147000d3ed",
+      "0002_semantic.sql": "365e799c05e46308dccf9aae1475684f2cf782bcaa4ad750cf209c6a29caf820",
+      "0003_ingestion.sql": "c431abf8f8311f697b0115a31763168bdb7c55a3b36b16db1a65a4895f9b4414",
+      "0004_incremental.sql": "a3cd9de0cb06aff08b0542271e1e9db02049dbbb2d562f5bd8333c2da9235367",
+      "0005_source_observations.sql": "1f82878e977ad9799ab3630351eee52bf803509ec6125097368a3fce9300b71f"
+    },
+    "harness": {
+      "packages/cloudflare/scripts/remote-update-smoke.mjs": "490049d55898b7bfd79360951ed0c3ff71340086c67e25e7cd94034262bee2c7",
+      "packages/cloudflare/test/remote-update-worker.ts": "caef1a4d1bb71893d6161052d33ae62f359b540b5d0143d6af4077bc3682a5fe",
+      "packages/cloudflare/test/remote-retention-worker.ts": "20bf156097671c01e81debfcfc9fa2f01c655ed962a4f755d949f3a8ed32620c",
+      "packages/cloudflare/test/remote-ingestion-worker.ts": "368922594739f6decdc738e1f7df0873a58049ea1359a53118b58e03e53cc60c"
+    }
+  },
+  "fixture": {
+    "notes": 100,
+    "chunks": 200,
+    "markdownBytesPerOriginalNote": 1521,
+    "updatedNoteBytes": 1555,
+    "attachmentBytes": 113,
+    "sourceObjects": 101,
+    "sourceAdmissionExcluded": true
+  },
+  "environment": {
+    "newDisposableWorkerD1R2Set": true,
+    "sameResourcesAsHistoricalComparison": false,
+    "cronEnabled": false,
+    "semanticConsent": false,
+    "aiAndVectorizeBindings": false,
+    "cpuOverride": false,
+    "planChanged": false,
+    "d1CreatedRegion": "APAC",
+    "d1PrimaryColoObserved": "ICN",
+    "readReplication": "disabled",
+    "bucketManagedPublicAccess": false,
+    "bucketCustomDomains": 0
+  },
+  "method": {
+    "driver": "synthetic-http-production-tick",
+    "maxCheckpointsPerTick": 8,
+    "tickClientPauseMs": 1000,
+    "readObservationPauseMs": 5000,
+    "updateSamples": 1,
+    "finalSourceValidationEnabled": true,
+    "realCronLatencyMeasured": false,
+    "cliUploadLatencyMeasured": false,
+    "cpuMs": null,
+    "peakMemoryBytes": null,
+    "counterNotes": "Counters include read polling; per-kind totals separate production ticks. Telemetry receipt/reset writes and fixture admission excluded. Historical timing uses different resources and primary colo."
+  },
+  "initialBuild": {
+    "date": "2026-11-01T05:59:16.121Z",
+    "phase": "current-initial-build",
+    "hosted": true,
+    "synthetic": true,
+    "notes": 100,
+    "chunks": 200,
+    "noteBytes": 1521,
+    "semantic": false,
+    "cron": false,
+    "driver": "synthetic-http-production-tick",
+    "tickPauseMs": 1000,
+    "readPollPauseMs": 5000,
+    "cpuMs": null,
+    "peakMemoryBytes": null,
+    "passed": true,
+    "readChecks": 0,
+    "readErrors": [],
+    "unexpectedBody": false,
+    "firstNewBodyMs": null,
+    "firstMarkerSearchMs": null,
+    "startedAt": "2026-11-01T05:59:16.338Z",
+    "publicationMs": 256992.27108900002,
+    "tickInvocations": 52,
+    "jobCheckpoints": 411,
+    "updatePath": "rebuild",
+    "jobError": null,
+    "exactBodyVerified": true,
+    "completedVerificationMs": 258211.030383,
+    "invocations": 107,
+    "totals": {
+      "queries": 4534,
+      "rowsRead": 31417,
+      "rowsWritten": 23980,
+      "r2Get": 102,
+      "r2Head": 0,
+      "r2List": 4,
+      "r2Put": 101,
+      "r2Delete": 0,
+      "aiCalls": 0,
+      "aiInputs": 0,
+      "aiInputBytes": 0,
+      "vectorQueries": 0,
+      "vectorQueryDimensions": 0,
+      "vectorUpserts": 0
+    },
+    "byKind": {
+      "POST": {
+        "invocations": 2,
+        "totals": {
+          "queries": 18,
+          "rowsRead": 415,
+          "rowsWritten": 4,
+          "r2Get": 0,
+          "r2Head": 0,
+          "r2List": 0,
+          "r2Put": 0,
+          "r2Delete": 0,
+          "aiCalls": 0,
+          "aiInputs": 0,
+          "aiInputBytes": 0,
+          "vectorQueries": 0,
+          "vectorQueryDimensions": 0,
+          "vectorUpserts": 0
+        }
+      },
+      "retention-tick": {
+        "invocations": 52,
+        "totals": {
+          "queries": 4455,
+          "rowsRead": 30878,
+          "rowsWritten": 23976,
+          "r2Get": 101,
+          "r2Head": 0,
+          "r2List": 4,
+          "r2Put": 101,
+          "r2Delete": 0,
+          "aiCalls": 0,
+          "aiInputs": 0,
+          "aiInputBytes": 0,
+          "vectorQueries": 0,
+          "vectorQueryDimensions": 0,
+          "vectorUpserts": 0
+        }
+      },
+      "GET": {
+        "invocations": 53,
+        "totals": {
+          "queries": 61,
+          "rowsRead": 124,
+          "rowsWritten": 0,
+          "r2Get": 1,
+          "r2Head": 0,
+          "r2List": 0,
+          "r2Put": 0,
+          "r2Delete": 0,
+          "aiCalls": 0,
+          "aiInputs": 0,
+          "aiInputBytes": 0,
+          "vectorQueries": 0,
+          "vectorQueryDimensions": 0,
+          "vectorUpserts": 0
+        }
+      }
+    },
+    "maxInvocationWallMs": 5266
+  },
+  "warmedUpdate": {
+    "date": "2026-11-01T06:03:34.635Z",
+    "phase": "current-warmed-update",
+    "hosted": true,
+    "synthetic": true,
+    "notes": 100,
+    "chunks": 200,
+    "noteBytes": 1521,
+    "semantic": false,
+    "cron": false,
+    "driver": "synthetic-http-production-tick",
+    "tickPauseMs": 1000,
+    "readPollPauseMs": 5000,
+    "cpuMs": null,
+    "peakMemoryBytes": null,
+    "passed": true,
+    "readChecks": 4,
+    "readErrors": [
+      {
+        "operation": "search",
+        "status": 409,
+        "code": "REVISION_CHANGED"
+      }
+    ],
+    "unexpectedBody": false,
+    "firstNewBodyMs": 9295.324534,
+    "firstMarkerSearchMs": 9295.324534,
+    "startedAt": "2026-11-01T06:03:35.732Z",
+    "publicationMs": 7973.661042999999,
+    "tickInvocations": 2,
+    "jobCheckpoints": 9,
+    "updatePath": "incremental",
+    "jobError": null,
+    "exactBodyVerified": true,
+    "completedVerificationMs": 9295.324534,
+    "invocations": 11,
+    "totals": {
+      "queries": 283,
+      "rowsRead": 15120,
+      "rowsWritten": 502,
+      "r2Get": 4,
+      "r2Head": 0,
+      "r2List": 4,
+      "r2Put": 1,
+      "r2Delete": 0,
+      "aiCalls": 0,
+      "aiInputs": 0,
+      "aiInputBytes": 0,
+      "vectorQueries": 0,
+      "vectorQueryDimensions": 0,
+      "vectorUpserts": 0
+    },
+    "byKind": {
+      "POST": {
+        "invocations": 4,
+        "totals": {
+          "queries": 42,
+          "rowsRead": 1478,
+          "rowsWritten": 4,
+          "r2Get": 0,
+          "r2Head": 0,
+          "r2List": 0,
+          "r2Put": 0,
+          "r2Delete": 0,
+          "aiCalls": 0,
+          "aiInputs": 0,
+          "aiInputBytes": 0,
+          "vectorQueries": 0,
+          "vectorQueryDimensions": 0,
+          "vectorUpserts": 0
+        }
+      },
+      "GET": {
+        "invocations": 5,
+        "totals": {
+          "queries": 29,
+          "rowsRead": 221,
+          "rowsWritten": 0,
+          "r2Get": 3,
+          "r2Head": 0,
+          "r2List": 0,
+          "r2Put": 0,
+          "r2Delete": 0,
+          "aiCalls": 0,
+          "aiInputs": 0,
+          "aiInputBytes": 0,
+          "vectorQueries": 0,
+          "vectorQueryDimensions": 0,
+          "vectorUpserts": 0
+        }
+      },
+      "retention-tick": {
+        "invocations": 2,
+        "totals": {
+          "queries": 212,
+          "rowsRead": 13421,
+          "rowsWritten": 498,
+          "r2Get": 1,
+          "r2Head": 0,
+          "r2List": 4,
+          "r2Put": 1,
+          "r2Delete": 0,
+          "aiCalls": 0,
+          "aiInputs": 0,
+          "aiInputBytes": 0,
+          "vectorQueries": 0,
+          "vectorQueryDimensions": 0,
+          "vectorUpserts": 0
+        }
+      }
+    },
+    "maxInvocationWallMs": 3826
+  },
+  "finalChecks": {
+    "missingBearerStatus": 401,
+    "staleSnapshotStatus": 409,
+    "staleSnapshotCode": "REVISION_CHANGED",
+    "epoch": 2,
+    "sources": 101,
+    "observations": 101,
+    "locators": 1,
+    "physicalStores": 1,
+    "nativeFtsMarkerHits": 1,
+    "d1PrimaryColo": "ICN"
+  },
+  "historicalComparison": {
+    "report": "2026-11-01-incremental-update.json",
+    "sameResources": false,
+    "priorUpdateMs": 165534.02919600002,
+    "currentUpdateMs": 7973.661042999999,
+    "priorCheckpoints": 209,
+    "priorProductionCounters": {
+      "queries": 1982,
+      "rowsRead": 19385,
+      "rowsWritten": 1294,
+      "r2Get": 101,
+      "r2Head": 101,
+      "r2List": 2,
+      "r2Put": 1,
+      "r2Delete": 0,
+      "aiCalls": 0,
+      "aiInputs": 0,
+      "aiInputBytes": 0,
+      "vectorQueries": 0,
+      "vectorQueryDimensions": 0,
+      "vectorUpserts": 0
+    },
+    "observedReductionPercent": 95.18
+  },
+  "teardown": {
+    "purgedObjects": 203,
+    "purgedBytes": 306015,
+    "bucketConfirmedEmpty": true,
+    "workerDeleted": true,
+    "databaseDeleted": true,
+    "bucketDeleted": true,
+    "independentProviderReadNotFound": {
+      "worker": true,
+      "database": true,
+      "bucket": true
+    },
+    "providerErrorsContainHttp404": true,
+    "privateFilesRemoved": true,
+    "operatorDeploymentUnchanged": true
+  }
+}

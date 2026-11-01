@@ -7,6 +7,13 @@ This specification supersedes the CLI-driven orchestration proposal in
 previously uploaded by this client within the current include scope. `--resume`
 uses a private user-local upload plan. Git sync and filesystem watch are unchanged.
 
+Follow-up #48: [incremental publication](incremental-publication.md) is the
+accepted replacement design for ordinary changed-source updates. Its hosted rollout
+is pending. It replaces per-update full copies with an atomic D1 delta, uses
+explicit immutable source locators and reference-aware cleanup, and permits
+reported optional vector lag. The per-snapshot layout/readiness/retention rules
+below describe the original baseline; upload scope and consent still apply.
+
 ## Source Layout And Consent
 
 After explicit deployment setup, edit allowed objects at

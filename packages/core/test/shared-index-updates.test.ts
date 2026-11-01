@@ -6,6 +6,8 @@ import {
   planSourceChanges,
   prepareEmbeddingBatch,
   embeddingInputKey,
+  prepareIndexDelta,
+  indexRowsEqual,
 } from "../src/portable/index-updates.js";
 import { createIndexLinkResolver } from "../src/portable/index-data.js";
 import type {
@@ -33,6 +35,25 @@ const descriptor: EmbeddingDescriptor = {
   maxInputCharacters: 8000,
 };
 describe("portable update decisions", () => {
+  it("compares prepared rows by content, preserving unchanged identities", () => {
+    const before = [
+      { note_id: "a", content: { x: 1, y: [2] } },
+      { note_id: "b", title: "old" },
+      { note_id: "c" },
+    ];
+    const target = [
+      { content: { y: [2], x: 1 }, note_id: "a" },
+      { note_id: "b", title: "new" },
+      { note_id: "d" },
+    ];
+    const delta = prepareIndexDelta(before, target, "note_id");
+    expect(delta.upserts.map((r) => r.note_id)).toEqual(["b", "d"]);
+    expect(delta.removals.map((r) => r.note_id)).toEqual(["c"]);
+    expect(indexRowsEqual([1, 2], [2, 1])).toBe(false);
+    expect(() =>
+      prepareIndexDelta([], [{ chunk_id: "a" }, { chunk_id: "a" }], "chunk_id"),
+    ).toThrow("Duplicate");
+  });
   it("distinguishes complete scan deletion, partial events and unavailable sources", () => {
     const old = [
       { path: "a.md", kind: "note" as const, revision: "old" },

@@ -60,6 +60,8 @@ export {
   prepareNoteUpdate,
   prepareEmbeddingBatch,
   embeddingInputKey,
+  indexRowsEqual,
+  prepareIndexDelta,
   type IndexedSource,
   type SourceObservation,
   type SourceChange,

@@ -80,6 +80,10 @@ function registerIndexCommand(
             console.log(
               `Cloud indexing: ${result.state} (${result.targetRevision})`,
             );
+            if (result.semantic)
+              console.log(
+                `Semantic indexing: ${result.semantic.state} (${result.semantic.pendingInputs} pending inputs)`,
+              );
             return;
           }
           console.log(`Indexing mode: ${result.mode}`);

@@ -248,6 +248,15 @@ optional vectors consistent, including replacement, deletion, and recovery.
 Bounded resumable indexing and measured platform limits are release gates;
 free operation is not promised.
 
+The accepted [#48 incremental-publication design](phases/cloudflare-deployment/specifications/incremental-publication.md)
+prepares shared-core deltas and applies authoritative index changes in one SQL
+transaction, keeping existing D1 body storage. Optional cloud vectors may catch
+up afterwards with explicit progress and current-content checks; local SQLite
+retains atomic vector publication. AI Search is not selected. Local implementation is covered by synthetic regressions; a
+[matched hosted lexical comparison](phases/cloudflare-deployment/specifications/remote-incremental-update-2026-11-01.md)
+passed. Operator rollout, hosted semantic catch-up and actual Cron/CLI timing
+remain separate.
+
 ### Clients
 
 Clients should stay thin. They accept queries or commands, call the server, and format responses for agents or users.

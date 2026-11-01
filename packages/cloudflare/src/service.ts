@@ -13,6 +13,7 @@ import {
   type Usage,
 } from "./provider.js";
 import { VectorizeStore } from "./vectorize.js";
+import { semanticProgress } from "./semantic-work.js";
 
 const compatibility = { stale: false, incompatible: false, details: "" };
 const getSchema = z.object({
@@ -63,6 +64,9 @@ export class RetrievalService {
     readonly env: Env,
     readonly snapshot: string,
     manifest: core.IndexManifest,
+    readonly store = snapshot,
+    readonly epoch = 0,
+    readonly incremental = false,
   ) {
     ftsName(snapshot);
     this.settings = config(env);
@@ -70,15 +74,17 @@ export class RetrievalService {
       env.DB,
       env.SOURCE,
       env.VAULT_ID,
-      snapshot,
+      store,
       this.settings.allowed,
+      incremental,
     );
     this.metadata = new D1MetadataStore(
       env.DB,
       env.VAULT_ID,
-      snapshot,
+      store,
       manifest,
       this.settings.allowed,
+      incremental,
     );
     this.vectors = new VectorizeStore(
       this.settings.semantic ? env.VECTORS : undefined,
@@ -88,8 +94,24 @@ export class RetrievalService {
     );
   }
   static async open(env: Env) {
+    // One ordered session, anchored at the primary, covers the complete read.
+    const session = env.DB.withSession("first-primary");
+    const DB = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === "prepare") return session.prepare.bind(session);
+        if (key === "batch") return session.batch.bind(session);
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    env = { ...env, DB };
+    const incremental = !!(await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='publications'",
+    ).first());
     const row = await env.DB.prepare(
-      "SELECT s.* FROM deployment d JOIN snapshots s ON s.revision=d.revision WHERE d.id=1",
+      incremental
+        ? "SELECT s.*,coalesce(p.snapshot,d.revision) AS public_snapshot,coalesce(p.epoch,0) AS epoch FROM deployment d JOIN snapshots s ON s.revision=d.revision LEFT JOIN publications p ON p.store=d.revision WHERE d.id=1"
+        : "SELECT s.*,d.revision AS public_snapshot,0 AS epoch FROM deployment d JOIN snapshots s ON s.revision=d.revision WHERE d.id=1",
     ).first<{
       revision: string;
       vault_id: string;
@@ -98,6 +120,8 @@ export class RetrievalService {
       chunk_count: number;
       entry_count: number;
       indexed_bytes: number;
+      public_snapshot: string;
+      epoch: number;
     }>();
     if (!row) throw new CloudError("INDEX_NOT_FOUND", 409);
     if (row.vault_id !== env.VAULT_ID)
@@ -109,13 +133,22 @@ export class RetrievalService {
       row.indexed_bytes > 16 * 1024 * 1024
     )
       throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
-    return new RetrievalService(env, row.revision, JSON.parse(row.manifest));
+    return new RetrievalService(
+      env,
+      row.public_snapshot,
+      JSON.parse(row.manifest),
+      row.revision,
+      row.epoch,
+      incremental,
+    );
   }
   async current() {
     const row = await this.env.DB.prepare(
-      "SELECT revision FROM deployment WHERE id=1",
-    ).first<{ revision: string }>();
-    if (row?.revision !== this.snapshot)
+      this.incremental
+        ? "SELECT d.revision,coalesce(p.epoch,0) AS epoch FROM deployment d LEFT JOIN publications p ON p.store=d.revision WHERE d.id=1"
+        : "SELECT revision,0 AS epoch FROM deployment WHERE id=1",
+    ).first<{ revision: string; epoch: number }>();
+    if (row?.revision !== this.store || row?.epoch !== this.epoch)
       throw new CloudError("REVISION_CHANGED", 409);
   }
   pin(snapshot: unknown) {
@@ -150,6 +183,17 @@ export class RetrievalService {
   async invoke(
     operation: string,
     input: unknown = {},
+  ): Promise<{ data: unknown; warnings: core.WarningItem[]; usage?: Usage }> {
+    try {
+      return await this.execute(operation, input);
+    } catch (error) {
+      await this.current();
+      throw error;
+    }
+  }
+  private async execute(
+    operation: string,
+    input: unknown,
   ): Promise<{ data: unknown; warnings: core.WarningItem[]; usage?: Usage }> {
     const args = (input ?? {}) as Record<string, unknown>;
     let data: unknown;
@@ -329,6 +373,20 @@ export class RetrievalService {
       warnings = result.warnings;
     }
     const detection = await detectionStatus(this.env);
+    if (
+      this.incremental &&
+      this.settings.semantic &&
+      ["search", "related"].includes(operation) &&
+      args.mode !== "lexical"
+    ) {
+      const progress = await semanticProgress(this.env);
+      if (progress.pendingInputs)
+        warnings.push({
+          code: "SEMANTIC_UPDATING",
+          message:
+            "Semantic updates are pending; results may omit changed notes.",
+        });
+    }
     if (detection && detection.state !== "observed")
       warnings.push({
         code: detection.state === "updating" ? "INDEX_UPDATING" : "INDEX_STALE",
@@ -370,6 +428,7 @@ export class RetrievalService {
       this.snapshot,
       this.metadata.manifest.indexedAt,
       ready,
+      this.incremental,
     );
   }
 }
@@ -379,8 +438,10 @@ export async function cloudStatus(
   snapshot: string | null,
   indexedAt: number | null,
   ready = false,
+  incremental = false,
 ) {
   const detection = await detectionStatus(env);
+  const semantic = incremental ? await semanticProgress(env) : null;
   return {
     server: { running: true, host, port: 443, apiKeyRequired: true },
     index: {
@@ -395,11 +456,12 @@ export async function cloudStatus(
         reindexRequired: false,
         reindexReasons: [],
       },
-      embeddingState: ready
-        ? "ready"
-        : config(env).semantic
-          ? "unavailable"
-          : "disabled",
+      embeddingState:
+        ready && !semantic?.pendingInputs
+          ? "ready"
+          : config(env).semantic
+            ? "unavailable"
+            : "disabled",
     },
     watch: {
       enabled: false,
@@ -424,6 +486,7 @@ export async function cloudStatus(
       targetRevision: detection?.targetRevision ?? null,
       activeJobId: detection?.activeJobId ?? null,
       detection,
+      ...(semantic ? { semantic } : {}),
       cleanupPending: detection?.cleanupPending ?? false,
       capabilities: {
         lexical: true,
