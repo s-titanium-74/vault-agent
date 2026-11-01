@@ -15,6 +15,7 @@ export class R2VaultSource implements VaultSource {
     readonly vaultId: string,
     readonly revision: string,
     readonly allowed: (path: string) => boolean,
+    readonly located = false,
   ) {}
   key(path: string) {
     return `${this.vaultId}/${this.revision}/${canonicalSourcePath(path)}`;
@@ -67,7 +68,18 @@ export class R2VaultSource implements VaultSource {
       entry.kind === "attachment" ? 20 * 1024 * 1024 : 2 * 1024 * 1024,
     );
     if (entry.size > max) throw new CloudError("SOURCE_TOO_LARGE", 413);
-    const obj = await this.bucket.get(this.key(path));
+    const locator = this.located
+      ? await this.db
+          .prepare(
+            "SELECT object_key FROM source_objects WHERE revision=? AND path=?",
+          )
+          .bind(this.revision, path)
+          .first<{ object_key: string }>()
+      : null;
+    const key = locator?.object_key ?? this.key(path);
+    if (!key.startsWith(`${this.vaultId}/${this.revision}/`))
+      throw new CloudError("SOURCE_REVISION_MISMATCH", 409);
+    const obj = await this.bucket.get(key);
     if (!obj) throw new CloudError("SOURCE_NOT_FOUND", 404);
     if (obj.size !== entry.size || obj.size > max) {
       await obj.body.cancel();

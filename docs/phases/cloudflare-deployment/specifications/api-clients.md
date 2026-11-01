@@ -2,6 +2,14 @@
 
 Status: Ready for Review
 
+Accepted follow-up #48: [incremental publication](incremental-publication.md)
+specifies additive semantic progress/status, `SEMANTIC_UPDATING` warnings,
+partial semantic results, and lexical-versus-semantic CLI completion reporting.
+These changes are implemented with local synthetic validation; hosted rollout
+is pending. The contracts below describe the original baseline unless the linked
+follow-up overrides them. Snapshot pins remain
+supported, and strict embedding requests retain their publication requirement.
+
 ## Scope And Compatibility
 
 The table inventories existing surfaces and commits the first complete cloud
@@ -82,6 +90,15 @@ the existing adapter, including guidance, links, and profiles. Tool output
 includes warnings and cloud revision metadata. No source mutation, indexing,
 chat, resources, or prompts are advertised. The endpoint is enabled by the
 explicit cloud setup; local MCP defaults remain unchanged.
+
+Future mutation tools (outside #48) should trigger index work immediately after
+the source write is durably committed, carrying the known changed paths into
+the common ingestion/publication pipeline rather than waiting for scheduled
+discovery. Job acceptance is distinct from search visibility; indexing can
+remain asynchronous. Keep scheduled reconciliation for direct R2 edits and
+recovery. This is an extension direction, not an implemented mutation API or
+a claim that arbitrary changed-path job inputs are currently supported. CLI
+completion waiting remains unchanged in #48.
 
 Use the existing `2025-03-26` negotiation contract with a stateless Web
 Request/Response transport: initialize returns tools capability; POST returns

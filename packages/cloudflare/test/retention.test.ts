@@ -54,6 +54,8 @@ beforeAll(async () => {
     "0001_retrieval.sql",
     "0002_semantic.sql",
     "0003_ingestion.sql",
+    "0004_incremental.sql",
+    "0005_source_observations.sql",
   ])
     for (const sql of (await readFile("migrations/" + file, "utf8"))
       .replace(/--[^\n]*/g, "")
@@ -95,6 +97,8 @@ beforeAll(async () => {
       id,
       id,
       JSON.stringify({
+        layout: 2,
+        observations: 1,
         revision: "f".repeat(64),
         parent: active.revision,
         manifest: active.manifest,

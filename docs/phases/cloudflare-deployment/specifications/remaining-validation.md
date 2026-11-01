@@ -63,3 +63,18 @@ current/source/unrelated data and search/get were intact. All trial resources
 and private operator credentials were removed, with provider 404 checks. There
 was no observation immediately before the cutoff and the exact deletion time
 is unknown; these limits are recorded separately from the earlier aging test.
+
+## Changed-source optimization (#48)
+
+The [2026-11-01 paired lexical comparison](remote-incremental-update-2026-11-01.md)
+passed migration, changed-note publication, concurrent reads, stale-pin rejection
+and owned-resource teardown. It used accelerated HTTP ticks with semantic disabled.
+Actual Cron/CLI timing, hosted semantic catch-up and broader workload distributions
+remain separate validation work; no capacity or billing guarantee follows.
+
+The later [verified source-observation reuse](source-observation-reuse.md)
+follow-up passes local operation-count and consistency regressions and a
+[hosted lexical measurement](remote-source-observations-2026-11-01.md): 7,974 ms
+to observed completion, with one concurrent search revision-conflict response.
+The earlier 2m46s sample does not include this optimization. The two runs use
+different resources; neither certifies actual Cron timing or latency distributions.

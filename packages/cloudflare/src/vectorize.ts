@@ -41,9 +41,18 @@ export class VectorizeStore implements VectorStore {
     );
     return { generation, namespace };
   }
-  async id(chunkId: string) {
+  async id(chunkId: string, inputKey?: string, publicationId?: string) {
     return contentRevision(
-      JSON.stringify([(await this.identity()).namespace, chunkId]),
+      JSON.stringify(
+        inputKey
+          ? [
+              (await this.identity()).namespace,
+              chunkId,
+              inputKey,
+              publicationId ?? null,
+            ]
+          : [(await this.identity()).namespace, chunkId],
+      ),
     );
   }
   async available() {
@@ -117,6 +126,15 @@ export class VectorizeStore implements VectorStore {
     for (const match of matches) {
       const record = byId.get(match.id);
       const meta = record?.metadata;
+      const work =
+        this.metadata.incremental && typeof meta?.chunkId === "string"
+          ? await this.metadata.db
+              .prepare(
+                "SELECT vector_id,input_key FROM vector_work WHERE revision=? AND chunk_id=?",
+              )
+              .bind(this.metadata.revision, meta.chunkId)
+              .first<{ vector_id: string; input_key: string }>()
+          : null;
       if (
         !record ||
         record.namespace !== namespace ||
@@ -127,7 +145,8 @@ export class VectorizeStore implements VectorStore {
         match.score < -1 ||
         match.score > 1 ||
         seen.has(match.id) ||
-        match.id !== (await this.id(meta.chunkId))
+        match.id !== (work?.vector_id ?? (await this.id(meta.chunkId))) ||
+        (work && meta.inputKey !== work.input_key)
       )
         continue;
       let chunk;

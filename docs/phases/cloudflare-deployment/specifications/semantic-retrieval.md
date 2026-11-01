@@ -3,6 +3,13 @@
 The cloud adapter uses shared portable search, filters, compact results and RRF
 fusion. It never generates answers. Local installation and providers are unchanged.
 
+Accepted follow-up #48: [incremental publication](incremental-publication.md)
+defines optional vector catch-up, versioned input-based IDs, pending-state
+warnings/status and authoritative D1 membership checks. It preserves strict
+`requireEmbeddings` publication and local vector atomicity. The
+snapshot-wide readiness and fallback rules below document the original baseline
+and the retained full-build path; incremental semantics follow the linked spec.
+
 ## Model and consent
 
 Select `@cf/baai/bge-m3`, dense 1024 dimensions, cosine, unit normalization,

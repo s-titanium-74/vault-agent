@@ -189,3 +189,13 @@ edits or admin advancement. Active/source/excluded/unrelated data and search/get
 were preserved; all trial resources were removed with provider 404 checks.
 The exact reclamation time and preservation immediately before the cutoff were
 not observed. No new CPU or billing estimate is inferred from this trial.
+
+## Changed-source optimization follow-up (#48, 2026-11-01)
+
+A [matched hosted lexical comparison](remote-incremental-update-2026-11-01.md)
+reduced one-note update writes from 24,203 to 1,298 and immutable R2 copies from
+101 to one on the 100-note fixture. Observed HTTP-driven publication fell from
+395,287 to 165,534 ms. These are one pair with concurrent read polling; historical
+tables above remain baseline evidence, not current monthly projections. Full
+rebuild, idle reconciliation (#43), real Cron/CLI timing, semantic billing and
+capacity still require their own evidence. No pricing or account plan changed.

@@ -9,6 +9,7 @@ import {
   planSourceChanges,
   prepareNoteUpdate,
   prepareEmbeddingBatch,
+  indexRowsEqual,
   type PreparedEmbedding,
   type SourceObservation,
   type IndexedSource,
@@ -310,7 +311,7 @@ export async function updateLocalIndex(
     }
   }
   const resolve = createIndexLinkResolver(target.values());
-  const linked = [...target.values()].map(resolve);
+  const linked: IndexRow[] = [...target.values()].map(resolve);
   const manifest: IndexManifest = {
     schemaVersion: INDEX_SCHEMA_VERSION,
     vaultIdentity: options.vaultIdentity,
@@ -337,8 +338,19 @@ export async function updateLocalIndex(
       );
     for (const p of removed) store.deleteNoteByPath(p);
     for (const p of prepared) store.upsertPreparedNote(p.note, p.chunks);
-    for (const row of reused) store.updateNoteObservation(row);
-    for (const row of linked) store.updateNoteLinks(row);
+    for (const row of reused) {
+      const old = previous.get(String(row.path));
+      if (old?.file_size !== row.file_size || old?.mtime_ms !== row.mtime_ms)
+        store.updateNoteObservation(row);
+    }
+    for (const row of linked) {
+      const old = target.get(String(row.path));
+      if (
+        !indexRowsEqual(old?.links_json, row.links_json) ||
+        !indexRowsEqual(old?.wikilinks_json, row.wikilinks_json)
+      )
+        store.updateNoteLinks(row);
+    }
     if (vectors.length) {
       store.initVecTable(dimension!);
       store.storePreparedEmbeddings(vectors);
