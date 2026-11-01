@@ -75,6 +75,35 @@ Full-size/long-note remote testing remains outstanding.
 
 ## Idle reconciliation is a recurring cost
 
+The following paragraph is the **pre-#43 baseline**, retained as historical
+evidence. [Read-only idle reconciliation](idle-reconciliation.md) replaces its
+per-file idle staging with a complete bounded LIST/signature check. The matched
+[local results](../measurements/2026-11-01-idle-local.json) compare `db7aff0`
+against this change with three repetitions per fixture, no attachments and
+small one-chunk synthetic notes:
+
+| Notes | Baseline D1 rows written per tick | Optimized D1 rows written per tick | Optimized D1 rows read | R2 LIST per tick |
+| ----: | --------------------------------: | ---------------------------------: | ---------------------: | ---------------: |
+|     0 |                                13 |                                  0 |                     20 |                1 |
+|     1 |                                15 |                                  0 |                     20 |                1 |
+|    99 |                               211 |                                  0 |                     20 |                1 |
+|   101 |                               219 |                                  0 |                     20 |                2 |
+
+Every optimized sample issued eight D1 statements, no mutating statements, and
+no source GET/HEAD/PUT/DELETE. Elapsed workerd times were 17–23 ms, which are
+**wall time, not CPU**. These fixtures differ from the historical note-plus-
+attachment workloads below; do not mix their counters. Baseline repeated reads
+grow as each sample retains another completed job. The optimized path creates
+no jobs. Initialization/signature bootstrap is outside these idle samples.
+
+For a completed no-change probe with no other work, D1 writes are zero. Retain
+R2 LIST and D1 read costs, semantic work, retention, actual changes, failures and
+the explicit durable fallback after the preflight's eight-page/time budget.
+An unbounded source prefix with many excluded objects does not have a universal
+zero-write guarantee. These repeated short samples are not a 24-hour trial or
+a guarantee of free operation. Hosted evidence is recorded separately in the
+[idle reconciliation report](remote-idle-reconciliation-2026-11-01.md).
+
 After the deletion phases, a simulated scheduled invocation on unchanged source
 used 15 D1 writes / one R2 list for the small corpus and 217 writes / two lists
 for the medium corpus. These are single local samples; cleanup after 24 hours,

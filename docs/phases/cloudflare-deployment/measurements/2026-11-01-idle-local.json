@@ -1,0 +1,708 @@
+{
+  "date": "2026-11-01T10:26:56.867Z",
+  "runtime": "local-workerd",
+  "baseline": "db7aff02930cfbeb70b4504fa96a242c483decda",
+  "fixture": "one small synthetic note per entry; no attachments",
+  "cpuMs": null,
+  "peakMemoryBytes": null,
+  "hosted": false,
+  "repetitions": 3,
+  "workloads": [
+    {
+      "variant": "baseline",
+      "notes": 0,
+      "samples": [
+        {
+          "counts": {
+            "queries": 31,
+            "rowsRead": 34,
+            "rowsWritten": 13,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 10,
+          "logs": [],
+          "wallMs": 71
+        },
+        {
+          "counts": {
+            "queries": 31,
+            "rowsRead": 37,
+            "rowsWritten": 13,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 10,
+          "logs": [],
+          "wallMs": 74
+        },
+        {
+          "counts": {
+            "queries": 31,
+            "rowsRead": 40,
+            "rowsWritten": 13,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 10,
+          "logs": [],
+          "wallMs": 69
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "notes": 1,
+      "samples": [
+        {
+          "counts": {
+            "queries": 32,
+            "rowsRead": 37,
+            "rowsWritten": 15,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 11,
+          "logs": [],
+          "wallMs": 71
+        },
+        {
+          "counts": {
+            "queries": 32,
+            "rowsRead": 39,
+            "rowsWritten": 15,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 11,
+          "logs": [],
+          "wallMs": 66
+        },
+        {
+          "counts": {
+            "queries": 32,
+            "rowsRead": 43,
+            "rowsWritten": 15,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 11,
+          "logs": [],
+          "wallMs": 69
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "notes": 99,
+      "samples": [
+        {
+          "counts": {
+            "queries": 130,
+            "rowsRead": 233,
+            "rowsWritten": 211,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 109,
+          "logs": [],
+          "wallMs": 58
+        },
+        {
+          "counts": {
+            "queries": 130,
+            "rowsRead": 236,
+            "rowsWritten": 211,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 109,
+          "logs": [],
+          "wallMs": 56
+        },
+        {
+          "counts": {
+            "queries": 130,
+            "rowsRead": 239,
+            "rowsWritten": 211,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 109,
+          "logs": [],
+          "wallMs": 52
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "notes": 101,
+      "samples": [
+        {
+          "counts": {
+            "queries": 138,
+            "rowsRead": 244,
+            "rowsWritten": 219,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 114,
+          "logs": [],
+          "wallMs": 75
+        },
+        {
+          "counts": {
+            "queries": 138,
+            "rowsRead": 247,
+            "rowsWritten": 219,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 114,
+          "logs": [],
+          "wallMs": 70
+        },
+        {
+          "counts": {
+            "queries": 138,
+            "rowsRead": 250,
+            "rowsWritten": 219,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 114,
+          "logs": [],
+          "wallMs": 63
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "notes": 0,
+      "samples": [
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 0,
+              "elapsedMs": 21
+            }
+          ],
+          "wallMs": 21
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 0,
+              "elapsedMs": 19
+            }
+          ],
+          "wallMs": 19
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 0,
+              "elapsedMs": 18
+            }
+          ],
+          "wallMs": 18
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "notes": 1,
+      "samples": [
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 1,
+              "elapsedMs": 22
+            }
+          ],
+          "wallMs": 22
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 1,
+              "elapsedMs": 20
+            }
+          ],
+          "wallMs": 20
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 1,
+              "elapsedMs": 21
+            }
+          ],
+          "wallMs": 21
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "notes": 99,
+      "samples": [
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 99,
+              "elapsedMs": 19
+            }
+          ],
+          "wallMs": 21
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 99,
+              "elapsedMs": 17
+            }
+          ],
+          "wallMs": 17
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 1,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 1,
+              "files": 99,
+              "elapsedMs": 19
+            }
+          ],
+          "wallMs": 19
+        }
+      ]
+    },
+    {
+      "variant": "optimized",
+      "notes": 101,
+      "samples": [
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 2,
+              "files": 101,
+              "elapsedMs": 23
+            }
+          ],
+          "wallMs": 23
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 2,
+              "files": 101,
+              "elapsedMs": 21
+            }
+          ],
+          "wallMs": 21
+        },
+        {
+          "counts": {
+            "queries": 8,
+            "rowsRead": 20,
+            "rowsWritten": 0,
+            "r2Get": 0,
+            "r2Head": 0,
+            "r2List": 2,
+            "r2Put": 0,
+            "r2Delete": 0,
+            "aiCalls": 0,
+            "aiInputs": 0,
+            "aiInputBytes": 0,
+            "vectorQueries": 0,
+            "vectorQueryDimensions": 0,
+            "vectorUpserts": 0
+          },
+          "mutatingStatements": 0,
+          "logs": [
+            {
+              "event": "reconciliation",
+              "result": "start"
+            },
+            {
+              "event": "reconciliation",
+              "result": "unchanged",
+              "pages": 2,
+              "files": 101,
+              "elapsedMs": 21
+            }
+          ],
+          "wallMs": 21
+        }
+      ]
+    }
+  ]
+}

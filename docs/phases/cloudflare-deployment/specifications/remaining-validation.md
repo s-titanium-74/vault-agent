@@ -17,6 +17,13 @@ Paid-plan validation is deferred until the #43 idle-reconciliation optimization
 and is not a #35 completion gate. A fresh isolated deployment rejected `limits.cpu_ms=1000` with provider
 code `100328`; removing that setting did not change account billing.
 
+The [#43 idle optimization trial](remote-idle-reconciliation-2026-11-01.md)
+subsequently verified zero production D1 writes across three actual unchanged
+Cron runs, changed-source publication, separate eligible-cache collection and
+complete disposable teardown. The 1,000 ms override was again rejected with
+`100328`; Paid execution remains unverified. This short trial does not replace
+24-hour measurements, semantic billing or broader workload capacity validation.
+
 ## Earlier compact-workload and age-equivalent method
 
 The follow-up adds 100 compact atomic bilingual notes (one short line per note)
