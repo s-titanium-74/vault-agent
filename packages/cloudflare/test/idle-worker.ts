@@ -34,7 +34,7 @@ export default {
                 if (pages === 1 && request.headers.has("X-Synthetic-Upload")) {
                   const id = crypto.randomUUID();
                   await env.DB.prepare(
-                    "INSERT INTO ingestion_jobs(id,request_hash,kind,state,data,created) SELECT ?,?,'upload','applying',data,? FROM ingestion_jobs WHERE id=(SELECT job FROM ingestion_state)",
+                    "INSERT INTO ingestion_jobs(id,request_hash,kind,state,data,created) SELECT ?,?,'upload','applying',json_set(data,'$.uploadContract',2),? FROM ingestion_jobs WHERE id=(SELECT job FROM ingestion_state)",
                   )
                     .bind(id, id, Date.now())
                     .run();

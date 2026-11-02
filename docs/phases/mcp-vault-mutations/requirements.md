@@ -8,6 +8,10 @@ see [the accepted race boundary](specifications/filesystem.md). Step 3 exposes
 opt-in [local MCP tools](specifications/local-mcp.md), disabled by default.
 R2/Workers integration and hosted verification remain open.
 
+Step 4 is staged: [4a, durable upload baselines](specifications/upload-baseline.md),
+then R2 mutation recovery/revocation and Workers MCP integration. The baseline
+prerequisite does not enable cloud mutation tools.
+
 ## Purpose
 
 MCPからMarkdownノートの追加・更新・削除と、添付ファイルのアップロード・

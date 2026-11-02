@@ -1,4 +1,9 @@
 import { isPCloud, pcloudEntries, readPCloudEntry } from "./source.js";
+import {
+  captureUploadTarget,
+  checkUploadTarget,
+  acknowledgeUpload,
+} from "./upload-baseline.js";
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { CloudError, boundedBytes } from "./errors.js";
@@ -22,6 +27,7 @@ import {
 } from "./provider.js";
 
 type Data = {
+  uploadContract?: number;
   layout?: number;
   observations?: number;
   parentSnapshot?: string | null;
@@ -62,6 +68,8 @@ type Job = {
   lease: string | null;
 };
 type Entry = {
+  baseline_job?: string | null;
+  upload_attempted?: number;
   path: string;
   kind: core.SourceKind;
   size: number;
@@ -409,6 +417,7 @@ export async function createUpload(env: Env, id: string, input: unknown) {
   if (((await publication(env))?.snapshot ?? null) !== p.parentRevision)
     throw new CloudError("REVISION_CONFLICT", 409);
   const data = await newData(env, await active(env));
+  data.uploadContract = 2;
   if (data.parentSnapshot !== p.parentRevision)
     throw new CloudError("REVISION_CONFLICT", 409);
   data.includes = includes;
@@ -419,28 +428,37 @@ export async function createUpload(env: Env, id: string, input: unknown) {
   data.filesAccepted = entries.length + deletes.length;
   // Capture preconditions before acknowledging intent. Creation is bounded to 100 files.
   for (const entry of entries)
-    entry.etag =
-      (await env.SOURCE!.head(sourcePrefix(env) + entry.path))?.etag ?? null;
+    Object.assign(entry, await captureUploadTarget(env, entry));
   const deleteEntries: Entry[] = [];
   for (const path of deletes) {
-    const obj = await env.SOURCE!.head(sourcePrefix(env) + path);
-    deleteEntries.push({
+    const entry: Entry = {
       path,
       kind: core.uploadKind(path)!,
       size: 0,
       digest: null,
-      etag: obj?.etag ?? null,
+      etag: null,
       updated: "1970-01-01T00:00:00.000Z",
       processed: 0,
-    });
+    };
+    Object.assign(entry, await captureUploadTarget(env, entry));
+    deleteEntries.push(entry);
   }
   const job = await insertJob(env, id, hash, "upload", "preparing", data);
   if (job.state === "preparing") {
     await env.DB.batch([
       ...[...entries, ...deleteEntries].map((e) =>
         env.DB.prepare(
-          "INSERT OR IGNORE INTO ingestion_entries(job,path,kind,size,digest,etag,updated) VALUES(?,?,?,?,?,?,?)",
-        ).bind(id, e.path, e.kind, e.size, e.digest, e.etag, e.updated),
+          "INSERT OR IGNORE INTO ingestion_entries(job,path,kind,size,digest,etag,updated,baseline_job) VALUES(?,?,?,?,?,?,?,?)",
+        ).bind(
+          id,
+          e.path,
+          e.kind,
+          e.size,
+          e.digest,
+          e.etag,
+          e.updated,
+          e.baseline_job ?? null,
+        ),
       ),
       env.DB.prepare(
         "UPDATE ingestion_jobs SET state='uploading' WHERE id=? AND state='preparing'",
@@ -508,11 +526,21 @@ export async function addManifest(env: Env, id: string, input: unknown) {
       .bind(id)
       .first<{ n: number }>();
     if (total!.n >= 500) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
-    e.etag = (await env.SOURCE!.head(sourcePrefix(env) + e.path))?.etag ?? null;
+    Object.assign(e, await captureUploadTarget(env, e));
     await env.DB.prepare(
-      "INSERT INTO ingestion_entries(job,path,kind,size,digest,etag,updated) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ingestion_jobs WHERE id=? AND state='uploading')",
+      "INSERT INTO ingestion_entries(job,path,kind,size,digest,etag,updated,baseline_job) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ingestion_jobs WHERE id=? AND state='uploading')",
     )
-      .bind(id, e.path, e.kind, e.size, e.digest, e.etag, e.updated, id)
+      .bind(
+        id,
+        e.path,
+        e.kind,
+        e.size,
+        e.digest,
+        e.etag,
+        e.updated,
+        e.baseline_job ?? null,
+        id,
+      )
       .run();
   }
   await env.DB.prepare(
@@ -732,6 +760,8 @@ export async function advance(env: Env, id: string, checkpoint?: number) {
   return { ...publicJob(job), semantic: await semanticProgress(env) };
 }
 async function step(env: Env, job: Job, token: string, d: Data) {
+  if (job.kind === "upload" && d.uploadContract !== 2)
+    throw new CloudError("UPLOAD_BASELINE_REQUIRED", 409);
   if (job.kind === "scan" && (d.layout !== 2 || d.observations !== 1))
     throw new CloudError("INGESTION_UPGRADE_REQUIRED", 409);
   if (job.kind === "scan" && d.policy && d.policy !== (await policyDigest(env)))
@@ -751,19 +781,20 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     if (!config(env).allowed(entry.path))
       throw new CloudError("SOURCE_EXCLUDED", 403);
     const key = sourcePrefix(env) + entry.path;
-    const current = await env.SOURCE!.head(key);
-    // On a lost response accept only our exact previously written intent.
-    const expectedDigest =
-      entry.digest ?? (await core.contentRevision(new Uint8Array()));
-    const currentDigest = current?.checksums.sha256
-      ? Array.from(new Uint8Array(current.checksums.sha256), (b) =>
-          b.toString(16).padStart(2, "0"),
-        ).join("")
-      : null;
-    if (
-      current?.customMetadata?.upload !== job.id ||
-      currentDigest !== expectedDigest
-    ) {
+    if ((await checkUploadTarget(env, entry)).write) {
+      // Persist an attempt before external I/O. A crash before the receipt must
+      // never turn into permission to replay over a later cloud edit.
+      await env.DB.batch([
+        env.DB.prepare(
+          "INSERT OR REPLACE INTO ingestion_guard VALUES(1,COALESCE((SELECT 1 FROM ingestion_jobs WHERE id=? AND lease=? AND checkpoint=? AND lease_until>?),0))",
+        ).bind(job.id, token, job.checkpoint, Date.now()),
+        env.DB.prepare(
+          "INSERT OR REPLACE INTO ingestion_guard VALUES(1,CASE WHEN (SELECT job FROM upload_baselines WHERE path=?) IS ? THEN 1 ELSE 0 END)",
+        ).bind(entry.path, entry.baseline_job ?? null),
+        env.DB.prepare(
+          "UPDATE ingestion_entries SET upload_attempted=1 WHERE job=? AND path=?",
+        ).bind(job.id, entry.path),
+      ]);
       const staged = entry.digest
         ? await env.SOURCE!.get(
             `${env.VAULT_ID}/staging/${job.id}/${entry.path}`,
@@ -790,6 +821,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
     d.filesProcessed = (d.filesProcessed ?? 0) + 1;
     await save("applying", [
+      ...acknowledgeUpload(env, entry, job.id),
       env.DB.prepare(
         "UPDATE ingestion_entries SET processed=1 WHERE job=? AND path=?",
       ).bind(job.id, entry.path),

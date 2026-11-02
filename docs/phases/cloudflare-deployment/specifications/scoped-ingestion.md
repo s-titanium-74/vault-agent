@@ -1,5 +1,11 @@
 # Scoped Upload And Autonomous R2 Ingestion (#34)
 
+Follow-up #54: [durable upload baselines](../../mcp-vault-mutations/specifications/upload-baseline.md)
+adds comparison with the last acknowledged upload before accepting and applying
+each path. Capturing a new ETag alone does not authorize overwriting earlier
+cloud edits. Unknown baselines fail closed except for creation and identical
+content adoption without rewriting R2. Migration requires draining old writers.
+
 Follow-up #43: [read-only idle reconciliation](idle-reconciliation.md) supersedes
 the idle job admission, checkpoint cost and observation-age freshness rules
 below. Completed unchanged checks create no durable jobs or observation writes.
