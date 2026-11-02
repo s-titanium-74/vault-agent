@@ -28,7 +28,7 @@ export function registerMcpCommand(
       }
 
       let store: IndexStore | null = null;
-      if (config.vault.root) {
+      if (config.vault.root || config.vault.pcloud) {
         const dbPath = getIndexPath(config);
         try {
           store = await IndexStore.open(dbPath);
@@ -38,7 +38,7 @@ export function registerMcpCommand(
       }
 
       const freshnessMachine = new FreshnessMachine();
-      if (!config.vault.root) {
+      if (!config.vault.root && !config.vault.pcloud) {
         freshnessMachine.transition("unknown", "No vault root configured");
       } else if (store) {
         const staleness = store.checkStaleness(config);

@@ -69,3 +69,5 @@ export {
   type IndexEmbeddingCache,
   type PreparedEmbedding,
 } from "./index-updates.js";
+
+export * from "./pcloud.js";

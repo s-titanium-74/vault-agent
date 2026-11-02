@@ -4,8 +4,13 @@ import { CloudError } from "./errors.js";
 import { MODEL } from "./provider.js";
 // Wrangler emits the legacy VectorizeIndex name when runtime declarations are
 // omitted. Use the installed platform's V2 type for the generated binding.
-export type Env = Omit<Cloudflare.Env, "VECTORS"> & {
+export type Env = Omit<Cloudflare.Env, "VECTORS" | "SOURCE"> & {
   VECTORS?: Vectorize;
+  SOURCE?: R2Bucket;
+  SOURCE_PROVIDER?: "r2" | "pcloud";
+  PCLOUD_REGION?: "us" | "eu";
+  PCLOUD_FOLDER_ID?: string;
+  PCLOUD_ACCESS_TOKEN?: string;
   READ_TOKEN: string;
   ADMIN_TOKEN: string;
   PREVIOUS_READ_TOKEN?: string;
@@ -21,7 +26,13 @@ export function config(env: Env) {
   try {
     if (
       !env.DB ||
-      !env.SOURCE ||
+      (env.SOURCE_PROVIDER !== "pcloud" && !env.SOURCE) ||
+      (env.SOURCE_PROVIDER !== undefined &&
+        !["r2", "pcloud"].includes(env.SOURCE_PROVIDER)) ||
+      (env.SOURCE_PROVIDER === "pcloud" &&
+        (!/^[0-9]+$/.test(env.PCLOUD_FOLDER_ID ?? "") ||
+          !["us", "eu"].includes(env.PCLOUD_REGION ?? "") ||
+          !env.PCLOUD_ACCESS_TOKEN)) ||
       !env.REQUEST_LIMITER ||
       !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
         env.VAULT_ID,

@@ -1,6 +1,14 @@
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 export type Phase1ErrorCode =
+  | "SOURCE_REVISION_MISMATCH"
+  | "SOURCE_UNAVAILABLE"
+  | "SOURCE_AUTH_FAILED"
+  | "SOURCE_RATE_LIMITED"
+  | "SOURCE_EXCLUDED"
+  | "SOURCE_NOT_FOUND"
+  | "SOURCE_TOO_LARGE"
+  | "SOURCE_NOT_UTF8"
   | "INDEX_NOT_FOUND"
   | "INDEX_INCOMPATIBLE"
   | "PATH_OUTSIDE_VAULT"
@@ -33,6 +41,15 @@ export type Phase1ErrorCode =
   | "AUTH_FAILED";
 
 const APPLICATION_ERROR_CODES: Record<Phase1ErrorCode, number> = {
+  SOURCE_REVISION_MISMATCH: -32030,
+  SOURCE_UNAVAILABLE: -32031,
+  SOURCE_AUTH_FAILED: -32032,
+  SOURCE_RATE_LIMITED: -32033,
+  SOURCE_EXCLUDED: -32034,
+  SOURCE_NOT_FOUND: -32035,
+  SOURCE_TOO_LARGE: -32036,
+  SOURCE_NOT_UTF8: -32037,
+
   INDEX_NOT_FOUND: -32001,
   INDEX_INCOMPATIBLE: -32002,
   PATH_OUTSIDE_VAULT: -32003,
@@ -66,6 +83,23 @@ const APPLICATION_ERROR_CODES: Record<Phase1ErrorCode, number> = {
 };
 
 export const ERROR_MESSAGES: Record<Phase1ErrorCode, string> = {
+  SOURCE_REVISION_MISMATCH:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_UNAVAILABLE:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_AUTH_FAILED:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_RATE_LIMITED:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_EXCLUDED:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_NOT_FOUND:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_TOO_LARGE:
+    "Source operation failed. Retry indexing or check source configuration.",
+  SOURCE_NOT_UTF8:
+    "Source operation failed. Retry indexing or check source configuration.",
+
   INDEX_NOT_FOUND: "No usable index found. Run vault-agent index to build one.",
   INDEX_INCOMPATIBLE:
     "Index is incompatible. Run vault-agent reindex to rebuild it.",

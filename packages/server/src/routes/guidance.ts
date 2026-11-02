@@ -11,6 +11,16 @@ import { getAppState } from "../state.js";
 export function registerGuidanceRoutes(app: FastifyInstance): void {
   app.get("/agent-guidance", async (request, reply) => {
     const { config } = getAppState();
+    if (config?.vault.pcloud)
+      return reply
+        .code(501)
+        .send(
+          err(
+            "CAPABILITY_UNSUPPORTED",
+            "pCloud guidance is unsupported.",
+            request.id,
+          ),
+        );
     if (!config) {
       return reply
         .code(409)
@@ -34,6 +44,16 @@ export function registerGuidanceRoutes(app: FastifyInstance): void {
 
   app.get("/agent-guidance/*", async (request, reply) => {
     const { config } = getAppState();
+    if (config?.vault.pcloud)
+      return reply
+        .code(501)
+        .send(
+          err(
+            "CAPABILITY_UNSUPPORTED",
+            "pCloud guidance is unsupported.",
+            request.id,
+          ),
+        );
     if (!config) {
       return reply
         .code(409)

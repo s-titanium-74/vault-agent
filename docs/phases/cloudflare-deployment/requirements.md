@@ -91,3 +91,9 @@ Implementation milestone #32: [Workers retrieval](specifications/workers-retriev
 Implementation milestone #34: [scoped autonomous ingestion](specifications/scoped-ingestion.md).
 
 Implementation milestone #35: [self-deployment and measurement](specifications/self-deployment.md).
+
+## pCloud source extension
+
+See [pCloud source contract](specifications/pcloud-source.md) for read-only scope, explicit setup,
+SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
+R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

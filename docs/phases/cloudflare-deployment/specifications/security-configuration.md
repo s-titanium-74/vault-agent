@@ -102,3 +102,9 @@ retained resources and credentials through the #35 teardown procedure.
 The [Workers AI data-usage policy](https://developers.cloudflare.com/workers-ai/platform/data-usage/)
 is a setup review reference, not a promise of zero stored vault data: this
 product intentionally persists source and indexes in Cloudflare storage.
+
+## pCloud opt-in
+
+See [pCloud source contract](pcloud-source.md) for read-only scope, explicit setup,
+SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
+R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

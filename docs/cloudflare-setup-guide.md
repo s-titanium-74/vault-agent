@@ -280,3 +280,9 @@ Builds project/repository connection if no longer needed. Deleting a shared
 bucket/database/index can affect other data, so this walkthrough always uses
 new dedicated resources. Provider backup/Time Travel retention is separate from
 live-resource deletion; no immediate backup-erasure promise is made.
+
+## Optional pCloud source
+
+See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for read-only scope, explicit setup,
+SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
+R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

@@ -1,3 +1,4 @@
+import { isPCloud, PCloudSnapshotSource } from "./source.js";
 import { detectionStatus, ingestionEnabled } from "./ingestion.js";
 import mime from "mime/lite";
 import * as core from "@vault-agent/core/portable";
@@ -55,7 +56,7 @@ function parse<T>(
   return result.data;
 }
 export class RetrievalService {
-  readonly source: R2VaultSource;
+  readonly source: core.VaultSource;
   readonly metadata: D1MetadataStore;
   readonly settings: ReturnType<typeof config>;
   readonly operations = new ProviderOperations();
@@ -70,14 +71,16 @@ export class RetrievalService {
   ) {
     ftsName(snapshot);
     this.settings = config(env);
-    this.source = new R2VaultSource(
-      env.DB,
-      env.SOURCE,
-      env.VAULT_ID,
-      store,
-      this.settings.allowed,
-      incremental,
-    );
+    this.source = isPCloud(env)
+      ? new PCloudSnapshotSource(env, store, this.settings.allowed)
+      : new R2VaultSource(
+          env.DB,
+          env.SOURCE!,
+          env.VAULT_ID,
+          store,
+          this.settings.allowed,
+          incremental,
+        );
     this.metadata = new D1MetadataStore(
       env.DB,
       env.VAULT_ID,
@@ -491,15 +494,15 @@ export async function cloudStatus(
       capabilities: {
         lexical: true,
         semantic: ready,
-        attachments: true,
+        attachments: !isPCloud(env),
         related: true,
         orientation: true,
         filters: true,
         links: true,
-        guidance: true,
+        guidance: !isPCloud(env),
         profiles: true,
         mcpHttp: true,
-        upload: ingestionEnabled(env),
+        upload: ingestionEnabled(env) && !isPCloud(env),
         indexJobs: ingestionEnabled(env),
         watch: false,
         gitSync: false,

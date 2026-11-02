@@ -1,3 +1,4 @@
+import { isPCloud, readPCloudEntry } from "./source.js";
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { boundedBytes, CloudError } from "./errors.js";
@@ -14,7 +15,7 @@ export type ScanEntry = {
   updated: string;
   object_version?: string | null;
 };
-type Staged = { key: string; note?: core.IndexRow; chunks?: core.IndexRow[] };
+type Staged = { key?: string; note?: core.IndexRow; chunks?: core.IndexRow[] };
 export const DELTA_MAX_BYTES = 512 * 1024;
 export const DELTA_MAX_STATEMENTS = 80;
 export const DELTA_MAX_GRAMS = 8000;
@@ -33,18 +34,25 @@ export async function stageDeltaFile(
 ) {
   if (!config(env).allowed(entry.path))
     throw new CloudError("SOURCE_EXCLUDED", 403);
-  const object = await env.SOURCE.get(`${env.VAULT_ID}/source/${entry.path}`, {
-    onlyIf: { etagMatches: entry.etag! },
-  });
-  if (
-    !object ||
-    !("body" in object) ||
-    object.size !== entry.size ||
-    (entry.object_version && object.version !== entry.object_version) ||
-    object.customMetadata?.deleted === "true"
-  )
-    throw new CloudError("REVISION_CONFLICT", 409);
-  const bytes = await boundedBytes(object.body, core.uploadLimit(entry.kind));
+  let bytes: Uint8Array;
+  if (isPCloud(env)) bytes = await readPCloudEntry(env, entry);
+  else {
+    const object = await env.SOURCE!.get(
+      `${env.VAULT_ID}/source/${entry.path}`,
+      {
+        onlyIf: { etagMatches: entry.etag! },
+      },
+    );
+    if (
+      !object ||
+      !("body" in object) ||
+      object.size !== entry.size ||
+      (entry.object_version && object.version !== entry.object_version) ||
+      object.customMetadata?.deleted === "true"
+    )
+      throw new CloudError("REVISION_CONFLICT", 409);
+    bytes = await boundedBytes(object.body, core.uploadLimit(entry.kind));
+  }
   const digest = await core.contentRevision(bytes);
   const old = await env.DB.prepare(
     "SELECT digest FROM sources WHERE revision=? AND path=? AND kind=?",
@@ -54,7 +62,9 @@ export async function stageDeltaFile(
   const statements: D1PreparedStatement[] = [];
   if (old?.digest !== digest) {
     const staged: Staged = {
-      key: `${env.VAULT_ID}/${store}/.updates/${job}/${entry.path}`,
+      ...(isPCloud(env)
+        ? {}
+        : { key: `${env.VAULT_ID}/${store}/.updates/${job}/${entry.path}` }),
     };
     if (entry.kind !== "attachment") {
       let text: string;
@@ -81,15 +91,19 @@ export async function stageDeltaFile(
         staged.chunks = prepared.chunks;
       }
     }
-    await env.SOURCE.put(staged.key, bytes, { sha256: digest });
+    if (staged.key)
+      await env.SOURCE!.put(staged.key, bytes, { sha256: digest });
     statements.push(
       env.DB.prepare(
         "INSERT OR REPLACE INTO prepared_deltas VALUES(?,?,?)",
       ).bind(job, entry.path, JSON.stringify(staged)),
-      env.DB.prepare("INSERT OR REPLACE INTO retired_objects VALUES(?,?)").bind(
-        staged.key,
-        Date.now(),
-      ),
+      ...(staged.key
+        ? [
+            env.DB.prepare(
+              "INSERT OR REPLACE INTO retired_objects VALUES(?,?)",
+            ).bind(staged.key, Date.now()),
+          ]
+        : []),
     );
   }
   statements.push(
@@ -322,16 +336,21 @@ export async function prepareDeltaCommit(
     )
       continue;
     const oldKey =
-      old?.object_key ?? (old ? `${env.VAULT_ID}/${store}/${path}` : null);
-    if (oldKey && (!entry || change))
+      old?.object_key ??
+      (old && !isPCloud(env) ? `${env.VAULT_ID}/${store}/${path}` : null);
+    if (!entry || change) {
       statements.push(
         env.DB.prepare(
           "DELETE FROM source_observations WHERE revision=? AND path=?",
         ).bind(store, path),
-        env.DB.prepare(
-          "INSERT OR REPLACE INTO retired_objects VALUES(?,?)",
-        ).bind(oldKey, Date.now()),
       );
+      if (oldKey)
+        statements.push(
+          env.DB.prepare(
+            "INSERT OR REPLACE INTO retired_objects VALUES(?,?)",
+          ).bind(oldKey, Date.now()),
+        );
+    }
     if (!entry)
       statements.push(
         env.DB.prepare(
@@ -355,7 +374,7 @@ export async function prepareDeltaCommit(
           entry.updated,
         ),
       );
-      if (change)
+      if (change?.key)
         statements.push(
           env.DB.prepare(
             "INSERT INTO source_objects VALUES(?,?,?) ON CONFLICT(revision,path) DO UPDATE SET object_key=excluded.object_key",

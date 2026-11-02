@@ -21,7 +21,7 @@ export function registerConfigCommands(
 
       if (key) {
         const isSecret = manager.isSecretKey(key);
-        const value = getNestedValue(config, key);
+        const value = getNestedValue(maskSecrets(config), key);
 
         if (opts.json) {
           if (isSecret) {

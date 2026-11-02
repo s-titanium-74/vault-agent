@@ -1,60 +1,28 @@
+import { PublishedSourceCatalog } from "./source-catalog.js";
 import {
   canonicalSourcePath,
   contentRevision,
   type VaultSource,
-  type SourceEntry,
   type SourceReadOptions,
-  type PageRequest,
 } from "@vault-agent/core/portable";
 import { CloudError, boundedBytes } from "./errors.js";
 
-export class R2VaultSource implements VaultSource {
+export class R2VaultSource
+  extends PublishedSourceCatalog
+  implements VaultSource
+{
   constructor(
-    readonly db: D1Database,
+    db: D1Database,
     readonly bucket: R2Bucket,
-    readonly vaultId: string,
-    readonly revision: string,
-    readonly allowed: (path: string) => boolean,
+    vaultId: string,
+    revision: string,
+    allowed: (path: string) => boolean,
     readonly located = false,
-  ) {}
+  ) {
+    super(db, vaultId, revision, allowed);
+  }
   key(path: string) {
     return `${this.vaultId}/${this.revision}/${canonicalSourcePath(path)}`;
-  }
-  check(path: string) {
-    canonicalSourcePath(path);
-    if (!this.allowed(path)) throw new CloudError("SOURCE_EXCLUDED", 403);
-  }
-  async list(request: PageRequest) {
-    request.signal?.throwIfAborted();
-    if (
-      !Number.isInteger(request.limit) ||
-      request.limit < 1 ||
-      request.limit > 500
-    )
-      throw new CloudError("INVALID_CURSOR");
-    const rows = await this.db
-      .prepare(
-        "SELECT path,kind,size,digest AS revision,updated FROM sources WHERE revision=? AND path>? ORDER BY path LIMIT ?",
-      )
-      .bind(this.revision, request.cursor ?? "", request.limit + 1)
-      .all<SourceEntry>();
-    const entries = rows.results.slice(0, request.limit);
-    for (const e of entries) this.check(e.path);
-    return {
-      items: entries,
-      cursor:
-        rows.results.length > request.limit ? entries.at(-1)?.path : undefined,
-    };
-  }
-  async stat(path: string, signal?: AbortSignal) {
-    signal?.throwIfAborted();
-    this.check(path);
-    return this.db
-      .prepare(
-        "SELECT path,kind,size,digest AS revision,updated FROM sources WHERE revision=? AND path=?",
-      )
-      .bind(this.revision, path)
-      .first<SourceEntry>();
   }
   async verified(path: string, options: SourceReadOptions) {
     this.check(path);

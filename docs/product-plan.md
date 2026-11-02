@@ -500,3 +500,9 @@ Candidates:
 - Homebrew later
 
 The initial implementation target is TypeScript/Node with npm distribution.
+
+## pCloud original source
+
+See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for read-only scope, explicit setup,
+SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
+R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

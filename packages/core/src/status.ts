@@ -17,6 +17,14 @@ export interface IndexStatusInfo {
 }
 
 export interface FullStatus {
+  source?: {
+    provider: "pcloud";
+    updateMode: "poll";
+    automaticUpdatesEnabled: boolean;
+    pollIntervalSeconds: number;
+    lastSuccessfulUpdateAt: number | null;
+    state: FreshnessInfo["state"];
+  };
   server: ServerStatusInfo;
   index: IndexStatusInfo;
   watch: WatcherStatus;
@@ -76,7 +84,21 @@ export function buildStatus(
   return {
     server,
     index,
-    watch,
+    watch: config.vault.pcloud
+      ? { ...watch, enabled: false, state: "disabled" }
+      : watch,
     sync,
+    ...(config.vault.pcloud
+      ? {
+          source: {
+            provider: "pcloud" as const,
+            updateMode: "poll" as const,
+            automaticUpdatesEnabled: config.watch.enabled,
+            pollIntervalSeconds: config.vault.pcloud.poll_seconds,
+            lastSuccessfulUpdateAt: index.freshness.lastSuccessfulUpdateAt,
+            state: index.freshness.state,
+          },
+        }
+      : {}),
   };
 }

@@ -5,3 +5,5 @@ export {
   localRetrievalContext,
 } from "./sqlite.js";
 export { EmbeddingProvider as OllamaEmbeddingProvider } from "../embedding.js";
+
+export { configuredVaultIdentity, pcloudSource } from "./source.js";

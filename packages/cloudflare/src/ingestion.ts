@@ -1,3 +1,4 @@
+import { isPCloud, pcloudEntries, readPCloudEntry } from "./source.js";
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { CloudError, boundedBytes } from "./errors.js";
@@ -75,7 +76,7 @@ export const ingestionEnabled = (env: Env) =>
 export const sourcePrefix = (env: Env) => `${env.VAULT_ID}/source/`;
 
 const reusableObservation =
-  "s.kind=e.kind AND s.size=e.size AND s.updated=e.updated AND o.digest=s.digest AND o.etag=e.etag AND o.object_version=e.object_version AND length(o.object_version)>0";
+  "s.kind=e.kind AND s.size=e.size AND s.updated=e.updated AND o.digest=s.digest AND o.etag=e.etag AND o.object_version=e.object_version AND length(o.object_version)>0 AND (e.digest IS NULL OR e.digest=s.digest)";
 function admitObservedObject(
   env: Env,
   obj: R2Object,
@@ -170,7 +171,10 @@ function emptyManifest(env: Env): core.IndexManifest {
 async function policyDigest(env: Env) {
   return core.contentRevision(
     JSON.stringify([
-      "ingestion-v3",
+      "ingestion-v4",
+      env.SOURCE_PROVIDER ?? "r2",
+      env.PCLOUD_REGION ?? null,
+      env.PCLOUD_FOLDER_ID ?? null,
       env.INCLUDE_PATHS,
       env.EXCLUDE_PATHS,
       config(env).semantic,
@@ -254,6 +258,7 @@ function checkedEntry(value: unknown, allowed: (p: string) => boolean): Entry {
   };
 }
 export async function createUpload(env: Env, id: string, input: unknown) {
+  if (isPCloud(env)) throw new CloudError("CAPABILITY_UNSUPPORTED", 501);
   assertId(id);
   const p = input as {
     vaultId?: unknown;
@@ -326,10 +331,10 @@ export async function createUpload(env: Env, id: string, input: unknown) {
   // Capture preconditions before acknowledging intent. Creation is bounded to 100 files.
   for (const entry of entries)
     entry.etag =
-      (await env.SOURCE.head(sourcePrefix(env) + entry.path))?.etag ?? null;
+      (await env.SOURCE!.head(sourcePrefix(env) + entry.path))?.etag ?? null;
   const deleteEntries: Entry[] = [];
   for (const path of deletes) {
-    const obj = await env.SOURCE.head(sourcePrefix(env) + path);
+    const obj = await env.SOURCE!.head(sourcePrefix(env) + path);
     deleteEntries.push({
       path,
       kind: core.uploadKind(path)!,
@@ -414,7 +419,7 @@ export async function addManifest(env: Env, id: string, input: unknown) {
       .bind(id)
       .first<{ n: number }>();
     if (total!.n >= 500) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
-    e.etag = (await env.SOURCE.head(sourcePrefix(env) + e.path))?.etag ?? null;
+    e.etag = (await env.SOURCE!.head(sourcePrefix(env) + e.path))?.etag ?? null;
     await env.DB.prepare(
       "INSERT INTO ingestion_entries(job,path,kind,size,digest,etag,updated) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM ingestion_jobs WHERE id=? AND state='uploading')",
     )
@@ -450,7 +455,7 @@ export async function uploadFile(
     (await core.contentRevision(bytes)) !== e.digest
   )
     throw new CloudError("SOURCE_REVISION_MISMATCH", 409);
-  await env.SOURCE.put(`${env.VAULT_ID}/staging/${id}/${path}`, bytes, {
+  await env.SOURCE!.put(`${env.VAULT_ID}/staging/${id}/${path}`, bytes, {
     sha256: e.digest!,
   });
   await env.DB.prepare(
@@ -611,7 +616,10 @@ export async function advance(env: Env, id: string, checkpoint?: number) {
   try {
     await step(env, job, token, d);
   } catch (error) {
-    const code = error instanceof CloudError ? error.code : "INGESTION_FAILED";
+    const code =
+      error instanceof CloudError || error instanceof core.SourceError
+        ? error.code
+        : "INGESTION_FAILED";
     await env.DB.batch([
       ...(d.incremental &&
       job.state === "publishing" &&
@@ -654,7 +662,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     if (!config(env).allowed(entry.path))
       throw new CloudError("SOURCE_EXCLUDED", 403);
     const key = sourcePrefix(env) + entry.path;
-    const current = await env.SOURCE.head(key);
+    const current = await env.SOURCE!.head(key);
     // On a lost response accept only our exact previously written intent.
     const expectedDigest =
       entry.digest ?? (await core.contentRevision(new Uint8Array()));
@@ -668,13 +676,13 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       currentDigest !== expectedDigest
     ) {
       const staged = entry.digest
-        ? await env.SOURCE.get(
+        ? await env.SOURCE!.get(
             `${env.VAULT_ID}/staging/${job.id}/${entry.path}`,
           )
         : null;
       if (entry.digest && !staged)
         throw new CloudError("UPLOAD_INCOMPLETE", 409);
-      const result = await env.SOURCE.put(
+      const result = await env.SOURCE!.put(
         key,
         staged?.body ?? new Uint8Array(),
         {
@@ -699,8 +707,54 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     ]);
     return;
   }
+  if (job.state === "scanning" && isPCloud(env)) {
+    const entries = await pcloudEntries(env);
+    d.filesAccepted = entries.length;
+    await save(
+      "pcloud_observing",
+      entries.map((e) =>
+        env.DB.prepare(
+          "INSERT OR REPLACE INTO ingestion_entries(job,path,kind,size,etag,updated,object_version) VALUES(?,?,?,?,?,?,?)",
+        ).bind(
+          job.id,
+          e.path,
+          e.kind,
+          e.size,
+          e.etag,
+          e.updated,
+          e.object_version,
+        ),
+      ),
+    );
+    return;
+  }
+  if (job.state === "pcloud_observing") {
+    if (!isPCloud(env)) throw new CloudError("CONFIGURATION_CHANGED", 409);
+    const entry = await env.DB.prepare(
+      "SELECT * FROM ingestion_entries WHERE job=? AND processed=0 ORDER BY path LIMIT 1",
+    )
+      .bind(job.id)
+      .first<Entry>();
+    if (!entry) {
+      await save("planning", [
+        env.DB.prepare(
+          "UPDATE ingestion_entries SET processed=0 WHERE job=?",
+        ).bind(job.id),
+      ]);
+      return;
+    }
+    const digest = await core.contentRevision(
+      await readPCloudEntry(env, entry),
+    );
+    await save("pcloud_observing", [
+      env.DB.prepare(
+        "UPDATE ingestion_entries SET processed=1,digest=? WHERE job=? AND path=?",
+      ).bind(digest, job.id, entry.path),
+    ]);
+    return;
+  }
   if (job.state === "scanning") {
-    const page = await env.SOURCE.list({
+    const page = await env.SOURCE!.list({
       prefix: sourcePrefix(env),
       limit: 100,
       cursor: d.cursor,
@@ -733,7 +787,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
   if (job.state === "planning") {
     const entries = (
       await env.DB.prepare(
-        "SELECT path,kind,size,etag,object_version,updated FROM ingestion_entries WHERE job=? ORDER BY path LIMIT 501",
+        "SELECT path,kind,size,etag,object_version,updated,digest FROM ingestion_entries WHERE job=? ORDER BY path LIMIT 501",
       )
         .bind(job.id)
         .all<Entry>()
@@ -942,18 +996,22 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
     if (!config(env).allowed(entry.path))
       throw new CloudError("SOURCE_EXCLUDED", 403);
-    const obj = await env.SOURCE.get(sourcePrefix(env) + entry.path, {
-      onlyIf: { etagMatches: entry.etag! },
-    });
-    if (
-      !obj ||
-      !("body" in obj) ||
-      obj.size !== entry.size ||
-      (entry.object_version && obj.version !== entry.object_version) ||
-      obj.customMetadata?.deleted === "true"
-    )
-      throw new CloudError("REVISION_CONFLICT", 409);
-    const bytes = await boundedBytes(obj.body, core.uploadLimit(entry.kind));
+    let bytes: Uint8Array;
+    if (isPCloud(env)) bytes = await readPCloudEntry(env, entry);
+    else {
+      const obj = await env.SOURCE!.get(sourcePrefix(env) + entry.path, {
+        onlyIf: { etagMatches: entry.etag! },
+      });
+      if (
+        !obj ||
+        !("body" in obj) ||
+        obj.size !== entry.size ||
+        (entry.object_version && obj.version !== entry.object_version) ||
+        obj.customMetadata?.deleted === "true"
+      )
+        throw new CloudError("REVISION_CONFLICT", 409);
+      bytes = await boundedBytes(obj.body, core.uploadLimit(entry.kind));
+    }
     const digest = await core.contentRevision(bytes);
     if (entry.kind === "guidance") {
       try {
@@ -1018,9 +1076,14 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       }
     }
     // Immutable snapshot write. Old fenced workers can only rewrite these exact bytes.
-    await env.SOURCE.put(`${env.VAULT_ID}/${d.revision}/${entry.path}`, bytes, {
-      sha256: digest,
-    });
+    if (!isPCloud(env))
+      await env.SOURCE!.put(
+        `${env.VAULT_ID}/${d.revision}/${entry.path}`,
+        bytes,
+        {
+          sha256: digest,
+        },
+      );
     sql.push(
       env.DB.prepare("INSERT INTO sources VALUES(?,?,?,?,?,?)").bind(
         d.revision,
@@ -1290,16 +1353,21 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
   }
   if (job.state === "validating") {
-    const page = await env.SOURCE.list({
-      prefix: sourcePrefix(env),
-      limit: 100,
-      cursor: d.validateCursor,
-      include: ["customMetadata"],
-    });
+    const remote = isPCloud(env) ? await pcloudEntries(env) : null;
+    const page = remote
+      ? { objects: [], truncated: false, cursor: undefined }
+      : await env.SOURCE!.list({
+          prefix: sourcePrefix(env),
+          limit: 100,
+          cursor: d.validateCursor,
+          include: ["customMetadata"],
+        });
     const allowed = config(env).allowed;
-    const actual = page.objects
-      .map((o) => admitObservedObject(env, o, allowed))
-      .filter((e): e is Entry => e !== null);
+    const actual =
+      remote ??
+      page.objects
+        .map((o) => admitObservedObject(env, o, allowed))
+        .filter((e): e is Entry => e !== null);
     const expected = (
       await env.DB.prepare(
         "SELECT * FROM ingestion_entries WHERE job=? AND path IN (SELECT value FROM json_each(?))",
@@ -1353,6 +1421,26 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     return;
   }
   if (job.state === "publishing") {
+    if (isPCloud(env)) {
+      const actual = await pcloudEntries(env);
+      const expected = (
+        await env.DB.prepare(
+          "SELECT path,kind,size,etag,updated,object_version FROM ingestion_entries WHERE job=? ORDER BY path",
+        )
+          .bind(job.id)
+          .all<Entry>()
+      ).results;
+      const signature = (e: Entry) => [
+        e.path,
+        e.kind,
+        e.size,
+        e.etag,
+        e.updated,
+        e.object_version,
+      ];
+      if (!core.indexRowsEqual(actual.map(signature), expected.map(signature)))
+        throw new CloudError("REVISION_CONFLICT", 409);
+    }
     const current = await publication(env);
     if (
       (current?.store ?? null) !== d.parent ||
@@ -1542,12 +1630,14 @@ async function cleanupStep(env: Env) {
       );
       return;
     }
-    const objects = await env.SOURCE.list({
-      prefix: `${env.VAULT_ID}/${old.revision}/`,
-      limit: 100,
-    });
+    const objects = isPCloud(env)
+      ? { objects: [] }
+      : await env.SOURCE!.list({
+          prefix: `${env.VAULT_ID}/${old.revision}/`,
+          limit: 100,
+        });
     if (objects.objects.length) {
-      await env.SOURCE.delete(objects.objects.map((o) => o.key));
+      await env.SOURCE!.delete(objects.objects.map((o) => o.key));
       return;
     }
     await env.DB.batch([
@@ -1587,11 +1677,12 @@ async function cleanupStep(env: Env) {
     // A crash after R2 PUT but before the fenced checkpoint can leave no receipt.
     // Discover those objects by the owned job prefix; never delete published refs.
     if (
+      !isPCloud(env) &&
       abandoned.kind === "scan" &&
       data.parent &&
       revisionPattern.test(data.parent)
     ) {
-      const page = await env.SOURCE.list({
+      const page = await env.SOURCE!.list({
         prefix: `${env.VAULT_ID}/${data.parent}/.updates/${abandoned.id}/`,
         limit: 100,
         cursor: data.cleanupCursor,
@@ -1615,9 +1706,11 @@ async function cleanupStep(env: Env) {
       }
     }
     const prefix = `${env.VAULT_ID}/staging/${abandoned.id}/`;
-    const objects = await env.SOURCE.list({ prefix, limit: 100 });
+    const objects = isPCloud(env)
+      ? { objects: [] }
+      : await env.SOURCE!.list({ prefix, limit: 100 });
     if (objects.objects.length) {
-      await env.SOURCE.delete(objects.objects.map((o) => o.key));
+      await env.SOURCE!.delete(objects.objects.map((o) => o.key));
       return;
     }
     await env.DB.batch([

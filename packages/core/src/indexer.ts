@@ -1,6 +1,7 @@
+import { vaultIdentity } from "./identifiers.js";
+import { configuredVaultIdentity } from "./local/source.js";
 import { updateLocalIndex } from "./local/index-updates.js";
 import { IndexStore, getIndexPath } from "./index-store.js";
-import { vaultIdentity } from "./identifiers.js";
 import { validateVaultPath } from "./pathsafety.js";
 import { Config } from "./config.js";
 import { IndexResult } from "./types.js";
@@ -20,7 +21,9 @@ export async function indexVault(
   const lockPath = getLockFilePath(config);
   acquireLock(lockPath);
   try {
-    const vaultRoot = validateVaultPath(config.vault.root);
+    const vaultRoot = config.vault.pcloud
+      ? ""
+      : validateVaultPath(config.vault.root);
     const dbPath = getIndexPath(config);
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
@@ -30,7 +33,9 @@ export async function indexVault(
     const store = await IndexStore.open(dbPath);
 
     try {
-      const vid = vaultIdentity(vaultRoot);
+      const vid = config.vault.pcloud
+        ? configuredVaultIdentity(config)
+        : vaultIdentity(vaultRoot);
 
       return await performIndex(
         store,
@@ -55,7 +60,9 @@ export async function reindexVault(
   const lockPath = getLockFilePath(config);
   acquireLock(lockPath);
   try {
-    const vaultRoot = validateVaultPath(config.vault.root);
+    const vaultRoot = config.vault.pcloud
+      ? ""
+      : validateVaultPath(config.vault.root);
     const dbPath = getIndexPath(config);
     const { indexPath, tmpPath } = getReindexPaths(dbPath);
 
@@ -79,7 +86,9 @@ export async function reindexVault(
     }
 
     try {
-      const vid = vaultIdentity(vaultRoot);
+      const vid = config.vault.pcloud
+        ? configuredVaultIdentity(config)
+        : vaultIdentity(vaultRoot);
       result = await performIndex(
         tmpStore,
         config,
@@ -157,9 +166,7 @@ async function performIndex(
 }
 
 function getLockFilePath(config: Config): string {
-  const vaultRoot = config.vault.root;
-  const resolvedVault = path.resolve(vaultRoot);
-  const vid = vaultIdentity(resolvedVault);
+  const vid = configuredVaultIdentity(config);
   const indexDir = resolveIndexDir(config.index.dir || undefined);
   return path.join(indexDir, vid, "index.lock");
 }
