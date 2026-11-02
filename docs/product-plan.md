@@ -351,6 +351,10 @@ Responsibility split:
 
 The MVP is Phase 1: Retrieval Foundation. Phase 2 and later are post-MVP extensions. Detailed requirements and specifications for each phase live under `docs/phases/<phase-name>/`.
 
+MCP file editing is a separate opt-in post-MVP extension: see
+[MCP Vault Mutations requirements](phases/mcp-vault-mutations/requirements.md).
+It covers filesystem/R2 notes and attachments; pCloud remains read-only.
+
 Phase requirements:
 
 - Cloudflare edition: [Cloudflare Deployment requirements](phases/cloudflare-deployment/requirements.md)
