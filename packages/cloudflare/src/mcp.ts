@@ -16,6 +16,20 @@ import {
   RetrievalSizeError,
 } from "@vault-agent/core/portable";
 import type { Env } from "./config.js";
+import { config } from "./config.js";
+import {
+  MUTATION_NAMES,
+  MCP_WRITE_REQUEST_BYTES,
+  mutationTools,
+} from "../../server/src/mcp/mutation-tool-definitions.js";
+import { R2MutationService } from "./mutations.js";
+import {
+  MutationError,
+  previewChangesSchema,
+  applyChangesSchema,
+  changeStatusSchema,
+} from "@vault-agent/core/portable";
+import type { AccessRole } from "@vault-agent/core/access";
 const MAX_OUTPUT = 50 * 1024 * 1024;
 const explicit = new Set([
   "get_note",
@@ -40,6 +54,77 @@ const tools = localTools.map((tool) =>
       }
     : tool,
 );
+function toolsFor(env: Env, role: AccessRole) {
+  const enabled = config(env).write.enabled;
+  const readTools = tools.map((tool) =>
+    enabled && tool.name === "get_chunk"
+      ? {
+          ...tool,
+          inputSchema: {
+            ...tool.inputSchema,
+            required: [
+              ...(tool.inputSchema.required ?? []),
+              "expected_version",
+            ],
+          },
+        }
+      : tool,
+  );
+  return enabled && role === "admin"
+    ? [
+        ...readTools,
+        ...mutationTools.map((tool) => ({
+          ...tool,
+          description: tool.description?.replace(
+            "External edits in the last version-check/save window may be missed.",
+            "R2 compares generation immediately before an ETag-conditional save. Same-byte generation changes after that check may be missed; an in-flight storage request cannot be recalled.",
+          ),
+        })),
+      ]
+    : readTools;
+}
+async function change(
+  env: Env,
+  name: string,
+  args: Record<string, unknown>,
+  role: AccessRole,
+) {
+  try {
+    const settings = config(env).write;
+    if (!settings.enabled) throw new CloudError("WRITE_DISABLED", 403);
+    if (role !== "admin") throw new CloudError("ADMIN_REQUIRED", 403);
+    const service = await R2MutationService.open(env, { settings });
+    if (name === "preview_changes") {
+      const p = previewChangesSchema.safeParse(args);
+      if (!p.success) throw new CloudError("INVALID_REQUEST");
+      if (!p.data.preview && settings.mode === "review")
+        throw new CloudError("PREVIEW_REQUIRED", 409);
+      return await service.preview(
+        { operations: p.data.operations },
+        p.data.preview,
+      );
+    }
+    if (name === "apply_changes") {
+      const p = applyChangesSchema.safeParse(args);
+      if (!p.success) throw new CloudError("INVALID_REQUEST");
+      return await service.apply(
+        p.data.operation_id,
+        { operations: p.data.operations },
+        p.data.preview_binding,
+      );
+    }
+    const p = changeStatusSchema.safeParse(args);
+    if (!p.success) throw new CloudError("INVALID_REQUEST");
+    return await service.status(p.data.operation_id);
+  } catch (error) {
+    throw new McpError(-32040, "Vault change failed.", {
+      errorCode:
+        error instanceof CloudError || error instanceof MutationError
+          ? error.code
+          : "SOURCE_UNAVAILABLE",
+    });
+  }
+}
 const errorCodes: Record<string, number> = {
   INDEX_NOT_FOUND: -32001,
   INDEX_INCOMPATIBLE: -32002,
@@ -90,8 +175,17 @@ function mapped(args: Record<string, unknown>) {
     }),
   };
 }
-async function call(env: Env, name: string, args: Record<string, unknown>) {
-  const tool = tools.find((t) => t.name === name);
+async function call(
+  env: Env,
+  name: string,
+  args: Record<string, unknown>,
+  role: AccessRole,
+) {
+  if (MUTATION_NAMES.has(name)) {
+    const data = await change(env, name, args, role);
+    return { content: [{ type: "text" as const, text: JSON.stringify(data) }] };
+  }
+  const tool = toolsFor(env, role).find((t) => t.name === name);
   if (!tool) throw new McpError(-32602, "Unknown tool.");
   const invalid = (code: string): never => {
     throw new McpError(errorCodes[code] ?? -32000, "Invalid tool arguments.", {
@@ -142,7 +236,9 @@ async function call(env: Env, name: string, args: Record<string, unknown>) {
       errorCode: "INVALID_PARAMETER",
     });
   try {
-    const service = await RetrievalService.open(env);
+    const service = await RetrievalService.open(env, {
+      allowUnindexed: ["get_note", "get_attachment"].includes(name),
+    });
     const result = await service.invoke(name, mapped(args));
     let data = result.data;
     if (name === "get_attachment" && args.download) {
@@ -209,7 +305,12 @@ async function call(env: Env, name: string, args: Record<string, unknown>) {
     );
   }
 }
-async function single(request: Request, env: Env, body: unknown) {
+async function single(
+  request: Request,
+  env: Env,
+  body: unknown,
+  role: AccessRole,
+) {
   const validator = new CfWorkerJsonSchemaValidator();
   const server = new Server(
     { name: "vault-agent", version: "0.1.0" },
@@ -224,13 +325,18 @@ async function single(request: Request, env: Env, body: unknown) {
       serverInfo: { name: "vault-agent", version: "0.1.0" },
     };
   });
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: toolsFor(env, role),
+  }));
   server.setRequestHandler(CallToolRequestSchema, async (request) =>
-    call(env, request.params.name, request.params.arguments ?? {}),
+    call(env, request.params.name, request.params.arguments ?? {}, role),
   );
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
-    maxRequestBodySize: 65536,
+    maxRequestBodySize:
+      config(env).write.enabled && role === "admin"
+        ? MCP_WRITE_REQUEST_BYTES
+        : 65536,
   });
   await server.connect(transport);
   try {
@@ -273,8 +379,33 @@ async function single(request: Request, env: Env, body: unknown) {
     await server.close();
   }
 }
-export async function mcp(request: Request, env: Env, body: unknown) {
-  if (!Array.isArray(body)) return single(request, env, body);
+export async function mcp(
+  request: Request,
+  env: Env,
+  body: unknown,
+  role: AccessRole,
+) {
+  const messages = Array.isArray(body) ? body : [body];
+  // Authorization precedes every message, including earlier reads in a batch.
+  if (
+    messages.some(
+      (value) =>
+        value &&
+        typeof value === "object" &&
+        "method" in value &&
+        value.method === "tools/call" &&
+        "params" in value &&
+        value.params &&
+        typeof value.params === "object" &&
+        "name" in value.params &&
+        typeof value.params.name === "string" &&
+        MUTATION_NAMES.has(value.params.name),
+    )
+  ) {
+    if (!config(env).write.enabled) throw new CloudError("WRITE_DISABLED", 403);
+    if (role !== "admin") throw new CloudError("ADMIN_REQUIRED", 403);
+  }
+  if (!Array.isArray(body)) return single(request, env, body, role);
   if (!body.length || body.length > 10)
     return Response.json(
       {
@@ -287,7 +418,7 @@ export async function mcp(request: Request, env: Env, body: unknown) {
   const replies: unknown[] = [];
   let size = 2;
   for (const message of body) {
-    const response = await single(request, env, message);
+    const response = await single(request, env, message, role);
     if (response.status !== 202 && response.body) {
       const text = await response.text();
       size += new TextEncoder().encode(text).length + (replies.length ? 1 : 0);

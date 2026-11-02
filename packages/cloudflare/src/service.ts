@@ -1,5 +1,9 @@
 import { isPCloud, PCloudSnapshotSource } from "./source.js";
-import { detectionStatus, ingestionEnabled } from "./ingestion.js";
+import {
+  detectionStatus,
+  ingestionEnabled,
+  emptyManifest,
+} from "./ingestion.js";
 import mime from "mime/lite";
 import * as core from "@vault-agent/core/portable";
 import type { Env } from "./config.js";
@@ -85,6 +89,7 @@ export class RetrievalService {
     readonly incremental = false,
     readonly mutationReadEpoch: number | null = null,
     readonly suppressed: ReadonlySet<string> = new Set(),
+    readonly unindexed = false,
   ) {
     ftsName(snapshot);
     this.settings = config(env);
@@ -106,7 +111,8 @@ export class RetrievalService {
       this.settings.allowed,
       incremental,
       suppressed,
-      mutationReadEpoch !== null && mutationReadEpoch > 0,
+      this.settings.write.enabled ||
+        (mutationReadEpoch !== null && mutationReadEpoch > 0),
     );
     this.vectors = new VectorizeStore(
       this.settings.semantic ? env.VECTORS : undefined,
@@ -115,7 +121,7 @@ export class RetrievalService {
       this.operations,
     );
   }
-  static async open(env: Env) {
+  static async open(env: Env, options: { allowUnindexed?: boolean } = {}) {
     // One ordered session, anchored at the primary, covers the complete read.
     const session = env.DB.withSession("first-primary");
     const DB = new Proxy(env.DB, {
@@ -146,7 +152,27 @@ export class RetrievalService {
       public_snapshot: string;
       epoch: number;
     }>();
-    if (!row) throw new CloudError("INDEX_NOT_FOUND", 409);
+    if (!row) {
+      if (
+        options.allowUnindexed &&
+        sourceEpoch !== null &&
+        (config(env).write.enabled || sourceEpoch > 0)
+      ) {
+        const empty = "0".repeat(64);
+        return new RetrievalService(
+          env,
+          empty,
+          emptyManifest(env),
+          empty,
+          0,
+          incremental,
+          sourceEpoch,
+          new Set(),
+          true,
+        );
+      }
+      throw new CloudError("INDEX_NOT_FOUND", 409);
+    }
     if (row.vault_id !== env.VAULT_ID)
       throw new CloudError("INDEX_INCOMPATIBLE", 409);
     if (
@@ -180,6 +206,10 @@ export class RetrievalService {
         ? "SELECT d.revision,coalesce(p.epoch,0) AS epoch FROM deployment d LEFT JOIN publications p ON p.store=d.revision WHERE d.id=1"
         : "SELECT revision,0 AS epoch FROM deployment WHERE id=1",
     ).first<{ revision: string; epoch: number }>();
+    if (this.unindexed) {
+      if (row) throw new CloudError("REVISION_CHANGED", 409);
+      return;
+    }
     if (row?.revision !== this.store || row?.epoch !== this.epoch)
       throw new CloudError("REVISION_CHANGED", 409);
   }
@@ -231,6 +261,8 @@ export class RetrievalService {
     input: unknown,
   ): Promise<{ data: unknown; warnings: core.WarningItem[]; usage?: Usage }> {
     const args = (input ?? {}) as Record<string, unknown>;
+    if (this.unindexed && !["get_note", "get_attachment"].includes(operation))
+      throw new CloudError("INDEX_NOT_FOUND", 409);
     const detection = await detectionStatus(this.env);
     let data: unknown;
     let warnings: core.WarningItem[] = [];
@@ -240,17 +272,26 @@ export class RetrievalService {
     ) {
       const p = parse(getSchema, args);
       this.pin(p.snapshot);
-      const managed = await this.env.DB.prepare(
+      let managed = await this.env.DB.prepare(
         "SELECT path FROM r2_mutation_paths WHERE note_id=?",
       )
         .bind(p.noteId)
         .first<{ path: string }>();
+      if (!managed && this.settings.write.enabled) {
+        const indexed = await this.env.DB.prepare(
+          "SELECT path FROM notes WHERE revision=? AND note_id=?",
+        )
+          .bind(this.store, p.noteId)
+          .first<{ path: string }>();
+        managed = indexed;
+      }
       if (managed) {
+        const missing =
+          operation === "get_chunk" ? "CHUNK_NOT_FOUND" : "NOTE_NOT_FOUND";
         const state = await mutationPath(this.env, managed.path);
         if (state?.state === "uncertain")
           throw new CloudError("SOURCE_UNAVAILABLE", 503);
-        if (state?.state === "deleted")
-          throw new CloudError("NOTE_NOT_FOUND", 404);
+        if (state?.state === "deleted") throw new CloudError(missing, 404);
         const value = await readMutationSource(
           this.env,
           managed.path,
@@ -267,8 +308,16 @@ export class RetrievalService {
             throw new CloudError("NOTE_TOO_LARGE", 413);
           throw error;
         });
-        if (!value) throw new CloudError("NOTE_NOT_FOUND", 404);
+        if (!value) throw new CloudError(missing, 404);
         const indexed = await this.metadata.getNote(p.noteId);
+        const observation = await this.env.DB.prepare(
+          "SELECT object_version FROM source_observations WHERE revision=? AND path=?",
+        )
+          .bind(this.store, managed.path)
+          .first<{ object_version: string }>();
+        const fresh =
+          indexed?.content_hash === value.digest &&
+          observation?.object_version === value.object.version;
         if (operation === "get_chunk") {
           const chunk =
             p.chunkIndex === undefined
@@ -315,19 +364,17 @@ export class RetrievalService {
               value.bytes.length,
             ),
             version: value.version,
-            index_state:
-              indexed?.content_hash === value.digest ? "fresh" : "pending",
+            index_state: fresh ? "fresh" : "pending",
             indexed_version: indexed?.content_hash ?? null,
           },
-          warnings:
-            indexed?.content_hash === value.digest
-              ? []
-              : [
-                  {
-                    code: "INDEX_UPDATING",
-                    message: "Saved source is awaiting index publication.",
-                  },
-                ],
+          warnings: fresh
+            ? []
+            : [
+                {
+                  code: "INDEX_UPDATING",
+                  message: "Saved source is awaiting index publication.",
+                },
+              ],
         };
       }
     }
@@ -394,7 +441,10 @@ export class RetrievalService {
               : "GUIDANCE_NOT_FOUND",
             404,
           );
-        if (state && operation === "get_attachment") {
+        if (
+          (state || this.settings.write.enabled) &&
+          operation === "get_attachment"
+        ) {
           if (core.uploadKind(p.path) !== "attachment")
             throw new CloudError("ATTACHMENT_NOT_FOUND", 404);
           const value = await readMutationSource(
@@ -606,7 +656,10 @@ export class RetrievalService {
     };
   }
   revision() {
-    return { vaultId: this.env.VAULT_ID, snapshot: this.snapshot };
+    return {
+      vaultId: this.env.VAULT_ID,
+      snapshot: this.unindexed ? null : this.snapshot,
+    };
   }
   async status(host: string) {
     const ready = this.settings.semantic && (await this.vectors.available());
@@ -685,6 +738,7 @@ export async function cloudStatus(
         mcpHttp: true,
         upload: ingestionEnabled(env) && !isPCloud(env),
         indexJobs: ingestionEnabled(env),
+        mutations: config(env).write.enabled,
         watch: false,
         gitSync: false,
       },

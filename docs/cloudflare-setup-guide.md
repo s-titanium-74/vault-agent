@@ -128,6 +128,33 @@ Get the HTTPS `workers.dev` endpoint from deployment output. There is no need to
 expose the local server or enable R2 public access. `/health` is public liveness;
 all other routes must reject requests without bearer authentication.
 
+## Optional MCP writes (acceptance work remains)
+
+Cloud mutation tools are disabled by default (`WRITE_ENABLED=false`). Before
+enabling them, review the [R2 guarantee boundary and remaining acceptance
+work](phases/mcp-vault-mutations/specifications/workers-mcp.md). The final
+generation check plus ETag condition cannot detect a same-byte generation
+change after that check or cancel an already-dispatched storage request.
+Hosted acceptance and the explicit guarantee decision are still open.
+
+For a dedicated synthetic trial, stop old writers, apply all D1 migrations
+through `0008_r2_mutation_maintenance.sql`, then deploy compatible code. In the
+ignored operator configuration, set `WRITE_ENABLED` to the string `"true"` and
+retain `INGESTION_ENABLED="true"` with its one-minute Cron. Writes require an
+R2 source; pCloud remains read-only. Keep `WRITE_MODE="review"` unless direct
+application is an intentional choice. The default limits are 5 MiB/file,
+20 MiB/batch, 20 operations and seven days of operation history; optional
+`WRITE_*` settings are listed in the linked contract.
+
+Only the current admin credentials expose `preview_changes`, `apply_changes`
+and `get_change_status`; read credentials cannot invoke them. Obtain current
+versions with explicit `get_note`/`get_attachment`, preview the exact request,
+then apply its returned operation ID and preview binding. With writes enabled,
+`get_chunk` also requires `expected_version` from its search/related reference.
+Saving and index publication are separate: check `index_state` rather than
+assuming the saved content is already searchable. Disabling writes later does
+not restore stale deleted or replaced content from an older index.
+
 ## Synthetic upload, search and explicit retrieval
 
 Generate a new sample directory; an existing destination is rejected:

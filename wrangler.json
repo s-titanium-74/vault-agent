@@ -37,6 +37,7 @@
     }
   ],
   "vars": {
+    "WRITE_ENABLED": "false",
     "VAULT_ID": "REPLACE_WITH_A_NEW_UUID_V4",
     "INGESTION_ENABLED": "true",
     "EXTERNAL_EMBEDDING_CONSENT": "false",

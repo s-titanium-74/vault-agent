@@ -151,7 +151,7 @@ describe("internal R2 mutations and durable read suppression", () => {
       method: "tools/call",
       params: { name: "apply_changes", arguments: {} },
     });
-    expect(call.error.code).toBe(-32602);
+    expect(call.error.code).toBe("WRITE_DISABLED");
     expect(await bucket.head(prefix + "Notes/Disabled.md")).toBeNull();
     expect(
       (await db

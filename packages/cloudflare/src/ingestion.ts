@@ -166,7 +166,7 @@ export async function jobStatus(env: Env, id: string) {
   const row = await getJob(env, id);
   return { ...publicJob(row), semantic: await semanticProgress(env) };
 }
-function emptyManifest(env: Env): core.IndexManifest {
+export function emptyManifest(env: Env): core.IndexManifest {
   return {
     schemaVersion: core.INDEX_SCHEMA_VERSION,
     vaultIdentity: env.VAULT_ID,

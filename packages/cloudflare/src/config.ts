@@ -3,12 +3,25 @@ import {
   validRoleCredentials,
 } from "@vault-agent/core/access";
 import type { SubtleCrypto as WorkersSubtleCrypto } from "@cloudflare/workers-types";
-import { sourcePolicy } from "@vault-agent/core/portable";
+import {
+  sourcePolicy,
+  mutationSettingsSchema,
+} from "@vault-agent/core/portable";
 import { CloudError } from "./errors.js";
 import { MODEL } from "./provider.js";
 // Wrangler emits the legacy VectorizeIndex name when runtime declarations are
 // omitted. Use the installed platform's V2 type for the generated binding.
-export type Env = Omit<Cloudflare.Env, "VECTORS" | "SOURCE"> & {
+export type Env = Omit<
+  Cloudflare.Env,
+  | "VECTORS"
+  | "SOURCE"
+  | "WRITE_ENABLED"
+  | "WRITE_MODE"
+  | "WRITE_MAX_FILE_BYTES"
+  | "WRITE_MAX_BATCH_BYTES"
+  | "WRITE_MAX_BATCH_OPERATIONS"
+  | "WRITE_HISTORY_RETENTION_DAYS"
+> & {
   VECTORS?: Vectorize;
   SOURCE?: R2Bucket;
   SOURCE_PROVIDER?: "r2" | "pcloud";
@@ -19,6 +32,12 @@ export type Env = Omit<Cloudflare.Env, "VECTORS" | "SOURCE"> & {
   ADMIN_TOKEN: string;
   PREVIOUS_READ_TOKEN?: string;
   PREVIOUS_ADMIN_TOKEN?: string;
+  WRITE_ENABLED?: string;
+  WRITE_MODE?: string;
+  WRITE_MAX_FILE_BYTES?: string;
+  WRITE_MAX_BATCH_BYTES?: string;
+  WRITE_MAX_BATCH_OPERATIONS?: string;
+  WRITE_HISTORY_RETENTION_DAYS?: string;
 };
 function strings(value: string): string[] {
   const parsed: unknown = JSON.parse(value);
@@ -81,6 +100,13 @@ export function config(env: Env) {
     )
       throw new Error();
     const semantic = String(env.EXTERNAL_EMBEDDING_CONSENT) === "true";
+    const write = writeSettings(env);
+    if (
+      write.enabled &&
+      (env.SOURCE_PROVIDER === "pcloud" ||
+        String(env.INGESTION_ENABLED) !== "true")
+    )
+      throw new Error();
     if (
       semantic &&
       (!env.AI ||
@@ -92,6 +118,7 @@ export function config(env: Env) {
       throw new Error();
     return {
       semantic,
+      write,
       allowed: sourcePolicy(includes, strings(env.EXCLUDE_PATHS)),
       origins,
       profiles: { frontmatter_value_allowlist: allowlist },
@@ -100,7 +127,38 @@ export function config(env: Env) {
     throw new CloudError("CONFIG_INVALID", 503);
   }
 }
+export function writeSettings(env: Env) {
+  if (
+    env.WRITE_ENABLED !== undefined &&
+    !["true", "false"].includes(env.WRITE_ENABLED)
+  )
+    throw new CloudError("CONFIG_INVALID", 503);
+  const numeric: Record<string, number> = {};
+  for (const [key, value] of Object.entries({
+    max_file_bytes: env.WRITE_MAX_FILE_BYTES,
+    max_batch_bytes: env.WRITE_MAX_BATCH_BYTES,
+    max_batch_operations: env.WRITE_MAX_BATCH_OPERATIONS,
+    history_retention_days: env.WRITE_HISTORY_RETENTION_DAYS,
+  })) {
+    if (value === undefined) continue;
+    if (!/^[1-9][0-9]*$/.test(value))
+      throw new CloudError("CONFIG_INVALID", 503);
+    numeric[key] = Number(value);
+  }
+  const parsed = mutationSettingsSchema.safeParse({
+    ...numeric,
+    enabled: env.WRITE_ENABLED === "true",
+    ...(env.WRITE_MODE === undefined ? {} : { mode: env.WRITE_MODE }),
+  });
+  if (!parsed.success || parsed.data.max_batch_bytes > 20 * 1024 * 1024)
+    throw new CloudError("CONFIG_INVALID", 503);
+  return parsed.data;
+}
 export async function authenticate(request: Request, env: Env, admin: boolean) {
+  let matchedAdmin = false;
+  const adminKeys = [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].filter(
+    (v): v is string => v !== undefined,
+  );
   const digest = (value: string) =>
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   const subtle = crypto.subtle as WorkersSubtleCrypto;
@@ -117,9 +175,12 @@ export async function authenticate(request: Request, env: Env, admin: boolean) {
     admin ? "admin" : "read",
     async (incoming, expected) => {
       const [a, b] = await Promise.all([digest(incoming), digest(expected)]);
-      return subtle.timingSafeEqual(a, b);
+      const matches = subtle.timingSafeEqual(a, b);
+      if (matches && adminKeys.includes(expected)) matchedAdmin = true;
+      return matches;
     },
   );
   if (failure)
     throw new CloudError(failure, failure === "AUTH_REQUIRED" ? 401 : 403);
+  return matchedAdmin ? ("admin" as const) : ("read" as const);
 }

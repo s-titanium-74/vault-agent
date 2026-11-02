@@ -26,6 +26,7 @@
     { "binding": "SOURCE", "bucket_name": "vault-agent-synthetic" },
   ],
   "vars": {
+    "WRITE_ENABLED": "false",
     "INGESTION_ENABLED": "true",
     "EXTERNAL_EMBEDDING_CONSENT": "false",
     "EMBEDDING_MODEL": "@cf/baai/bge-m3",
