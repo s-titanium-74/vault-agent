@@ -6,6 +6,7 @@ import {
   type SourceReadOptions,
 } from "@vault-agent/core/portable";
 import { CloudError, boundedBytes } from "./errors.js";
+import { cloudSourceLimit } from "./source-limits.js";
 
 export class R2VaultSource
   extends PublishedSourceCatalog
@@ -33,7 +34,7 @@ export class R2VaultSource
       throw new CloudError("SOURCE_REVISION_MISMATCH", 409);
     const max = Math.min(
       options.maxBytes,
-      entry.kind === "attachment" ? 20 * 1024 * 1024 : 2 * 1024 * 1024,
+      await cloudSourceLimit(this.db, path, entry.kind, entry.size),
     );
     if (entry.size > max) throw new CloudError("SOURCE_TOO_LARGE", 413);
     const locator = this.located

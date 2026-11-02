@@ -10,6 +10,7 @@ R2/Workers integration and hosted verification remain open.
 
 Step 4 is staged: [4a, durable upload baselines](specifications/upload-baseline.md),
 then [4b, internal R2 mutation recovery/revocation](specifications/r2-service.md),
+then [4c, runtime maintenance and saved-source indexing](specifications/r2-maintenance.md),
 then Workers MCP integration. These prerequisites do not enable cloud mutation tools.
 
 ## Purpose

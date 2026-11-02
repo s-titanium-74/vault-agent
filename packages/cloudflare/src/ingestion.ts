@@ -1,4 +1,9 @@
 import { isPCloud, pcloudEntries, readPCloudEntry } from "./source.js";
+import { cloudSourceLimit } from "./source-limits.js";
+import {
+  maintainMutations,
+  type MutationMaintenanceSummary,
+} from "./mutation-maintenance.js";
 import {
   captureUploadTarget,
   checkUploadTarget,
@@ -85,11 +90,11 @@ export const sourcePrefix = (env: Env) => `${env.VAULT_ID}/source/`;
 
 const reusableObservation =
   "s.kind=e.kind AND s.size=e.size AND s.updated=e.updated AND o.digest=s.digest AND o.etag=e.etag AND o.object_version=e.object_version AND length(o.object_version)>0 AND (e.digest IS NULL OR e.digest=s.digest)";
-function admitObservedObject(
+async function admitObservedObject(
   env: Env,
   obj: R2Object,
   allowed: (path: string) => boolean,
-): Entry | null {
+): Promise<Entry | null> {
   const path = obj.key.slice(sourcePrefix(env).length);
   let kind: core.SourceKind | null;
   try {
@@ -99,7 +104,10 @@ function admitObservedObject(
     return null;
   }
   if (!kind || obj.customMetadata?.deleted === "true") return null;
-  if (path.length > 512 || obj.size > core.uploadLimit(kind))
+  if (
+    path.length > 512 ||
+    obj.size > (await cloudSourceLimit(env.DB, path, kind, obj.size))
+  )
     throw new CloudError("UPLOAD_TOO_LARGE", 413);
   return {
     path,
@@ -257,7 +265,7 @@ async function probeSources(env: Env, deadline: number) {
     });
     pages++;
     for (const obj of page.objects) {
-      const entry = admitObservedObject(env, obj, allowed);
+      const entry = await admitObservedObject(env, obj, allowed);
       if (!entry) continue;
       if (entries.has(entry.path))
         throw new CloudError("REVISION_CONFLICT", 409);
@@ -884,7 +892,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     const rows: D1PreparedStatement[] = [];
     const allowed = config(env).allowed;
     for (const obj of page.objects) {
-      const observed = admitObservedObject(env, obj, allowed);
+      const observed = await admitObservedObject(env, obj, allowed);
       if (!observed) continue;
       rows.push(
         env.DB.prepare(
@@ -1122,7 +1130,10 @@ async function step(env: Env, job: Job, token: string, d: Data) {
         obj.customMetadata?.deleted === "true"
       )
         throw new CloudError("REVISION_CONFLICT", 409);
-      bytes = await boundedBytes(obj.body, core.uploadLimit(entry.kind));
+      bytes = await boundedBytes(
+        obj.body,
+        await cloudSourceLimit(env.DB, entry.path, entry.kind, entry.size),
+      );
     }
     const digest = await core.contentRevision(bytes);
     if (entry.kind === "guidance") {
@@ -1477,9 +1488,11 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     const allowed = config(env).allowed;
     const actual =
       remote ??
-      page.objects
-        .map((o) => admitObservedObject(env, o, allowed))
-        .filter((e): e is Entry => e !== null);
+      (
+        await Promise.all(
+          page.objects.map((o) => admitObservedObject(env, o, allowed)),
+        )
+      ).filter((e): e is Entry => e !== null);
     const expected = (
       await env.DB.prepare(
         "SELECT * FROM ingestion_entries WHERE job=? AND path IN (SELECT value FROM json_each(?))",
@@ -1613,6 +1626,7 @@ export type ReconciliationLog = {
   pages?: number;
   elapsedMs?: number;
   errorCode?: string;
+  mutationMaintenance?: MutationMaintenanceSummary;
 };
 const logCodes = new Set([
   "CONFIG_INVALID",
@@ -1632,12 +1646,28 @@ export async function tick(
   env: Env,
   log: (entry: ReconciliationLog) => void = (entry) => console.log(entry),
 ) {
-  if (!ingestionEnabled(env)) return;
   const start = Date.now();
+  if (!ingestionEnabled(env)) {
+    const maintenance = await maintainMutations(env, start + 2000);
+    if (
+      maintenance.failed ||
+      maintenance.recoveryInspected ||
+      maintenance.cleanupInspected ||
+      maintenance.pathsInspected
+    )
+      log({
+        event: "reconciliation",
+        result: maintenance.failed ? "failed" : "resumed",
+        elapsedMs: Date.now() - start,
+        mutationMaintenance: maintenance,
+      });
+    return;
+  }
   log({ event: "reconciliation", result: "start" });
   try {
     config(env);
     const deadline = start + 20000;
+    const maintenance = await maintainMutations(env, start + 2000);
     await cleanupIncremental(env);
     await cleanupStep(env);
     // Resume durable work before a read-only probe; uploads must remain autonomous.
@@ -1669,6 +1699,12 @@ export async function tick(
       result: failure ? "failed" : probe.result,
       elapsedMs: Date.now() - start,
       ...(failure ? { errorCode: failure } : {}),
+      ...(maintenance.failed ||
+      maintenance.recoveryInspected ||
+      maintenance.cleanupInspected ||
+      maintenance.pathsInspected
+        ? { mutationMaintenance: maintenance }
+        : {}),
     });
   } catch (error) {
     const code = logCode(error instanceof CloudError ? error.code : "");

@@ -446,7 +446,9 @@ export class RetrievalService {
           ...candidate,
           content: await this.source.readText(p.path, {
             expectedRevision: entry.revision,
-            maxBytes: p.allowLarge ? 2 * 1024 * 1024 : 200 * 1024,
+            maxBytes: p.allowLarge
+              ? (this.mutationReadEpoch === null ? 2 : 20) * 1024 * 1024
+              : 200 * 1024,
           }),
           contentType: /\.(md|markdown|mdc)$/i.test(p.path)
             ? "text/markdown; charset=utf-8"

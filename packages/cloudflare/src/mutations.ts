@@ -1,7 +1,11 @@
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { boundedBytes, CloudError } from "./errors.js";
-import { mutationPath, type R2MutationPath } from "./mutation-state.js";
+import {
+  mutationPath,
+  r2SourceVersion,
+  type R2MutationPath,
+} from "./mutation-state.js";
 
 type Result = {
   index: number;
@@ -26,6 +30,7 @@ type Operation = {
   state: string;
   lease: string | null;
   lease_until: number;
+  retention_ms: number;
 };
 type Item = {
   operation_id: string;
@@ -78,6 +83,12 @@ export class R2MutationService {
       fail("INVALID_REQUEST", 400);
     if (!parsed.data.enabled) fail("WRITE_DISABLED", 403);
     if (env.SOURCE_PROVIDER === "pcloud") fail("SOURCE_WRITE_UNSUPPORTED", 501);
+    if (
+      !(await env.DB.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='r2_mutation_maintenance'",
+      ).first())
+    )
+      fail("MUTATION_UPGRADE_REQUIRED", 503);
     const policy = await core.contentRevision(
       JSON.stringify([
         "internal-r2-v1",
@@ -223,7 +234,7 @@ export class R2MutationService {
     );
     const id = `${base}.${await this.sign(base)}`;
     await this.env.DB.prepare(
-      "INSERT INTO r2_mutation_operations(id,nonce,digest,policy,issued,expires,preview,state) VALUES(?,?,?,?,?,?,?,'issued')",
+      "INSERT INTO r2_mutation_operations(id,nonce,digest,policy,issued,expires,preview,state,retention_ms) VALUES(?,?,?,?,?,?,?,'issued',?)",
     )
       .bind(
         id,
@@ -233,6 +244,7 @@ export class R2MutationService {
         issued,
         expires,
         Number(includePreview),
+        this.settings.history_retention_days * 86400000,
       )
       .run();
     return {
@@ -284,7 +296,7 @@ export class R2MutationService {
                 p.digest === p.indexed_digest &&
                 p.object_version === p.indexed_version),
         )
-        .map((p) => p.item_index),
+        .map((p) => `${p.item_index}:${p.state}`),
     );
     return {
       operation_id: id,
@@ -292,7 +304,12 @@ export class R2MutationService {
       expires: op.expires,
       results: rows.results.map((r) => {
         const result = JSON.parse(r.result) as Result;
-        if (result.status === "applied" && fresh.has(result.index))
+        if (
+          result.status === "applied" &&
+          fresh.has(
+            `${result.index}:${result.type === "delete_file" ? "deleted" : "saved"}`,
+          )
+        )
           result.index_state = "fresh";
         return r.state === "committing" && op.lease_until < this.now()
           ? {
@@ -357,7 +374,7 @@ export class R2MutationService {
         ).bind(token, this.now() + 120000, id),
         ...results.map((r) =>
           this.env.DB.prepare(
-            "INSERT INTO r2_mutation_items VALUES(?,?,?,?,?,NULL)",
+            "INSERT INTO r2_mutation_items(operation_id,item_index,path,state,result,recovery) VALUES(?,?,?,?,?,NULL)",
           ).bind(id, r.index, r.path, r.status, JSON.stringify(r)),
         ),
       ]);
@@ -498,7 +515,12 @@ export class R2MutationService {
     object: R2Object,
   ) {
     const version = intent.digest
-      ? `r2v1.${await core.contentRevision(JSON.stringify([this.env.VAULT_ID, result.path, object.version, intent.digest]))}`
+      ? await r2SourceVersion(
+          this.env.VAULT_ID,
+          result.path,
+          object.version,
+          intent.digest,
+        )
       : undefined;
     result.status = "applied";
     delete result.code;
@@ -562,94 +584,135 @@ export class R2MutationService {
   }
   private async finish(id: string) {
     await this.env.DB.prepare(
-      "UPDATE r2_mutation_operations SET state=CASE WHEN EXISTS(SELECT 1 FROM r2_mutation_items WHERE operation_id=? AND state NOT IN ('applied','failed')) THEN 'reconciling' ELSE 'completed' END,lease=NULL,lease_until=0,completed=?,cleanup_after=? WHERE id=?",
+      "UPDATE r2_mutation_operations SET state=CASE WHEN EXISTS(SELECT 1 FROM r2_mutation_items WHERE operation_id=? AND state NOT IN ('applied','failed')) THEN 'reconciling' ELSE 'completed' END,lease=NULL,lease_until=0,completed=CASE WHEN EXISTS(SELECT 1 FROM r2_mutation_items WHERE operation_id=? AND state NOT IN ('applied','failed')) THEN NULL ELSE coalesce(completed,?) END,cleanup_after=CASE WHEN EXISTS(SELECT 1 FROM r2_mutation_items WHERE operation_id=? AND state NOT IN ('applied','failed')) THEN NULL ELSE coalesce(cleanup_after,?+retention_ms) END WHERE id=?",
     )
-      .bind(
-        id,
-        this.now(),
-        this.now() + this.settings.history_retention_days * 86400000,
-        id,
-      )
+      .bind(id, id, this.now(), id, this.now(), id)
       .run();
   }
   /** Bounded metadata/receipt recovery; NEVER repeats a source write. */
-  async recover(limit = 20) {
+  async recover(limit = 20, deadline = Infinity) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       fail("INVALID_REQUEST", 400);
     const rows = await this.env.DB.prepare(
-      "SELECT i.* FROM r2_mutation_items i JOIN r2_mutation_operations o ON o.id=i.operation_id WHERE i.state IN ('pending','committing','reconciling') AND o.lease_until<? ORDER BY o.issued,i.item_index LIMIT ?",
+      "SELECT i.* FROM r2_mutation_items i JOIN r2_mutation_operations o ON o.id=i.operation_id WHERE i.state IN ('pending','committing','reconciling') AND o.lease_until<? AND i.retry_after<=? ORDER BY i.checked,o.issued,i.item_index LIMIT ?",
     )
-      .bind(this.now(), limit)
+      .bind(this.now(), this.now(), limit)
       .all<Item>();
     const touched = new Set<string>();
+    let inspected = 0;
     for (const row of rows.results) {
+      if (this.now() >= deadline) break;
+      const claim = await this.env.DB.prepare(
+        "UPDATE r2_mutation_items SET checked=?,retry_after=? WHERE operation_id=? AND item_index=? AND retry_after<=? AND state IN ('pending','committing','reconciling') AND EXISTS(SELECT 1 FROM r2_mutation_operations WHERE id=? AND lease_until<?)",
+      )
+        .bind(
+          this.now(),
+          this.now() + 60000,
+          row.operation_id,
+          row.item_index,
+          this.now(),
+          row.operation_id,
+          this.now(),
+        )
+        .run();
+      if (!claim.meta.changes) continue;
+      inspected++;
       const result = JSON.parse(row.result) as Result;
       touched.add(row.operation_id);
-      if (row.state === "pending") {
-        result.status = "failed";
-        result.code = "SOURCE_UNAVAILABLE";
-        await this.env.DB.prepare(
-          "UPDATE r2_mutation_items SET state='failed',result=? WHERE operation_id=? AND item_index=? AND state='pending'",
-        )
-          .bind(JSON.stringify(result), row.operation_id, row.item_index)
-          .run();
-        continue;
-      }
-      const op = await this.operation(row.operation_id);
-      if (!op || !row.recovery) continue;
-      const intent = JSON.parse(row.recovery) as Intent;
-      const object = await this.env.SOURCE!.head(this.key(row.path));
-      if (
-        !object ||
-        object.customMetadata?.mutation !== op.nonce ||
-        object.customMetadata?.item !== String(row.item_index)
-      )
-        continue;
-      const expected =
-        intent.digest ?? (await core.contentRevision(new Uint8Array()));
-      if (
-        !object.checksums.sha256 ||
-        hex(object.checksums.sha256) !== expected ||
-        (intent.action === "delete" &&
-          (object.size !== 0 || object.customMetadata?.deleted !== "true"))
-      )
-        continue;
       try {
-        await this.acknowledge(row.operation_id, result, intent, object);
+        if (row.state === "pending") {
+          result.status = "failed";
+          result.code = "SOURCE_UNAVAILABLE";
+          await this.env.DB.prepare(
+            "UPDATE r2_mutation_items SET state='failed',result=? WHERE operation_id=? AND item_index=? AND state='pending'",
+          )
+            .bind(JSON.stringify(result), row.operation_id, row.item_index)
+            .run();
+          continue;
+        }
+        const op = await this.operation(row.operation_id);
+        if (!op || !row.recovery) continue;
+        const intent = JSON.parse(row.recovery) as Intent;
+        const object = await this.env.SOURCE!.head(this.key(row.path));
+        if (
+          !object ||
+          object.customMetadata?.mutation !== op.nonce ||
+          object.customMetadata?.item !== String(row.item_index)
+        )
+          continue;
+        const expected =
+          intent.digest ?? (await core.contentRevision(new Uint8Array()));
+        if (
+          !object.checksums.sha256 ||
+          hex(object.checksums.sha256) !== expected ||
+          (intent.action === "delete" &&
+            (object.size !== 0 || object.customMetadata?.deleted !== "true"))
+        )
+          continue;
+        try {
+          await this.acknowledge(row.operation_id, result, intent, object);
+        } catch {
+          /* A concurrent recovery/path transition wins; never replay. */
+        }
       } catch {
-        /* A concurrent recovery/path transition wins; never replay. */
+        // Binding failures retain suppression and defer this item, not later work.
       }
     }
     for (const id of touched) await this.finish(id);
-    return { inspected: rows.results.length };
+    if (inspected < limit && this.now() < deadline) {
+      const completed = await this.env.DB.prepare(
+        "SELECT id FROM r2_mutation_operations o WHERE state IN ('applying','reconciling') AND lease_until<? AND EXISTS(SELECT 1 FROM r2_mutation_items WHERE operation_id=o.id) AND NOT EXISTS(SELECT 1 FROM r2_mutation_items WHERE operation_id=o.id AND state NOT IN ('applied','failed')) ORDER BY issued LIMIT ?",
+      )
+        .bind(this.now(), limit - inspected)
+        .all<{ id: string }>();
+      for (const op of completed.results) {
+        if (this.now() >= deadline) break;
+        await this.finish(op.id);
+        inspected++;
+      }
+    }
+    return { inspected };
   }
   /** Only terminal metadata/staging expires. Path suppression is never audit history. */
-  async cleanup(limit = 10) {
+  async cleanup(limit = 10, deadline = Infinity) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       fail("INVALID_REQUEST", 400);
     const ops = await this.env.DB.prepare(
-      "SELECT id,nonce FROM r2_mutation_operations WHERE (state='completed' AND cleanup_after<?) OR (state='issued' AND expires<?) ORDER BY issued LIMIT ?",
+      "SELECT id,nonce FROM r2_mutation_operations WHERE cleanup_retry_after<=? AND ((state='completed' AND cleanup_after<?) OR (state='issued' AND expires<?)) ORDER BY cleanup_checked,issued LIMIT ?",
     )
-      .bind(this.now(), this.now(), limit)
+      .bind(this.now(), this.now(), this.now(), limit)
       .all<{ id: string; nonce: string }>();
+    let inspected = 0;
     for (const op of ops.results) {
-      const page = await this.env.SOURCE!.list({
-        prefix: `${this.env.VAULT_ID}/mutations/${op.nonce}/`,
-        limit: 100,
-      });
-      if (page.objects.length)
-        await this.env.SOURCE!.delete(page.objects.map((o) => o.key));
-      if (page.truncated) continue;
-      await this.env.DB.batch([
-        this.env.DB.prepare(
-          "DELETE FROM r2_mutation_items WHERE operation_id=?",
-        ).bind(op.id),
-        this.env.DB.prepare(
-          "DELETE FROM r2_mutation_operations WHERE id=? AND state IN ('issued','completed')",
-        ).bind(op.id),
-      ]);
+      if (this.now() >= deadline) break;
+      const claim = await this.env.DB.prepare(
+        "UPDATE r2_mutation_operations SET cleanup_checked=?,cleanup_retry_after=? WHERE id=? AND state IN ('issued','completed') AND cleanup_retry_after<=?",
+      )
+        .bind(this.now(), this.now() + 60000, op.id, this.now())
+        .run();
+      if (!claim.meta.changes) continue;
+      inspected++;
+      try {
+        const page = await this.env.SOURCE!.list({
+          prefix: `${this.env.VAULT_ID}/mutations/${op.nonce}/`,
+          limit: 100,
+        });
+        if (page.objects.length)
+          await this.env.SOURCE!.delete(page.objects.map((o) => o.key));
+        if (page.truncated) continue;
+        await this.env.DB.batch([
+          this.env.DB.prepare(
+            "DELETE FROM r2_mutation_items WHERE operation_id=?",
+          ).bind(op.id),
+          this.env.DB.prepare(
+            "DELETE FROM r2_mutation_operations WHERE id=? AND state IN ('issued','completed')",
+          ).bind(op.id),
+        ]);
+      } catch {
+        // Retain the operation and defer this cleanup while later work progresses.
+      }
     }
-    return { inspected: ops.results.length };
+    return { inspected };
   }
 }
 
@@ -692,7 +755,12 @@ async function readRawMutationSource(
   const bytes = await boundedBytes(object.body, Math.min(maxBytes, MAX_SOURCE));
   if (bytes.length !== object.size) fail("SOURCE_REVISION_MISMATCH");
   const digest = await core.contentRevision(bytes);
-  const version = `r2v1.${await core.contentRevision(JSON.stringify([env.VAULT_ID, path, object.version, digest]))}`;
+  const version = await r2SourceVersion(
+    env.VAULT_ID,
+    path,
+    object.version,
+    digest,
+  );
   let decoded: string | undefined;
   if (content) {
     try {

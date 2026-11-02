@@ -1,0 +1,10 @@
+ALTER TABLE r2_mutation_operations ADD COLUMN retention_ms INTEGER NOT NULL DEFAULT 604800000;
+ALTER TABLE r2_mutation_operations ADD COLUMN cleanup_checked INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE r2_mutation_operations ADD COLUMN cleanup_retry_after INTEGER NOT NULL DEFAULT 0;
+UPDATE r2_mutation_operations SET retention_ms=expires-issued WHERE expires>issued;
+UPDATE r2_mutation_operations SET completed=NULL,cleanup_after=NULL WHERE state<>'completed';
+ALTER TABLE r2_mutation_items ADD COLUMN checked INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE r2_mutation_items ADD COLUMN retry_after INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX r2_mutation_retry ON r2_mutation_items(state,retry_after,checked);
+CREATE TABLE r2_mutation_maintenance (id INTEGER PRIMARY KEY CHECK(id=1), refresh_cursor TEXT NOT NULL DEFAULT '');
+INSERT INTO r2_mutation_maintenance(id) VALUES(1);
