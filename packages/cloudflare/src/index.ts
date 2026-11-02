@@ -1,3 +1,4 @@
+import { requiredHttpRole } from "@vault-agent/core/access";
 import {
   SearchError,
   SourceError,
@@ -64,9 +65,7 @@ async function dispatch(request: Request, env: Env) {
   if (new TextEncoder().encode(request.url).length > 8192)
     throw new CloudError("QUERY_TOO_LARGE", 413);
   if (url.protocol !== "https:") throw new CloudError("HTTPS_REQUIRED", 403);
-  const admin =
-    /^\/(index|reindex|uploads?|sync|watch)(\/|$)/.test(url.pathname) ||
-    (/^\/jobs\//.test(url.pathname) && request.method !== "GET");
+  const admin = requiredHttpRole(url.pathname, request.method) === "admin";
   await authenticate(request, env, admin);
   const origin = request.headers.get("Origin");
   if (origin && !settings.origins.includes(origin))

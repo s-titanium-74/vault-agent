@@ -230,7 +230,7 @@ export function registerSyncCommands(
       const endpoint = config
         ? context.resolveEndpoint(config)
         : "http://127.0.0.1:8787";
-      const apiKey = config ? context.resolveApiKey(config) : "";
+      const apiKey = config ? context.resolveApiKey(config, "admin") : "";
 
       try {
         const response = await fetchWithTimeout(

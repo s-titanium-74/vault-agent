@@ -112,3 +112,5 @@ embedding provider boundary; it does not change the server bind or access
 control configuration.
 
 Phase 1 server binds HTTP only. TLS termination is out of scope.
+
+HTTP read/admin roles and legacy migration are specified in [access-control.md](access-control.md).

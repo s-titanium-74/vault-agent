@@ -1,3 +1,4 @@
+import "../src/access.js";
 // Checked separately with DOM/ES libraries and types: [], without @types/node.
 import {
   chunkNote,

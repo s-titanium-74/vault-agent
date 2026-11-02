@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   resolve: {
     alias: {
+      "@vault-agent/core/access": fileURLToPath(
+        new URL("../core/src/access.ts", import.meta.url),
+      ),
       "@vault-agent/core/portable": fileURLToPath(
         new URL("../core/src/portable/index.ts", import.meta.url),
       ),

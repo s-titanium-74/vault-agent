@@ -1,3 +1,8 @@
+import {
+  accessCases,
+  credentials,
+  keys,
+} from "../../core/test/access-cases.js";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -78,6 +83,120 @@ describe("MCP Streamable HTTP Route", () => {
     patchMockSocketDestroySoon(app);
 
     await app.ready();
+  });
+
+  async function enableRoles() {
+    await app.close();
+    app = Fastify({ logger: false });
+    registerMcpStreamableHttpRoute(app, {
+      endpoint: "/mcp",
+      credentials,
+      createMcpServer: () =>
+        createMcpServer({ store, config, embeddingProvider: null }),
+      transportOptions: { enableJsonResponse: true },
+    });
+    patchMockSocketDestroySoon(app);
+    await app.ready();
+  }
+  it.each(accessCases.filter((c) => c.role === "read"))(
+    "MCP $name before parsing",
+    async ({ header, failure }) => {
+      await enableRoles();
+      const response = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: {
+          "content-type": "application/json",
+          ...(header ? { authorization: header } : {}),
+        },
+        payload: "invalid JSON",
+      });
+      expect(response.statusCode).toBe(
+        failure ? (failure === "AUTH_REQUIRED" ? 401 : 403) : 400,
+      );
+      if (failure) expect(response.json().error.data.errorCode).toBe(failure);
+    },
+  );
+  it("reauthenticates reused MCP sessions including list, call, notifications and deletion", async () => {
+    await enableRoles();
+    const headers = {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      authorization: `Bearer ${keys.read}`,
+    };
+    const init = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers,
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "synthetic", version: "1" },
+        },
+      },
+    });
+    expect(init.statusCode).toBe(200);
+    const sessionId = String(init.headers["mcp-session-id"]);
+    for (const method of [
+      "tools/list",
+      "tools/call",
+      "notifications/initialized",
+    ]) {
+      for (const token of [undefined, keys.revoked]) {
+        const r = await app.inject({
+          method: "POST",
+          url: "/mcp",
+          headers: {
+            ...headers,
+            "mcp-session-id": sessionId,
+            authorization: token ? `Bearer ${token}` : "",
+          },
+          payload: {
+            jsonrpc: "2.0",
+            id: 2,
+            method,
+            params: { name: "vault_search", arguments: { query: "Welcome" } },
+          },
+        });
+        expect(r.statusCode).toBe(token ? 403 : 401);
+      }
+    }
+    for (const method of ["GET", "DELETE"] as const) {
+      const r = await app.inject({
+        method,
+        url: "/mcp",
+        headers: { "mcp-session-id": sessionId },
+      });
+      expect(r.statusCode).toBe(401);
+    }
+    for (const token of [keys.read, keys.admin]) {
+      const r = await app.inject({
+        method: "POST",
+        url: "/mcp",
+        headers: {
+          ...headers,
+          "mcp-session-id": sessionId,
+          authorization: `Bearer ${token}`,
+        },
+        payload: { jsonrpc: "2.0", id: 3, method: "tools/list" },
+      });
+      expect(r.statusCode).toBe(200);
+      expect(r.json().result.tools.length).toBeGreaterThan(0);
+    }
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: "/mcp",
+      headers: {
+        accept: headers.accept,
+        authorization: headers.authorization,
+        "mcp-session-id": sessionId,
+      },
+    });
+    expect(deleted.statusCode).toBe(200);
   });
 
   afterEach(async () => {

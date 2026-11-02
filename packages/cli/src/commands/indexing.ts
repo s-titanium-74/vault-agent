@@ -36,7 +36,7 @@ function registerIndexCommand(
     .action(async (opts) => {
       const config = loadConfig(context.resolveConfigPath());
       const endpoint = context.resolveEndpoint(config);
-      const apiKey = context.resolveApiKey(config);
+      const apiKey = context.resolveApiKey(config, "admin");
 
       try {
         const response = await fetchWithTimeout(

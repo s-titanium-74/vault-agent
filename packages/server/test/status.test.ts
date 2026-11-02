@@ -159,7 +159,7 @@ describe("GET /status", () => {
       url: "/status",
       headers: { Authorization: "Bearer wrong-key" },
     });
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(403);
 
     await appWithKey.close();
   });

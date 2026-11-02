@@ -74,3 +74,5 @@ mcp.http.endpoint = "/mcp"
   files.
 - MCP configuration is stored in user-local configuration only.
 - Configuration commands must not display secret values by default.
+
+Local HTTP credentials and per-request MCP authentication follow [shared access control](../../phase-1-retrieval-foundation/specifications/access-control.md). Stdio retains its process trust boundary.

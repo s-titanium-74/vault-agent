@@ -45,7 +45,9 @@ export function buildStatus(
     running: true,
     host: config.server.host,
     port: config.server.port,
-    apiKeyRequired: Boolean(config.server.apiKey),
+    apiKeyRequired: Boolean(
+      config.server.apiKey || config.server.readKey || config.server.adminKey,
+    ),
     ...overrides?.server,
   };
 

@@ -1,15 +1,16 @@
+import { accessCases, keys } from "../../core/test/access-cases.js";
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
 import { fixture, VAULT_ID } from "../scripts/fixture.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const read = randomBytes(32).toString("hex");
-const admin = randomBytes(32).toString("hex");
+const read = keys.read;
+const admin = keys.admin;
 let mf: Miniflare;
+let workerOptions: Parameters<typeof convertV4MiniflareOptions>[0];
 let script: string;
 let seed: Awaited<ReturnType<typeof fixture>>;
 let db: Awaited<ReturnType<Miniflare["getD1Database"]>>;
@@ -65,30 +66,31 @@ beforeAll(async () => {
     tsconfig: "tsconfig.json",
   });
   script = bundle.outputFiles[0]!.text;
-  mf = new Miniflare(
-    convertV4MiniflareOptions({
-      modules: true,
-      script,
-      compatibilityDate: "2026-10-28",
-      d1Databases: { DB: "synthetic" },
-      r2Buckets: { SOURCE: "synthetic" },
-      ratelimits: {
-        REQUEST_LIMITER: {
-          namespace_id: "1001",
-          simple: { limit: 1000, period: 60 },
-        },
+  workerOptions = {
+    modules: true,
+    script,
+    compatibilityDate: "2026-10-28",
+    d1Databases: { DB: "synthetic" },
+    r2Buckets: { SOURCE: "synthetic" },
+    ratelimits: {
+      REQUEST_LIMITER: {
+        namespace_id: "1001",
+        simple: { limit: 1000, period: 60 },
       },
-      bindings: {
-        VAULT_ID,
-        INCLUDE_PATHS: '["."]',
-        EXCLUDE_PATHS: "[]",
-        PROFILE_VALUE_ALLOWLIST: '["type","status"]',
-        ALLOWED_ORIGINS: "[]",
-        READ_TOKEN: read,
-        ADMIN_TOKEN: admin,
-      },
-    }),
-  );
+    },
+    bindings: {
+      VAULT_ID,
+      INCLUDE_PATHS: '["."]',
+      EXCLUDE_PATHS: "[]",
+      PROFILE_VALUE_ALLOWLIST: '["type","status"]',
+      ALLOWED_ORIGINS: "[]",
+      READ_TOKEN: read,
+      ADMIN_TOKEN: admin,
+      PREVIOUS_READ_TOKEN: keys.oldRead,
+      PREVIOUS_ADMIN_TOKEN: keys.oldAdmin,
+    },
+  };
+  mf = new Miniflare(convertV4MiniflareOptions(workerOptions));
   db = await mf.getD1Database("DB");
   bucket = await mf.getR2Bucket("SOURCE");
   const migration = await readFile("migrations/0001_retrieval.sql", "utf8");
@@ -107,6 +109,72 @@ afterAll(async () => {
 });
 
 describe("authenticated workerd D1/R2 retrieval", () => {
+  it.each(accessCases)(
+    "shared auth table: $name",
+    async ({ header, role, failure }) => {
+      const response = await mf.dispatchFetch(
+        base + (role === "admin" ? "/watch" : "/status"),
+        { headers: header ? { Authorization: header } : {} },
+      );
+      expect(response.status).toBe(
+        failure
+          ? failure === "AUTH_REQUIRED"
+            ? 401
+            : 403
+          : role === "admin"
+            ? 501
+            : 200,
+      );
+      if (failure)
+        expect(((await response.json()) as any).error.code).toBe(failure);
+    },
+  );
+  it("revokes removed overlap credentials and fails closed for cross-role collisions", async () => {
+    const rotatedBindings = { ...workerOptions.bindings };
+    delete rotatedBindings.PREVIOUS_READ_TOKEN;
+    delete rotatedBindings.PREVIOUS_ADMIN_TOKEN;
+    const rotated = new Miniflare(
+      convertV4MiniflareOptions({
+        ...workerOptions,
+        bindings: rotatedBindings,
+      }),
+    );
+    try {
+      for (const token of [keys.oldRead, keys.oldAdmin]) {
+        const response = await rotated.dispatchFetch(base + "/status", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        expect(response.status).toBe(403);
+        expect(((await response.json()) as any).error.code).toBe("AUTH_FAILED");
+      }
+      expect(
+        (
+          await rotated.dispatchFetch(base + "/watch", {
+            headers: { Authorization: `Bearer ${admin}` },
+          })
+        ).status,
+      ).toBe(501);
+    } finally {
+      await rotated.dispose();
+    }
+    const invalid = new Miniflare(
+      convertV4MiniflareOptions({
+        ...workerOptions,
+        bindings: { ...workerOptions.bindings, PREVIOUS_ADMIN_TOKEN: read },
+      }),
+    );
+    try {
+      const response = await invalid.dispatchFetch(base + "/status", {
+        headers: { Authorization: `Bearer ${read}` },
+      });
+      expect(response.status).toBe(503);
+      expect(((await response.json()) as any).error.code).toBe(
+        "CONFIG_INVALID",
+      );
+    } finally {
+      await invalid.dispose();
+    }
+  });
   it("exposes only liveness publicly and authenticates before body parsing", async () => {
     expect(
       await request("/health", {}, undefined).then((r) => r.json()),

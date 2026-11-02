@@ -108,3 +108,5 @@ product intentionally persists source and indexes in Cloudflare storage.
 See [pCloud source contract](pcloud-source.md) for read-only scope, explicit setup,
 SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
 R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.
+
+Permission classification and role resolution are shared with local HTTP through `@vault-agent/core/access`; see [access control](../../phase-1-retrieval-foundation/specifications/access-control.md). Workers retain mandatory tokens and the minimal public health exception.

@@ -3,6 +3,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@vault-agent/core/access": new URL(
+        "./packages/core/src/access.ts",
+        import.meta.url,
+      ).pathname,
       "@vault-agent/core/portable": new URL(
         "./packages/core/src/portable/index.ts",
         import.meta.url,

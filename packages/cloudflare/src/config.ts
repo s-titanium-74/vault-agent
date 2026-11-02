@@ -1,3 +1,7 @@
+import {
+  authorizeBearer,
+  validRoleCredentials,
+} from "@vault-agent/core/access";
 import type { SubtleCrypto as WorkersSubtleCrypto } from "@cloudflare/workers-types";
 import { sourcePolicy } from "@vault-agent/core/portable";
 import { CloudError } from "./errors.js";
@@ -46,11 +50,14 @@ export function config(env: Env) {
       if (previous !== undefined && !/^[a-f0-9]{64}$/.test(previous))
         throw new Error();
     if (
-      [env.READ_TOKEN, env.PREVIOUS_READ_TOKEN].some(
-        (token) =>
-          token !== undefined &&
-          [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].includes(token),
-      )
+      !validRoleCredentials({
+        read: [env.READ_TOKEN, env.PREVIOUS_READ_TOKEN].filter(
+          (v): v is string => v !== undefined,
+        ),
+        admin: [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].filter(
+          (v): v is string => v !== undefined,
+        ),
+      })
     )
       throw new Error();
     if (
@@ -94,26 +101,25 @@ export function config(env: Env) {
   }
 }
 export async function authenticate(request: Request, env: Env, admin: boolean) {
-  const header = request.headers.get("Authorization");
-  if (!header) throw new CloudError("AUTH_REQUIRED", 401);
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  // Fixed-length digests compared with the Workers constant-time primitive.
-  const digest = async (v: string) =>
-    crypto.subtle.digest("SHA-256", new TextEncoder().encode(v));
-  const [incoming, read, write, oldRead, oldWrite] = await Promise.all([
-    digest(token),
-    digest(env.READ_TOKEN),
-    digest(env.ADMIN_TOKEN),
-    digest(env.PREVIOUS_READ_TOKEN ?? env.READ_TOKEN),
-    digest(env.PREVIOUS_ADMIN_TOKEN ?? env.ADMIN_TOKEN),
-  ]);
+  const digest = (value: string) =>
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   const subtle = crypto.subtle as WorkersSubtleCrypto;
-  const readMatch = subtle.timingSafeEqual(incoming, read);
-  const adminMatch = subtle.timingSafeEqual(incoming, write);
-  const oldReadMatch = subtle.timingSafeEqual(incoming, oldRead);
-  const oldAdminMatch = subtle.timingSafeEqual(incoming, oldWrite);
-  const isRead = readMatch || oldReadMatch;
-  const isAdmin = adminMatch || oldAdminMatch;
-  if (!isRead && !isAdmin) throw new CloudError("AUTH_FAILED", 403);
-  if (admin && !isAdmin) throw new CloudError("ADMIN_REQUIRED", 403);
+  const failure = await authorizeBearer(
+    request.headers.get("Authorization"),
+    {
+      read: [env.READ_TOKEN, env.PREVIOUS_READ_TOKEN].filter(
+        (v): v is string => v !== undefined,
+      ),
+      admin: [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].filter(
+        (v): v is string => v !== undefined,
+      ),
+    },
+    admin ? "admin" : "read",
+    async (incoming, expected) => {
+      const [a, b] = await Promise.all([digest(incoming), digest(expected)]);
+      return subtle.timingSafeEqual(a, b);
+    },
+  );
+  if (failure)
+    throw new CloudError(failure, failure === "AUTH_REQUIRED" ? 401 : 403);
 }
