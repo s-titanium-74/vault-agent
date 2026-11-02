@@ -10,5 +10,12 @@ export async function chunkToResultItem(
   const chunk = await store.getChunkById(id);
   const note = chunk ? await store.getNote(chunk.note_id as string) : null;
   if (!chunk || !note) return null;
-  return chunkRowToResultItem(chunk, note, id, score, reason);
+  return chunkRowToResultItem(
+    chunk,
+    note,
+    id,
+    score,
+    reason,
+    store.versionedReferences,
+  );
 }

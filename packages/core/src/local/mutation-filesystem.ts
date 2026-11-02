@@ -14,6 +14,7 @@ export interface LocalSnapshot {
   version: string;
   bytes: Uint8Array;
   size: number;
+  textHash?: string;
   fingerprint: FileFingerprint;
 }
 type Parent = { path: string; dev: bigint; ino: bigint; birth: bigint };
@@ -114,18 +115,19 @@ export class MutationFilesystem {
       throw new MutationError("SOURCE_UNAVAILABLE");
     }
   }
-  stat(relative: string): Omit<LocalSnapshot, "bytes"> | null {
+  stat(
+    relative: string,
+    textHash = false,
+    maxBytes = Number.MAX_SAFE_INTEGER,
+  ): Omit<LocalSnapshot, "bytes"> | null {
     try {
-      const snapshot = this.readSource(
-        relative,
-        Number.MAX_SAFE_INTEGER,
-        false,
-      );
+      const snapshot = this.readSource(relative, maxBytes, false, textHash);
       return snapshot
         ? {
             version: snapshot.version,
             fingerprint: snapshot.fingerprint,
             size: snapshot.size,
+            textHash: snapshot.textHash,
           }
         : null;
     } catch (error) {
@@ -137,6 +139,7 @@ export class MutationFilesystem {
     relative: string,
     maxBytes: number,
     retain = true,
+    textHash = false,
   ): LocalSnapshot | null {
     const parents = this.parents(relative);
     const file = path.join(this.root, relative);
@@ -162,6 +165,10 @@ export class MutationFilesystem {
         throw new MutationError("SIZE_LIMIT_EXCEEDED");
       const chunks: Buffer[] = [];
       const hash = createHash("sha256");
+      const text = textHash
+        ? new TextDecoder("utf-8", { fatal: true })
+        : undefined;
+      const normalized = textHash ? createHash("sha256") : undefined;
       const buffer = Buffer.alloc(64 * 1024);
       let size = 0;
       for (;;) {
@@ -170,6 +177,10 @@ export class MutationFilesystem {
         size += count;
         if (size > maxBytes) throw new MutationError("SIZE_LIMIT_EXCEEDED");
         hash.update(buffer.subarray(0, count));
+        if (text && normalized)
+          normalized.update(
+            text.decode(buffer.subarray(0, count), { stream: true }),
+          );
         if (retain) chunks.push(Buffer.from(buffer.subarray(0, count)));
       }
       const after = fs.fstatSync(fd, { bigint: true });
@@ -191,6 +202,7 @@ export class MutationFilesystem {
       )
         throw new MutationError("SOURCE_REVISION_MISMATCH");
       const bytes = Buffer.concat(chunks);
+      if (text && normalized) normalized.update(text.decode());
       const fingerprint = {
         dev: String(before.dev),
         ino: String(before.ino),
@@ -200,6 +212,9 @@ export class MutationFilesystem {
       return {
         bytes,
         size,
+        ...(normalized
+          ? { textHash: normalized.digest("hex").slice(0, 32) }
+          : {}),
         fingerprint,
         version: this.version(relative, fingerprint),
       };

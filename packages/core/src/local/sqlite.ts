@@ -17,6 +17,7 @@ export class SqliteMetadataStore implements MetadataLexicalStore {
   constructor(
     readonly store: IndexStore,
     readonly vaultId: string,
+    readonly versionedReferences = false,
   ) {}
   async getManifest() {
     return this.store.getManifest();
@@ -149,6 +150,7 @@ export function localRetrievalContext(
   const metadata = new SqliteMetadataStore(
     store,
     store.getManifest()?.vaultIdentity ?? "local",
+    !!config.write?.enabled,
   );
   return {
     metadata,

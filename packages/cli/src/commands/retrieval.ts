@@ -68,6 +68,10 @@ export function registerRetrievalCommands(
   getCmd
     .command("chunk <noteId> [chunkIndex]")
     .description("Retrieve a chunk by note ID and chunk index")
+    .option(
+      "--expected-version <version>",
+      "Pin a search or note version (required when server writes are enabled)",
+    )
     .option("--json", "Output as JSON")
     .action(async (noteId, chunkIndex, opts) => {
       const config = loadConfig(context.resolveConfigPath());
@@ -87,6 +91,9 @@ export function registerRetrievalCommands(
         process.exit(2);
         return;
       }
+
+      if (opts.expectedVersion)
+        url += `?${new URLSearchParams({ expected_version: opts.expectedVersion })}`;
 
       try {
         const response = await fetchWithTimeout(

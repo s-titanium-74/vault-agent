@@ -48,12 +48,9 @@ export function registerRetrievalRoutes(app: FastifyInstance): void {
     }
 
     try {
-      const result = await getConfiguredNote(
-        store,
-        noteId,
-        config,
-        allowLarge === "true",
-      );
+      const result = app.vaultMutations
+        ? await app.vaultMutations.getNote(noteId, allowLarge === "true")
+        : await getConfiguredNote(store, noteId, config, allowLarge === "true");
 
       if (!result) {
         return reply
@@ -119,7 +116,24 @@ export function registerRetrievalRoutes(app: FastifyInstance): void {
         .send(err("INVALID_ID", "Invalid chunk index.", request.id));
     }
 
-    const result = await getChunk(store, noteId, index);
+    const expected = (request.query as { expected_version?: string })
+      .expected_version;
+    if (
+      app.vaultMutations &&
+      (typeof expected !== "string" || !expected || expected.length > 1024)
+    )
+      return reply
+        .code(400)
+        .send(
+          err(
+            "INVALID_REQUEST",
+            "Provide expected_version from search or a current note read.",
+            request.id,
+          ),
+        );
+    const result = app.vaultMutations
+      ? await app.vaultMutations.service.getChunk(noteId, index, expected)
+      : await getChunk(store, noteId, index);
 
     if (!result) {
       return reply
@@ -163,6 +177,53 @@ export function registerRetrievalRoutes(app: FastifyInstance): void {
       download?: string;
       allowLarge?: string;
     };
+    if (app.vaultMutations) {
+      const current =
+        app.vaultMutations.service.getFileVersion(vaultRelativePath);
+      if (!current)
+        return reply
+          .code(404)
+          .send(
+            err("ATTACHMENT_NOT_FOUND", "Attachment not found.", request.id),
+          );
+      const metadata = getAttachmentMetadata(
+        config.vault.root,
+        vaultRelativePath,
+        config.vault.exclude,
+      );
+      if (!metadata)
+        return reply
+          .code(403)
+          .send(
+            err(
+              "ATTACHMENT_NOT_ALLOWED",
+              "Attachment not allowed.",
+              request.id,
+            ),
+          );
+      if (download !== "true")
+        return {
+          data: { ...metadata, version: current.version },
+          warnings: [],
+        };
+      const attachment = app.vaultMutations.service.getAttachment(
+        vaultRelativePath,
+        allowLarge === "true",
+      );
+      if (!attachment)
+        return reply
+          .code(404)
+          .send(
+            err("ATTACHMENT_NOT_FOUND", "Attachment not found.", request.id),
+          );
+      reply.header("Content-Type", metadata.contentType);
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="${metadata.fileName}"`,
+      );
+      reply.header("X-Vault-Source-Version", attachment.version);
+      return reply.send(Buffer.from(attachment.bytes));
+    }
 
     try {
       resolveVaultRelativePath(

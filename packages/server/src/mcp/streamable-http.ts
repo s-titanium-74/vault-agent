@@ -1,6 +1,7 @@
 import {
   authorizeBearer,
   type AccessCredentials,
+  type AccessRole,
 } from "@vault-agent/core/access";
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
@@ -12,10 +13,13 @@ import {
   StreamableHTTPServerTransportOptions,
 } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { constantTimeEqual } from "../http-utils.js";
+import { MUTATION_NAMES, MCP_WRITE_REQUEST_BYTES } from "./mutations.js";
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 
 declare module "fastify" {
   interface FastifyRequest {
     mcpParsedBody?: unknown;
+    mcpRole?: AccessRole;
   }
 }
 
@@ -86,13 +90,15 @@ function makeJsonRpcError(
 interface ActiveSession {
   server: Server;
   transport: StreamableHTTPServerTransport;
+  role: AccessRole;
 }
 
 export interface StreamableHttpOptions {
   endpoint: string;
   createMcpServer: () => Server;
   apiKey?: string;
-  credentials?: AccessCredentials;
+  credentials?: AccessCredentials | (() => AccessCredentials | undefined);
+  writesEnabled?: boolean;
   transportOptions?: StreamableHTTPServerTransportOptions;
 }
 
@@ -101,6 +107,28 @@ export function registerMcpStreamableHttpRoute(
   options: StreamableHttpOptions,
 ): void {
   const sessions = new Map<string, ActiveSession>();
+  const credentialsNow = () =>
+    typeof options.credentials === "function"
+      ? options.credentials()
+      : (options.credentials ??
+        (options.apiKey ? { read: [], admin: [options.apiKey] } : undefined));
+  if (options.writesEnabled) {
+    const credentials = credentialsNow();
+    if (
+      !credentials?.read.length ||
+      !credentials.admin.length ||
+      credentials.read.some((key) => credentials.admin.includes(key))
+    )
+      throw new Error(
+        "CONFIG_INVALID: HTTP writes require separate read/admin credentials.",
+      );
+  }
+  app.addHook("onClose", async () => {
+    await Promise.allSettled(
+      [...sessions.values()].map((session) => session.server.close()),
+    );
+    sessions.clear();
+  });
 
   const createSession = async (
     request: FastifyRequest,
@@ -122,7 +150,11 @@ export function registerMcpStreamableHttpRoute(
       await server.close();
       throw new Error("Session ID was not generated");
     }
-    const session: ActiveSession = { server, transport };
+    const session: ActiveSession = {
+      server,
+      transport,
+      role: request.mcpRole ?? "read",
+    };
     sessions.set(sessionId, session);
     return { ...session, sessionId };
   };
@@ -130,18 +162,26 @@ export function registerMcpStreamableHttpRoute(
   app.route({
     url: options.endpoint,
     method: ["GET", "POST", "DELETE"],
+    bodyLimit: options.writesEnabled ? MCP_WRITE_REQUEST_BYTES : 64 * 1024,
     onRequest: async (request, reply) => {
-      const credentials =
-        options.credentials ??
-        (options.apiKey ? { read: [], admin: [options.apiKey] } : undefined);
-      if (!credentials) return;
-      const failure = await authorizeBearer(
-        request.headers.authorization,
-        credentials,
-        "read",
-        constantTimeEqual,
-      );
-      if (failure)
+      const credentials = credentialsNow();
+      if (options.writesEnabled && !credentials) {
+        reply.code(401).send(
+          makeJsonRpcError(-32020, "Access denied.", null, {
+            errorCode: "AUTH_REQUIRED",
+          }),
+        );
+        return;
+      }
+      const failure = credentials
+        ? await authorizeBearer(
+            request.headers.authorization,
+            credentials,
+            "read",
+            constantTimeEqual,
+          )
+        : null;
+      if (failure) {
         reply
           .code(failure === "AUTH_REQUIRED" ? 401 : 403)
           .send(
@@ -152,6 +192,23 @@ export function registerMcpStreamableHttpRoute(
               { errorCode: failure },
             ),
           );
+        return;
+      }
+      request.mcpRole =
+        credentials &&
+        !(await authorizeBearer(
+          request.headers.authorization,
+          credentials,
+          "admin",
+          constantTimeEqual,
+        ))
+          ? "admin"
+          : "read";
+      (request.raw as typeof request.raw & { auth: AuthInfo }).auth = {
+        token: "",
+        clientId: "vault-agent-local-http",
+        scopes: [request.mcpRole],
+      };
     },
     preParsing: async (request, reply, payload) => {
       if (request.method !== "POST") {
@@ -159,16 +216,63 @@ export function registerMcpStreamableHttpRoute(
       }
 
       const chunks: Buffer[] = [];
+      let size = 0;
       for await (const chunk of payload) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        size += bytes.length;
+        if (
+          size > (options.writesEnabled ? MCP_WRITE_REQUEST_BYTES : 64 * 1024)
+        ) {
+          reply
+            .code(413)
+            .send(
+              makeJsonRpcError(
+                -32008,
+                "Request exceeds MCP size limit.",
+                null,
+                { errorCode: "QUERY_TOO_LARGE" },
+              ),
+            );
+          return;
+        }
+        chunks.push(bytes);
       }
-      const raw = Buffer.concat(chunks).toString("utf-8");
-
+      let raw: string;
       let parsed: unknown;
       try {
+        raw = new TextDecoder("utf-8", { fatal: true }).decode(
+          Buffer.concat(chunks),
+        );
         parsed = JSON.parse(raw);
       } catch {
         reply.code(400).send(makeJsonRpcError(-32700, "Parse error", null, {}));
+        return;
+      }
+      const calls = Array.isArray(parsed) ? parsed : [parsed];
+      if (
+        options.writesEnabled &&
+        request.mcpRole !== "admin" &&
+        calls.some(
+          (call) =>
+            call?.method === "tools/call" &&
+            MUTATION_NAMES.has(call?.params?.name),
+        )
+      ) {
+        reply
+          .code(403)
+          .send(
+            makeJsonRpcError(
+              -32040,
+              "Access denied.",
+              !Array.isArray(parsed) &&
+                parsed &&
+                typeof parsed === "object" &&
+                "id" in parsed
+                ? (parsed.id as string | number | null)
+                : null,
+              { errorCode: "ADMIN_REQUIRED" },
+            ),
+          );
         return;
       }
 
@@ -200,11 +304,7 @@ export function registerMcpStreamableHttpRoute(
       if (request.method === "POST" && isInitializeRequest(body)) {
         try {
           await createSession(request, reply, body);
-        } catch (error: unknown) {
-          console.error(
-            "MCP session creation failed:",
-            error instanceof Error ? error.stack : String(error),
-          );
+        } catch {
           if (!reply.sent) {
             reply
               .code(500)
@@ -237,6 +337,20 @@ export function registerMcpStreamableHttpRoute(
         reply
           .code(404)
           .send(makeJsonRpcError(-32600, "Session not found.", null, {}));
+        return;
+      }
+      if (options.writesEnabled && session.role !== request.mcpRole) {
+        reply.code(403).send(
+          makeJsonRpcError(
+            -32040,
+            "Start a new session when changing roles.",
+            null,
+            {
+              errorCode:
+                session.role === "admin" ? "ADMIN_REQUIRED" : "AUTH_FAILED",
+            },
+          ),
+        );
         return;
       }
 

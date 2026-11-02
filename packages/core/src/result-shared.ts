@@ -28,6 +28,7 @@ export function chunkRowToResultItem(
   chunkId: string,
   score: number,
   reason: string,
+  versioned = false,
 ): SearchResultItem {
   if (!chunk) {
     return {
@@ -71,7 +72,22 @@ export function chunkRowToResultItem(
     score,
     reason,
     metadata: chunkMetadataFromNote(note),
+    ...(versioned && note ? { version: indexedChunkVersion(note, chunk) } : {}),
   };
+}
+
+/** Content reference, not a write credential or filesystem generation version. */
+export function indexedChunkVersion(
+  note: Record<string, unknown>,
+  chunk: Record<string, unknown>,
+): string {
+  return [
+    "chunk1",
+    note.note_id,
+    note.content_hash,
+    chunk.content_hash,
+    chunk.chunk_index,
+  ].join(":");
 }
 
 export function noteRowToResultItem(

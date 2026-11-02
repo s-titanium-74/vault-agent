@@ -40,10 +40,15 @@ export function maskSecrets(config: Config): Record<string, unknown> {
     index: config.index,
     embedding: config.embedding,
     cors: config.cors,
+    write: config.write,
   };
 }
 
 export function printConfig(config: Config): void {
+  console.log("[write]");
+  for (const [key, value] of Object.entries(config.write))
+    console.log(`  ${key} = ${value}`);
+  console.log();
   console.log("[vault]");
   console.log(`  root = ${config.vault.root || "(not set)"}`);
   console.log(`  exclude = ${config.vault.exclude.join(", ") || "[]"}`);

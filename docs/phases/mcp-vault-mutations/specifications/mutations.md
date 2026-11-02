@@ -1,7 +1,7 @@
 # MCP Mutation Contract
 
-Status: Step 1 preparation and the [internal filesystem service](filesystem.md)
-implemented; public mutation tools remain unimplemented.
+Status: Portable preparation, [filesystem service](filesystem.md) and
+[local MCP tools](local-mcp.md) implemented. R2/Workers remain unimplemented.
 Tool/field names below are an implementation
 proposal; the agreed behavior is in [requirements](../requirements.md).
 
@@ -87,10 +87,10 @@ the 5 MiB storage limit does not promise full-text indexing.
 
 The [filesystem service](filesystem.md) implements local operation identity,
 journal recovery, source reads, access suppression and pending index work under
-its explicit coordination boundary. R2/upload baselines and transport enablement
-remain open. Filesystem editor/parent races outside that boundary remain a
-design gate before exposing the feature to users. The remaining implementation
-design gates in the requirements remain mandatory; these layers do not close #54.
+the accepted final-check race boundary. Local transport enablement is documented
+in [local MCP](local-mcp.md). R2/upload baselines and hosted verification remain
+open. External edits after the final filesystem check may be missed; this
+accepted limitation is explicit in setup and tools. These layers do not close #54.
 
 ## MCP tools and modes
 
@@ -271,8 +271,8 @@ files/rename, no-clobber creation, version recheck and durable operation records
 Concurrent Obsidian/external editor writes require special attention: a check
 followed by rename alone is not a true conditional write against uncooperative
 writers. Specify and test the supported race boundary instead of claiming
-transactional guarantees that the filesystem cannot provide. Mark unsupported
-guarantees explicitly before enabling the feature.
+transactional guarantees that the filesystem cannot provide. The local final-
+check limitation is explicitly accepted as described in [filesystem](filesystem.md).
 
 Cloud adapters own R2 conditional mutations, existing writer fencing and D1
 operation/pending state. R2, D1 and Vectorize do not form one transaction.

@@ -84,7 +84,6 @@ describe("coordinated filesystem mutations", () => {
   });
   function service(options: LocalMutationOptions = {}) {
     const result = new LocalMutationService(config, {
-      coordination: "exclusive",
       settings: { enabled: true },
       now: () => clock,
       ...options,
@@ -106,17 +105,15 @@ describe("coordinated filesystem mutations", () => {
     fs.writeFileSync(path.join(root, relative), content);
   }
 
-  it("requires enablement and an explicit supported writer boundary with no disabled side effects", () => {
+  it("requires explicit enablement without disabled side effects or an editor-coordination assertion", () => {
     expect(() => new LocalMutationService(config)).toThrowError(
       expect.objectContaining({ code: "WRITE_DISABLED" }),
     );
-    expect(
-      () => new LocalMutationService(config, { settings: { enabled: true } }),
-    ).toThrowError(
-      expect.objectContaining({ code: "SOURCE_WRITE_UNSUPPORTED" }),
-    );
     expect(fs.existsSync(config.index.dir)).toBe(false);
     expect(fs.readdirSync(root)).toEqual([]);
+    services.push(
+      new LocalMutationService(config, { settings: { enabled: true } }),
+    );
   });
   it("does not create a journal for pCloud or a private state directory inside the source", () => {
     config.vault.pcloud = {
@@ -279,6 +276,28 @@ describe("coordinated filesystem mutations", () => {
     });
     expect(svc.getAttachment(attachment.path)).toBeNull();
     expect((await svc.flushIndex()).processed).toBe(1);
+  });
+  it("documents the accepted missed race when an external write occurs after the last version check", async () => {
+    file("A.md", "Old");
+    const svc = service();
+    const target = path.join(root, "A.md");
+    const version = svc.getFileVersion("A.md")!.version;
+    const rename = fs.renameSync;
+    let raced = false;
+    vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (String(to) === target) {
+        raced = true;
+        fs.writeFileSync(target, "Late external edit");
+      }
+      rename(from, to);
+    });
+    const result = await apply(
+      svc,
+      batch(replace("A.md", version, "Requested edit")),
+    );
+    expect(raced).toBe(true);
+    expect(result.results[0]?.status).toBe("applied");
+    expect(fs.readFileSync(target, "utf8")).toBe("Requested edit");
   });
   it("rejects all-file size/duplicate admission before target or parent creation", async () => {
     const svc = service({ settings: { enabled: true, max_file_bytes: 8 } });
@@ -593,7 +612,7 @@ describe("coordinated filesystem mutations", () => {
     file("A.md", "# External recreation\n\nSearchmarker.");
     await indexVault(config);
     expect((await store()).getNote(id)).toBeNull();
-    expect(await svc.getNote(id)).toBeNull();
+    expect((await svc.getNote(id))?.content).toContain("External recreation");
   });
   it("allows explicit re-creation only for the newly saved/indexed bytes", async () => {
     const svc = service();
@@ -734,7 +753,7 @@ describe("coordinated filesystem mutations", () => {
       import fs from 'node:fs';
       const {LocalMutationService} = await import(process.argv[1]);
       const data = JSON.parse(fs.readFileSync(0, 'utf8'));
-      const service = new LocalMutationService(data.config, {coordination:'exclusive',settings:{enabled:true},now:()=>data.now,
+      const service = new LocalMutationService(data.config, {settings:{enabled:true},now:()=>data.now,
         checkpoint:(phase)=>{ if(phase===data.phase)process.exit(73); }});
       await service.apply(data.id,data.input,data.binding);
     `,

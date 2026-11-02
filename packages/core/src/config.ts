@@ -1,5 +1,6 @@
 import { z } from "zod";
 import TOML from "smol-toml";
+import { mutationSettingsSchema } from "./portable/mutation-schemas.js";
 
 const pcloudConfigSchema = z
   .object({
@@ -121,8 +122,32 @@ export const configSchema = z
     sync: syncConfigSchema,
     mcp: mcpConfigSchema,
     profiles: profilesConfigSchema,
+    write: mutationSettingsSchema.default({}),
   })
   .superRefine((config, ctx) => {
+    if (
+      config.write.enabled &&
+      (config.vault.pcloud || config.write.max_batch_bytes > 20 * 1024 * 1024)
+    )
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["write"],
+        message:
+          "Local writes require filesystem and a batch limit at most 20 MiB.",
+      });
+    if (config.write.enabled && !config.vault.pcloud) {
+      const root = path.resolve(config.vault.root);
+      const index = path.resolve(
+        resolveIndexDir(config.index.dir || undefined),
+      );
+      if (index === root || index.startsWith(root + path.sep))
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["index", "dir"],
+          message:
+            "Write-enabled index storage must be outside the source vault.",
+        });
+    }
     if (config.vault.pcloud && !config.vault.pcloud.access_token)
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -177,6 +202,7 @@ export type ProfilesConfig = z.infer<typeof profilesConfigSchema>;
 export type Config = z.infer<typeof configSchema>;
 
 export const DEFAULT_CONFIG: Config = {
+  write: mutationSettingsSchema.parse({}),
   vault: {
     root: "",
     exclude: [],
@@ -331,6 +357,24 @@ function applyEnvOverrides(config: Config): Config {
       type: "number",
     },
     VAULT_AGENT_MCP_ENABLED: { path: ["mcp", "enabled"], type: "boolean" },
+    VAULT_AGENT_WRITE_ENABLED: { path: ["write", "enabled"], type: "boolean" },
+    VAULT_AGENT_WRITE_MODE: { path: ["write", "mode"], type: "string" },
+    VAULT_AGENT_WRITE_MAX_FILE_BYTES: {
+      path: ["write", "max_file_bytes"],
+      type: "number",
+    },
+    VAULT_AGENT_WRITE_MAX_BATCH_BYTES: {
+      path: ["write", "max_batch_bytes"],
+      type: "number",
+    },
+    VAULT_AGENT_WRITE_MAX_BATCH_OPERATIONS: {
+      path: ["write", "max_batch_operations"],
+      type: "number",
+    },
+    VAULT_AGENT_WRITE_HISTORY_RETENTION_DAYS: {
+      path: ["write", "history_retention_days"],
+      type: "number",
+    },
     VAULT_AGENT_MCP_HTTP_ENDPOINT: {
       path: ["mcp", "http", "endpoint"],
       type: "string",
@@ -370,7 +414,8 @@ function applyEnvOverrides(config: Config): Config {
         );
       }
     } else if (mapping.type === "number") {
-      parsed = parseInt(value, 10);
+      parsed =
+        mapping.path[0] === "write" ? Number(value) : parseInt(value, 10);
       if (isNaN(parsed as number)) {
         throw new ConfigError(
           "CONFIG_INVALID",
@@ -452,6 +497,7 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
   ]),
   mcp: new Set(["enabled", "http"]),
   profiles: new Set(["frontmatter_value_allowlist"]),
+  write: new Set(Object.keys(mutationSettingsSchema.shape)),
 };
 
 function validateConfigKeys(parsed: Record<string, unknown>): void {
@@ -482,6 +528,7 @@ function validateConfigKeys(parsed: Record<string, unknown>): void {
 
 function toTOMLObject(config: Config): Record<string, unknown> {
   return {
+    write: config.write,
     vault: {
       root: config.vault.root,
       exclude: config.vault.exclude,
@@ -547,7 +594,7 @@ function serializeTOML(config: Config): string {
 
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConfigPath } from "./paths.js";
+import { defaultConfigPath, resolveIndexDir } from "./paths.js";
 import { ConfigError } from "./errors.js";
 
 export class ConfigManager {
@@ -594,6 +641,17 @@ export class ConfigManager {
     }
 
     setDottedKey(config, dottedKey, value);
+    if (dottedKey.startsWith("write.")) {
+      config.write = mutationSettingsSchema.parse(config.write);
+      if (
+        config.write.enabled &&
+        (config.vault.pcloud || config.write.max_batch_bytes > 20 * 1024 * 1024)
+      )
+        throw new ConfigError(
+          "CONFIG_INVALID",
+          "Local writes require filesystem and a batch limit at most 20 MiB.",
+        );
+    }
 
     const serialized = serializeTOML(config);
     fs.writeFileSync(this.configPath, serialized, "utf-8");
@@ -733,6 +791,8 @@ function configFromTOMLParsed(
     };
   }
 
+  if (parsed.write !== undefined)
+    result.write = mutationSettingsSchema.parse(parsed.write);
   if (parsed.profiles && typeof parsed.profiles === "object") {
     const p = parsed.profiles as Record<string, unknown>;
     result.profiles = {
@@ -755,6 +815,7 @@ function mergeWithDefaults(partial: Partial<Config>): Config {
     watch: { ...DEFAULT_CONFIG.watch, ...partial.watch },
     sync: { ...DEFAULT_CONFIG.sync, ...partial.sync },
     profiles: { ...DEFAULT_CONFIG.profiles, ...partial.profiles },
+    write: { ...DEFAULT_CONFIG.write, ...partial.write },
     mcp: {
       ...DEFAULT_CONFIG.mcp,
       ...partial.mcp,
@@ -805,6 +866,12 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "sync.pull_timeout_seconds": ["sync", "pull_timeout_seconds"],
     "sync.failure_backoff_seconds": ["sync", "failure_backoff_seconds"],
     "mcp.enabled": ["mcp", "enabled"],
+    "write.enabled": ["write", "enabled"],
+    "write.mode": ["write", "mode"],
+    "write.max_file_bytes": ["write", "max_file_bytes"],
+    "write.max_batch_bytes": ["write", "max_batch_bytes"],
+    "write.max_batch_operations": ["write", "max_batch_operations"],
+    "write.history_retention_days": ["write", "history_retention_days"],
     "mcp.http.endpoint": ["mcp", "http", "endpoint"],
     "profiles.frontmatter_value_allowlist": [
       "profiles",
@@ -828,7 +895,12 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
   }
 
   if (key === "port") {
-    const num = typeof value === "string" ? parseInt(value, 10) : Number(value);
+    const num =
+      section === "write"
+        ? Number(value)
+        : typeof value === "string"
+          ? parseInt(value, 10)
+          : Number(value);
     if (isNaN(num) || num < 1 || num > 65535) {
       throw new ConfigError("CONFIG_INVALID", `Invalid port value: ${value}`);
     }
@@ -860,9 +932,20 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     key === "max_batch_delay_ms" ||
     key === "interval_seconds" ||
     key === "pull_timeout_seconds" ||
-    key === "failure_backoff_seconds"
+    key === "failure_backoff_seconds" ||
+    [
+      "max_file_bytes",
+      "max_batch_bytes",
+      "max_batch_operations",
+      "history_retention_days",
+    ].includes(key)
   ) {
-    const num = typeof value === "string" ? parseInt(value, 10) : Number(value);
+    const num =
+      section === "write"
+        ? Number(value)
+        : typeof value === "string"
+          ? parseInt(value, 10)
+          : Number(value);
     if (isNaN(num) || num < 1) {
       throw new ConfigError("CONFIG_INVALID", `Invalid number value: ${value}`);
     }

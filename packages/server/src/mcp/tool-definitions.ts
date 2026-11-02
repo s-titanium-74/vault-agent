@@ -95,6 +95,11 @@ export const tools: Tool[] = [
           minimum: 0,
           description: "Chunk index within the note",
         },
+        expected_version: {
+          type: "string",
+          description:
+            "Required when local writes are enabled: version from compact search/related or explicit get_note. Changed references are rejected.",
+        },
       },
       required: ["noteId", "chunkIndex"],
     },

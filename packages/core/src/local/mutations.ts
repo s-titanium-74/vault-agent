@@ -4,10 +4,14 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import type { Config } from "../config.js";
 import { IndexError } from "../errors.js";
+import { DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT } from "../schemas.js";
 import { IndexStore, getIndexPath } from "../index-store.js";
 import { configuredVaultIdentity } from "./source.js";
 import { updateLocalIndex } from "./index-updates.js";
 import { noteIdFromPath, isValidNoteId } from "../identifiers.js";
+import { parseMarkdown } from "../markdown-shared.js";
+import { chunkFromRows } from "../retrieval-shared.js";
+import { indexedChunkVersion } from "../result-shared.js";
 import { sourcePolicy } from "../portable/source-policy.js";
 import {
   prepareMutationBatch,
@@ -48,7 +52,6 @@ interface RecoveryIntent {
 }
 export interface LocalMutationOptions {
   settings?: Partial<MutationSettings>;
-  coordination?: "exclusive";
   now?: () => number;
   /** Internal fault injection; never a transport/config setting. */
   checkpoint?: (
@@ -67,6 +70,7 @@ export class LocalMutationService {
   private readonly now: () => number;
   private readonly indexPath: string;
   private readonly policy: string;
+  private observationCursor = "";
   constructor(
     config: Config,
     private readonly options: LocalMutationOptions = {},
@@ -78,7 +82,7 @@ export class LocalMutationService {
       this.settings = parsed.data;
       if (!this.settings.enabled)
         throw new LocalMutationError("WRITE_DISABLED");
-      if (config.vault.pcloud || options.coordination !== "exclusive")
+      if (config.vault.pcloud)
         throw new LocalMutationError("SOURCE_WRITE_UNSUPPORTED");
       this.config = structuredClone(config);
       this.now = options.now ?? Date.now;
@@ -112,7 +116,7 @@ export class LocalMutationService {
           identity,
           config.vault.exclude,
           this.settings,
-          "filesystem-coordinated-v1",
+          "filesystem-version-check-v2",
         ]),
       );
       this.journal = openedJournal = new MutationJournal(
@@ -601,21 +605,36 @@ export class LocalMutationService {
       const relative = this.resolveNote(id, store);
       if (!relative) return null;
       this.assertAllowed(relative);
+      this.refreshPath(relative);
       const state = this.journal.path(relative);
       if (state?.blocked || state?.deleted) return null;
-      const snapshot = this.source.read(relative, this.settings.max_file_bytes);
+      const snapshot = this.source.read(relative, 20 * 1024 * 1024);
       if (!snapshot) return null;
       const indexed = store
         .getDb()
-        .prepare("SELECT content_hash FROM notes WHERE note_id=?")
-        .get(id) as { content_hash: string } | undefined;
+        .prepare("SELECT * FROM notes WHERE note_id=?")
+        .get(id) as
+        (Record<string, unknown> & { content_hash: string }) | undefined;
       const fresh =
         indexed?.content_hash === this.indexHash(snapshot.bytes) &&
         (!state || state.version === snapshot.version);
+      const content = this.decode(snapshot.bytes);
+      const md = parseMarkdown(content.replace(/^\uFEFF/, ""));
       return {
         id,
         path: relative,
-        content: this.decode(snapshot.bytes),
+        content,
+        title: md.frontmatter?.title ?? md.title,
+        contentType: "text/markdown; charset=utf-8",
+        metadata: {
+          aliases: md.aliases,
+          tags: md.tags,
+          date: md.frontmatter?.date ?? null,
+          created: md.frontmatter?.created ?? null,
+          updated: md.frontmatter?.updated ?? null,
+          attachmentCount: md.attachmentReferences.length,
+        },
+        attachments: md.attachmentReferences,
         size: snapshot.bytes.length,
         version: snapshot.version,
         indexed_version: fresh ? snapshot.version : null,
@@ -631,13 +650,27 @@ export class LocalMutationService {
       store.close();
     }
   }
-  getAttachment(relative: string) {
+  getAttachment(relative: string, allowLarge = false) {
     this.assertAllowed(relative);
+    this.refreshPath(relative);
     if (/\.(md|markdown)$/i.test(relative))
       throw new LocalMutationError("SOURCE_EXCLUDED");
     const state = this.journal.path(relative);
     if (state?.blocked || state?.deleted) return null;
-    const snapshot = this.source.read(relative, this.settings.max_file_bytes);
+    let snapshot;
+    try {
+      snapshot = this.source.read(
+        relative,
+        allowLarge ? 20 * 1024 * 1024 : DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT,
+      );
+    } catch (error) {
+      if (
+        error instanceof MutationError &&
+        error.code === "SIZE_LIMIT_EXCEEDED"
+      )
+        throw new LocalMutationError("ATTACHMENT_TOO_LARGE");
+      throw error;
+    }
     return snapshot
       ? {
           path: relative,
@@ -649,6 +682,7 @@ export class LocalMutationService {
   }
   getFileVersion(relative: string) {
     this.assertAllowed(relative);
+    this.refreshPath(relative);
     const state = this.journal.path(relative);
     if (state?.blocked || state?.deleted) return null;
     const snapshot = this.source.stat(relative);
@@ -664,26 +698,33 @@ export class LocalMutationService {
       const relative = this.resolveNote(id, store);
       if (!relative) return null;
       this.assertAllowed(relative);
+      this.refreshPath(relative);
       const state = this.journal.path(relative);
       if (state?.blocked || state?.deleted) return null;
-      const current = this.source.read(relative, this.settings.max_file_bytes);
+      const current = this.source.read(relative, 20 * 1024 * 1024);
       if (!current) return null;
       const indexed = store
         .getDb()
-        .prepare("SELECT content_hash FROM notes WHERE note_id=?")
-        .get(id) as { content_hash: string } | undefined;
+        .prepare("SELECT * FROM notes WHERE note_id=?")
+        .get(id) as
+        (Record<string, unknown> & { content_hash: string }) | undefined;
       if (
         indexed?.content_hash !== this.indexHash(current.bytes) ||
-        (state && state.version !== current.version) ||
-        (expectedVersion && expectedVersion !== current.version)
+        (state && state.version !== current.version)
       )
         throw new LocalMutationError("REVISION_CHANGED");
       const chunk = store.getChunk(id, index);
+      if (
+        expectedVersion &&
+        expectedVersion !== current.version &&
+        (!chunk ||
+          !indexed ||
+          expectedVersion !== indexedChunkVersion(indexed, chunk))
+      )
+        throw new LocalMutationError("REVISION_CHANGED");
       return chunk
         ? {
-            id: `${id}:${index}`,
-            note_id: id,
-            content: String(chunk.content),
+            ...chunkFromRows(id, index, chunk, store.getNote(id)),
             version: current.version,
           }
         : null;
@@ -693,6 +734,7 @@ export class LocalMutationService {
   }
   async flushIndex() {
     this.recover();
+    this.refreshSources();
     const pending = this.journal.db
       .prepare(
         "SELECT * FROM mutation_paths WHERE pending=1 AND blocked=0 ORDER BY sequence LIMIT 100",
@@ -755,6 +797,83 @@ export class LocalMutationService {
     } finally {
       store.close();
     }
+  }
+  private refreshPath(relative: string) {
+    this.journal.db
+      .transaction(() => {
+        const known = this.journal.path(relative);
+        if (!known || known.blocked === 1) return;
+        try {
+          this.assertAllowed(relative);
+          const current = this.source.stat(
+            relative,
+            !!known.note_id,
+            20 * 1024 * 1024,
+          );
+          if (!current) {
+            if (!known.deleted || known.blocked)
+              this.journal.putPath({
+                path: relative,
+                note_id: known.note_id,
+                version: null,
+                index_hash: null,
+                deleted: 1,
+                blocked: 0,
+                pending: 1,
+              });
+          } else if (
+            known.version !== current.version ||
+            known.deleted ||
+            known.blocked
+          ) {
+            this.journal.putPath({
+              path: relative,
+              note_id: known.note_id,
+              version: current.version,
+              index_hash: current.textHash ?? null,
+              deleted: 0,
+              blocked: 0,
+              pending: 1,
+            });
+          }
+        } catch (error) {
+          if (known.blocked !== 2)
+            this.journal.putPath({ ...known, blocked: 2, pending: 1 });
+          this.journal.db
+            .prepare("UPDATE mutation_paths SET index_error=? WHERE path=?")
+            .run(
+              error instanceof MutationError ||
+                error instanceof LocalMutationError
+                ? error.code
+                : "SOURCE_UNAVAILABLE",
+              relative,
+            );
+        }
+      })
+      .immediate();
+  }
+  refreshSources(limit = 100) {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
+      throw new LocalMutationError("INVALID_REQUEST");
+    const rows = this.journal.db
+      .prepare(
+        "SELECT path FROM mutation_paths WHERE path>? AND blocked<>1 ORDER BY path LIMIT ?",
+      )
+      .all(this.observationCursor, limit) as { path: string }[];
+    for (const row of rows) this.refreshPath(row.path);
+    this.observationCursor = rows.length === limit ? rows.at(-1)!.path : "";
+    return rows.length;
+  }
+  pendingCount() {
+    return Number(
+      (
+        this.journal.db
+          .prepare(
+            "SELECT COUNT(*) AS count FROM mutation_paths WHERE pending=1",
+          )
+          .get() as { count: number }
+      ).count,
+    );
   }
   close() {
     this.journal.close();
