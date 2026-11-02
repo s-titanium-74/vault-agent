@@ -665,7 +665,7 @@ describe("POST /sync/pull API key authentication", () => {
       url: "/sync/pull",
       headers: { Authorization: "Bearer wrong-key" },
     });
-    expect(wrongAuthResponse.statusCode).toBe(401);
+    expect(wrongAuthResponse.statusCode).toBe(403);
 
     await appWithKey.close();
   });

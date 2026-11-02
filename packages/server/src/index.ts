@@ -1,3 +1,4 @@
+import { authorizeBearer, requiredHttpRole } from "@vault-agent/core/access";
 import { SourceError } from "@vault-agent/core/portable";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -16,6 +17,7 @@ import {
   incrementalIndexUpdate,
 } from "@vault-agent/core";
 import {
+  localAccessCredentials,
   PrepareServerAccessOptions,
   StartupIndexState,
   prepareServerAccessConfig,
@@ -97,39 +99,29 @@ export async function createServer(
   });
 
   app.addHook("onRequest", async (request, reply) => {
-    if (!appConfig.server.apiKey) return;
-    if (
-      request.url === "/sync/webhook" ||
-      request.url.startsWith("/sync/webhook?")
-    ) {
-      return;
-    }
+    const pathname =
+      request.routeOptions.url ??
+      new URL(request.url, "http://localhost").pathname;
+    if (pathname === "/sync/webhook" && request.method === "POST") return;
     if (
       appConfig.mcp.enabled &&
-      (request.url === appConfig.mcp.http.endpoint ||
-        request.url.startsWith(`${appConfig.mcp.http.endpoint}?`))
-    ) {
+      mcpContext &&
+      ["GET", "POST", "DELETE"].includes(request.method) &&
+      pathname === appConfig.mcp.http.endpoint
+    )
       return;
-    }
-
-    const auth = request.headers.authorization;
-    if (!auth || !auth.startsWith("Bearer ")) {
+    const credentials = localAccessCredentials(appConfig.server);
+    if (!credentials) return;
+    const failure = await authorizeBearer(
+      request.headers.authorization,
+      credentials,
+      requiredHttpRole(pathname, request.method),
+      constantTimeEqual,
+    );
+    if (failure) {
       reply
-        .code(401)
-        .send(
-          err("UNAUTHORIZED", "Missing or invalid authentication.", request.id),
-        );
-      return;
-    }
-
-    const token = auth.slice(7);
-    const expected = appConfig.server.apiKey;
-    if (!constantTimeEqual(token, expected)) {
-      reply
-        .code(401)
-        .send(
-          err("UNAUTHORIZED", "Missing or invalid authentication.", request.id),
-        );
+        .code(failure === "AUTH_REQUIRED" ? 401 : 403)
+        .send(err(failure, "Access denied.", request.id));
     }
   });
 
@@ -149,6 +141,7 @@ export async function createServer(
       endpoint: appConfig.mcp.http.endpoint,
       createMcpServer: () => createMcpServer(mcpContext),
       apiKey: appConfig.server.apiKey,
+      credentials: localAccessCredentials(appConfig.server) ?? undefined,
     });
   }
 

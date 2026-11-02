@@ -1,3 +1,7 @@
+import {
+  authorizeBearer,
+  type AccessCredentials,
+} from "@vault-agent/core/access";
 import crypto from "node:crypto";
 import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -88,6 +92,7 @@ export interface StreamableHttpOptions {
   endpoint: string;
   createMcpServer: () => Server;
   apiKey?: string;
+  credentials?: AccessCredentials;
   transportOptions?: StreamableHTTPServerTransportOptions;
 }
 
@@ -125,6 +130,29 @@ export function registerMcpStreamableHttpRoute(
   app.route({
     url: options.endpoint,
     method: ["GET", "POST", "DELETE"],
+    onRequest: async (request, reply) => {
+      const credentials =
+        options.credentials ??
+        (options.apiKey ? { read: [], admin: [options.apiKey] } : undefined);
+      if (!credentials) return;
+      const failure = await authorizeBearer(
+        request.headers.authorization,
+        credentials,
+        "read",
+        constantTimeEqual,
+      );
+      if (failure)
+        reply
+          .code(failure === "AUTH_REQUIRED" ? 401 : 403)
+          .send(
+            makeJsonRpcError(
+              failure === "AUTH_REQUIRED" ? -32020 : -32021,
+              "Access denied.",
+              null,
+              { errorCode: failure },
+            ),
+          );
+    },
     preParsing: async (request, reply, payload) => {
       if (request.method !== "POST") {
         return payload;
@@ -164,27 +192,6 @@ export function registerMcpStreamableHttpRoute(
       return Readable.from([raw]);
     },
     handler: async (request: FastifyRequest, reply: FastifyReply) => {
-      if (options.apiKey) {
-        const auth = request.headers.authorization;
-        if (!auth || !auth.startsWith("Bearer ")) {
-          reply.code(401).send(
-            makeJsonRpcError(-32020, "Authentication required.", null, {
-              errorCode: "AUTH_REQUIRED",
-            }),
-          );
-          return;
-        }
-        const token = auth.slice(7);
-        if (!constantTimeEqual(token, options.apiKey)) {
-          reply.code(403).send(
-            makeJsonRpcError(-32021, "Authentication failed.", null, {
-              errorCode: "AUTH_FAILED",
-            }),
-          );
-          return;
-        }
-      }
-
       const body =
         request.method === "POST"
           ? ((request.mcpParsedBody ?? request.body) as unknown)

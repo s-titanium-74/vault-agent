@@ -21,6 +21,11 @@ export const serverConfigSchema = z.object({
   host: z.string().default("127.0.0.1"),
   port: z.number().int().min(1).max(65535).default(8787),
   apiKey: z.string().default(""),
+  readKey: z.string().optional(),
+  adminKey: z.string().optional(),
+  previousReadKey: z.string().optional(),
+  previousAdminKey: z.string().optional(),
+
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
@@ -227,6 +232,11 @@ export const DEFAULT_CONFIG: Config = {
 
 const SECRET_KEYS = new Set([
   "server.apiKey",
+  "server.readKey",
+  "server.adminKey",
+  "server.previousReadKey",
+  "server.previousAdminKey",
+
   "sync.webhook_secret",
   "vault.pcloud",
   "vault.pcloud.access_token",
@@ -245,6 +255,17 @@ function applyEnvOverrides(config: Config): Config {
     VAULT_AGENT_SERVER_HOST: { path: ["server", "host"], type: "string" },
     VAULT_AGENT_SERVER_PORT: { path: ["server", "port"], type: "number" },
     VAULT_AGENT_API_KEY: { path: ["server", "apiKey"], type: "string" },
+    VAULT_AGENT_READ_KEY: { path: ["server", "readKey"], type: "string" },
+    VAULT_AGENT_ADMIN_KEY: { path: ["server", "adminKey"], type: "string" },
+    VAULT_AGENT_PREVIOUS_READ_KEY: {
+      path: ["server", "previousReadKey"],
+      type: "string",
+    },
+    VAULT_AGENT_PREVIOUS_ADMIN_KEY: {
+      path: ["server", "previousAdminKey"],
+      type: "string",
+    },
+
     VAULT_AGENT_LOG_LEVEL: { path: ["server", "logLevel"], type: "string" },
     VAULT_AGENT_INDEX_DIR: { path: ["index", "dir"], type: "string" },
     VAULT_AGENT_EMBEDDING_ENABLED: {
@@ -324,7 +345,17 @@ function applyEnvOverrides(config: Config): Config {
 
   for (const [envVar, mapping] of Object.entries(envMapping)) {
     const value = process.env[envVar];
-    if (value === undefined || value === "") continue;
+    if (
+      value === undefined ||
+      (value === "" &&
+        ![
+          "VAULT_AGENT_READ_KEY",
+          "VAULT_AGENT_ADMIN_KEY",
+          "VAULT_AGENT_PREVIOUS_READ_KEY",
+          "VAULT_AGENT_PREVIOUS_ADMIN_KEY",
+        ].includes(envVar))
+    )
+      continue;
 
     let parsed: unknown;
     if (mapping.type === "boolean") {
@@ -381,6 +412,15 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
     "port",
     "apiKey",
     "api_key",
+    "readKey",
+    "read_key",
+    "adminKey",
+    "admin_key",
+    "previousReadKey",
+    "previous_read_key",
+    "previousAdminKey",
+    "previous_admin_key",
+
     "logLevel",
     "log_level",
   ]),
@@ -452,6 +492,11 @@ function toTOMLObject(config: Config): Record<string, unknown> {
       host: config.server.host,
       port: config.server.port,
       api_key: config.server.apiKey,
+      read_key: config.server.readKey ?? "",
+      admin_key: config.server.adminKey ?? "",
+      previous_read_key: config.server.previousReadKey ?? "",
+      previous_admin_key: config.server.previousAdminKey ?? "",
+
       log_level: config.server.logLevel,
     },
     index: { dir: config.index.dir },
@@ -595,6 +640,12 @@ function configFromTOMLParsed(
         (s.api_key as string) ??
         (s.apiKey as string) ??
         DEFAULT_CONFIG.server.apiKey,
+      readKey: (s.read_key ?? s.readKey) as string | undefined,
+      adminKey: (s.admin_key ?? s.adminKey) as string | undefined,
+      previousReadKey: (s.previous_read_key ?? s.previousReadKey) as
+        string | undefined,
+      previousAdminKey: (s.previous_admin_key ?? s.previousAdminKey) as
+        string | undefined,
       logLevel: (s.log_level ??
         s.logLevel ??
         DEFAULT_CONFIG.server.logLevel) as ServerConfig["logLevel"],
@@ -723,6 +774,11 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "server.host": ["server", "host"],
     "server.port": ["server", "port"],
     "server.apiKey": ["server", "apiKey"],
+    "server.readKey": ["server", "readKey"],
+    "server.adminKey": ["server", "adminKey"],
+    "server.previousReadKey": ["server", "previousReadKey"],
+    "server.previousAdminKey": ["server", "previousAdminKey"],
+
     "server.logLevel": ["server", "logLevel"],
     "index.dir": ["index", "dir"],
     "embedding.enabled": ["embedding", "enabled"],

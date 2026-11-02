@@ -1047,10 +1047,10 @@ describe("Server Authentication", () => {
 
     expect(response.statusCode).toBe(401);
     const body = response.json();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.code).toBe("AUTH_REQUIRED");
   });
 
-  it("returns 401 when wrong token is provided", async () => {
+  it("returns 403 when wrong token is provided", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/health",
@@ -1059,9 +1059,9 @@ describe("Server Authentication", () => {
       },
     });
 
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(403);
     const body = response.json();
-    expect(body.error.code).toBe("UNAUTHORIZED");
+    expect(body.error.code).toBe("AUTH_FAILED");
   });
 
   it("returns 200 when correct token is provided", async () => {
@@ -1078,7 +1078,7 @@ describe("Server Authentication", () => {
     expect(body.data.status).toBe("ok");
   });
 
-  it("returns 401 when authorization header has no Bearer prefix", async () => {
+  it("returns 403 when authorization header has no Bearer prefix", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/health",
@@ -1087,7 +1087,7 @@ describe("Server Authentication", () => {
       },
     });
 
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(403);
   });
 });
 

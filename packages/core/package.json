@@ -18,6 +18,10 @@
     "./local": {
       "types": "./dist/local/index.d.ts",
       "import": "./dist/local/index.js"
+    },
+    "./access": {
+      "types": "./dist/access.d.ts",
+      "import": "./dist/access.js"
     }
   },
   "files": [

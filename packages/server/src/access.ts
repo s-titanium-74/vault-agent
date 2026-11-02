@@ -1,3 +1,7 @@
+import {
+  validRoleCredentials,
+  type AccessCredentials,
+} from "@vault-agent/core/access";
 import crypto from "node:crypto";
 import path from "node:path";
 import {
@@ -26,8 +30,11 @@ export function prepareServerAccessConfig(
   options: PrepareServerAccessOptions = {},
 ): Config {
   const prepared = structuredClone(appConfig);
+  localAccessCredentials(prepared.server);
   const isLocalhost = isLocalhostHost(prepared.server.host);
   if (isLocalhost) return prepared;
+
+  if (hasRoleKeys(prepared.server)) return prepared;
 
   if (prepared.server.apiKey) {
     validateRemoteApiKey(prepared.server.apiKey);
@@ -59,7 +66,9 @@ export function prepareServerAccessConfig(
 }
 
 export function validateServerAccessConfig(appConfig: Config): void {
-  if (isLocalhostHost(appConfig.server.host)) return;
+  localAccessCredentials(appConfig.server);
+  if (hasRoleKeys(appConfig.server) || isLocalhostHost(appConfig.server.host))
+    return;
   if (!appConfig.server.apiKey) {
     throw new Error(
       "API_KEY_REQUIRED: Non-localhost bind requires an API key.",
@@ -117,4 +126,50 @@ function validateRemoteApiKey(apiKey: string): void {
 
 function isLocalhostHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
+}
+
+function hasRoleKeys(
+  server: Pick<
+    Config["server"],
+    "readKey" | "adminKey" | "previousReadKey" | "previousAdminKey"
+  >,
+): boolean {
+  return [
+    server.readKey,
+    server.adminKey,
+    server.previousReadKey,
+    server.previousAdminKey,
+  ].some(Boolean);
+}
+export function localAccessCredentials(
+  server: Pick<
+    Config["server"],
+    "apiKey" | "readKey" | "adminKey" | "previousReadKey" | "previousAdminKey"
+  >,
+): AccessCredentials | null {
+  if (!hasRoleKeys(server)) {
+    return server.apiKey ? { read: [], admin: [server.apiKey] } : null;
+  }
+  const credentials = {
+    read: [server.readKey, server.previousReadKey].filter(
+      (v): v is string => !!v,
+    ),
+    admin: [server.adminKey, server.previousAdminKey].filter(
+      (v): v is string => !!v,
+    ),
+  };
+  if (
+    server.apiKey ||
+    !server.readKey ||
+    !server.adminKey ||
+    !validRoleCredentials(credentials) ||
+    [...credentials.read, ...credentials.admin].some(
+      (key) => !/^[A-Za-z0-9_-]{32,}$/.test(key),
+    )
+  ) {
+    throw new Error(
+      "CONFIG_INVALID: Configure distinct read/admin keys of at least 32 characters without a legacy API key.",
+    );
+  }
+  return credentials;
 }
