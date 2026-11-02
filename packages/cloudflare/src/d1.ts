@@ -25,6 +25,8 @@ export class D1MetadataStore implements MetadataLexicalStore {
     readonly manifest: IndexManifest,
     readonly allowed: (path: string) => boolean,
     readonly incremental = false,
+    readonly suppressed: ReadonlySet<string> = new Set(),
+    readonly versionedReferences = false,
   ) {}
   async getManifest() {
     return this.manifest;
@@ -43,12 +45,15 @@ export class D1MetadataStore implements MetadataLexicalStore {
       throw new CloudError("SOURCE_EXCLUDED", 403);
     return data;
   }
+  visible(row: IndexRow) {
+    return !this.suppressed.has(String(JSON.parse(String(row.data)).path));
+  }
   async getNote(id: string) {
     const rows = await this.rows(
       "SELECT data FROM notes WHERE revision=? AND note_id=?",
       [this.revision, id],
     );
-    return rows[0] ? this.decode(rows[0]) : null;
+    return rows[0] && this.visible(rows[0]) ? this.decode(rows[0]) : null;
   }
   async getChunk(note: string, index: number) {
     return this.getChunkById(`${note}:${index}`);
@@ -58,7 +63,7 @@ export class D1MetadataStore implements MetadataLexicalStore {
       "SELECT data FROM chunks WHERE revision=? AND chunk_id=?",
       [this.revision, id],
     );
-    return rows[0] ? this.decode(rows[0]) : null;
+    return rows[0] && this.visible(rows[0]) ? this.decode(rows[0]) : null;
   }
   async getChunks(id: string, request: PageRequest) {
     const offset = this.page(request);
@@ -83,7 +88,10 @@ export class D1MetadataStore implements MetadataLexicalStore {
   }
   resultPage(rows: IndexRow[], limit: number, offset: number) {
     return {
-      items: rows.slice(0, limit).map((r) => this.decode(r)),
+      items: rows
+        .slice(0, limit)
+        .filter((r) => this.visible(r))
+        .map((r) => this.decode(r)),
       cursor: rows.length > limit ? String(offset + limit) : undefined,
     };
   }
@@ -104,7 +112,7 @@ export class D1MetadataStore implements MetadataLexicalStore {
       [this.revision],
     );
     if (rows.length > 500) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
-    return rows.map((r) => this.decode(r));
+    return rows.filter((r) => this.visible(r)).map((r) => this.decode(r));
   }
   async matchingIds(filters?: NormalizedSearchFilters) {
     return (await this.notes())
@@ -180,10 +188,12 @@ export class D1MetadataStore implements MetadataLexicalStore {
     )
       throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
     const chunks = new Map(
-      raw.map((r) => {
-        const c = this.decode(r);
-        return [String(c.chunk_id), c] as const;
-      }),
+      raw
+        .filter((r) => this.visible(r))
+        .map((r) => {
+          const c = this.decode(r);
+          return [String(c.chunk_id), c] as const;
+        }),
     );
     return {
       getManifest: () => this.manifest,

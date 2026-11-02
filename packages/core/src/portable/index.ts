@@ -26,6 +26,7 @@ export * from "../result-shared.js";
 export { search, fuseResults } from "./search.js";
 export { getRelated } from "./related.js";
 export { getNote, getChunk } from "./retrieval.js";
+export { noteFromRow } from "../retrieval-shared.js";
 export { EmbeddingProviderError } from "./embedding.js";
 export type {
   Chunk,

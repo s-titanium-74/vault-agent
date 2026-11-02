@@ -150,6 +150,7 @@ async function call(env: Env, name: string, args: Record<string, unknown>) {
         stream: ReadableStream<Uint8Array>;
         contentType: string;
         fileName: string;
+        version?: string;
       };
       const bytes = await boundedBytes(
         download.stream,
@@ -166,6 +167,7 @@ async function call(env: Env, name: string, args: Record<string, unknown>) {
         size: bytes.length,
         content: btoa(pieces.join("")),
         encoding: "base64",
+        ...(download.version ? { version: download.version } : {}),
       };
     }
     await service.current();
