@@ -73,6 +73,7 @@ export const resultMetadataSchema = z.object({
 });
 
 export interface SearchResultItem {
+  version?: string;
   id: string;
   type: "note" | "chunk";
   noteId: string;
@@ -107,7 +108,13 @@ export interface RelatedResult {
   warnings: WarningItem[];
 }
 
-export interface NoteRetrieveResult {
+export interface SourceVersionMetadata {
+  version?: string;
+  indexed_version?: string | null;
+  indexed_content_hash?: string | null;
+  index_state?: "pending" | "fresh" | "failed";
+}
+export interface NoteRetrieveResult extends SourceVersionMetadata {
   id: string;
   path: string;
   title: string | null;
@@ -122,7 +129,7 @@ export interface NoteRetrieveResult {
   attachments?: string[];
 }
 
-export interface ChunkRetrieveResult {
+export interface ChunkRetrieveResult extends SourceVersionMetadata {
   id: string;
   noteId: string;
   chunkIndex: number;
@@ -137,6 +144,7 @@ export interface ChunkRetrieveResult {
 }
 
 export interface AttachmentMetadataResult {
+  version?: string;
   path: string;
   fileName: string;
   contentType: string;

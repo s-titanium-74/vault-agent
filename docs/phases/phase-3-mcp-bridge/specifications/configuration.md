@@ -9,6 +9,11 @@ bridge functionality.
 
 ## Configuration Options
 
+File changes are a separate opt-in extension: see
+[local MCP mutations](../../mcp-vault-mutations/specifications/local-mcp.md).
+`write.enabled` does not turn on the HTTP endpoint; `mcp.enabled` is still
+required for HTTP. Stdio always runs MCP and independently requires write enablement.
+
 ### mcp.enabled
 
 - Type: boolean

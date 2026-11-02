@@ -1,5 +1,6 @@
 import { authorizeBearer, requiredHttpRole } from "@vault-agent/core/access";
-import { SourceError } from "@vault-agent/core/portable";
+import { SourceError, MutationError } from "@vault-agent/core/portable";
+import { LocalMutationError } from "@vault-agent/core/local";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +39,13 @@ import { registerProfileRoutes } from "./routes/profiles.js";
 import { getAppState, initApp, resetApp } from "./state.js";
 import { createMcpServer, McpAdapterContext } from "./mcp/adapter.js";
 import { registerMcpStreamableHttpRoute } from "./mcp/streamable-http.js";
+import { LocalMutationRuntime } from "./mcp/mutations.js";
+
+declare module "fastify" {
+  interface FastifyInstance {
+    vaultMutations: LocalMutationRuntime | null;
+  }
+}
 
 export {
   initApp,
@@ -70,8 +78,34 @@ export async function createServer(
     },
     bodyLimit: 64 * 1024,
   });
+  const mutations = appConfig.write?.enabled
+    ? new LocalMutationRuntime(appConfig, mcpContext?.freshnessMachine ?? null)
+    : null;
+  app.decorate("vaultMutations", mutations);
+  if (mutations)
+    app.addHook("onClose", async () => {
+      await mutations.close();
+    });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof LocalMutationError || error instanceof MutationError) {
+      const status =
+        error.code === "REVISION_CHANGED" ||
+        error.code === "SOURCE_REVISION_MISMATCH"
+          ? 409
+          : [
+                "NOTE_TOO_LARGE",
+                "ATTACHMENT_TOO_LARGE",
+                "SIZE_LIMIT_EXCEEDED",
+              ].includes(error.code)
+            ? 413
+            : error.code === "SOURCE_EXCLUDED" || error.code === "INVALID_PATH"
+              ? 403
+              : 503;
+      return reply
+        .code(status)
+        .send(err(error.code, "Source operation failed.", request.id));
+    }
     if (error instanceof SourceError)
       return reply
         .code(
@@ -84,6 +118,19 @@ export async function createServer(
                 : 503,
         )
         .send(err(error.code, "Source operation failed.", request.id));
+    if (appConfig.write?.enabled)
+      return reply
+        .code(
+          error &&
+            typeof error === "object" &&
+            "statusCode" in error &&
+            typeof error.statusCode === "number" &&
+            error.statusCode >= 400 &&
+            error.statusCode <= 599
+            ? error.statusCode
+            : 500,
+        )
+        .send(err("INTERNAL_ERROR", "Request failed.", request.id));
     return reply.send(error);
   });
 
@@ -111,6 +158,10 @@ export async function createServer(
     )
       return;
     const credentials = localAccessCredentials(appConfig.server);
+    if (appConfig.write?.enabled && !credentials)
+      return reply
+        .code(401)
+        .send(err("AUTH_REQUIRED", "Access denied.", request.id));
     if (!credentials) return;
     const failure = await authorizeBearer(
       request.headers.authorization,
@@ -139,9 +190,11 @@ export async function createServer(
   if (appConfig.mcp.enabled && mcpContext) {
     registerMcpStreamableHttpRoute(app, {
       endpoint: appConfig.mcp.http.endpoint,
-      createMcpServer: () => createMcpServer(mcpContext),
+      createMcpServer: () =>
+        createMcpServer({ ...mcpContext, config: appConfig, mutations }),
       apiKey: appConfig.server.apiKey,
-      credentials: localAccessCredentials(appConfig.server) ?? undefined,
+      credentials: () => localAccessCredentials(appConfig.server) ?? undefined,
+      writesEnabled: !!appConfig.write?.enabled,
     });
   }
 

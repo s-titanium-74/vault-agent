@@ -83,6 +83,16 @@ export const mutationBatchSchema = z
   .object({ operations: z.array(mutationOperationSchema).min(1).max(100) })
   .strict();
 export type MutationBatch = z.infer<typeof mutationBatchSchema>;
+export const previewChangesSchema = mutationBatchSchema.extend({
+  preview: z.boolean().default(true),
+});
+export const applyChangesSchema = mutationBatchSchema.extend({
+  operation_id: z.string().min(1).max(300),
+  preview_binding: z.string().min(1).max(1024).optional(),
+});
+export const changeStatusSchema = z
+  .object({ operation_id: z.string().min(1).max(300) })
+  .strict();
 
 export type MutationErrorCode =
   | "INVALID_REQUEST"

@@ -44,6 +44,7 @@ export interface VaultSource {
 }
 /** One committed index view. Candidate limits are hard upper bounds. */
 export interface MetadataLexicalStore {
+  readonly versionedReferences?: boolean;
   readonly vaultId: string;
   getManifest(): Promise<IndexManifest | null>;
   getNote(id: string): Promise<IndexRow | null>;

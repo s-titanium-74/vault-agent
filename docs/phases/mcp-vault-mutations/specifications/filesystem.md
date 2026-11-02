@@ -1,16 +1,17 @@
 # Filesystem mutation adapter (delivery step 2)
 
-Status: Internal implementation; no MCP tools, CLI switches or server enablement.
+Status: Filesystem service; see [local MCP](local-mcp.md) for transport enablement.
 Depends on the portable preparation in #56. The full feature remains #54.
 
-## Supported boundary and outstanding gate
+## Accepted filesystem race boundary
 
-`LocalMutationService` requires explicit enabled settings and an internal
-`coordination: "exclusive"` assertion: the caller owns coordination of all
-writers and parent-directory changes in this vault on one host/PID namespace.
-Network filesystems and independently managed containers are outside this
-boundary. This is not a new public
-configuration option and must not be inferred merely from enabling writes.
+The 2026-11-02 follow-up agreement permits ordinary external editors. Explicit
+write enablement is required; an assertion that all editors cooperate is not.
+Detected version mismatches are rejected, including immediately before source
+publication. External edits between that last check and rename/unlink may be
+missed and overwritten. This is an accepted limitation, not a full conditional
+write guarantee. Server-owned writers are serialized on one host/PID namespace.
+Network filesystems and independently managed containers remain unsupported.
 The adapter serializes calls using the private SQLite journal's write lock.
 Local index publication shares that lock once the journal exists. Source reads
 check no symlinks, regular files, bounded bytes, descriptor/path identity and
@@ -24,9 +25,9 @@ uncooperative editor's version, or portable openat2-style parent resolution.
 An external writer replacing a file or parent after the final check is outside
 this supported boundary. Detected races fail closed, but tests at controlled
 checkpoints are not proof against arbitrary malicious concurrent directory
-changes. HTTP/stdio enablement is still gated on a separate coordination or
-platform-specific design decision. Do not expose this assertion as a way to
-silently weaken the agreed version/boundary guarantee for ordinary vaults.
+changes. The adapter is not a security sandbox against another process with
+permission to modify vault parents. Caller traversal and detected unsafe paths
+remain rejected; HTTP/stdio setup describes the accepted race limitation.
 
 ## Identity, admission and persistence
 
@@ -101,6 +102,12 @@ expiry. Recreating a path explicitly with a new operation releases the tombstone
 only for the new indexed content. Deletion warns with bounded indexed backlinks,
 and declares their freshness/completeness limits. Links are never repaired.
 
+Bounded maintenance also re-observes registered paths edited by external apps.
+Only current canonical source observations can release an external recreation's
+tombstone; old index rows alone cannot. Unsafe/unreadable observations suppress
+content and are retried. Each maintenance pass checks at most 100 registered
+paths and 20 MiB/file; explicit latest reads re-observe their addressed path.
+
 Source saves queue durable index work; they do not wait for embedding providers.
 `flushIndex` uses existing shared local index preparation and version-aware
 acknowledgement. Source changes increment a monotonic journal sequence. Index
@@ -117,10 +124,10 @@ version conflicts, same-ID overlap/restart/lost response, tampered/expired IDs,
 policy/retention changes, each durable crash boundary, ambiguous outcomes,
 private audit/staging cleanup, fresh note reads, stale chunk rejection, deletion
 suppression across old stores/full rebuild, index failure and stale publication.
-No real vault is mutated. MCP authorization, uncooperative editor guarantees and
-R2/Workers remain separate delivery gates.
+No real vault is mutated. MCP validation is extended in [local MCP](local-mcp.md).
+Uncooperative editor races retain the accepted limitation; R2/Workers remain open.
 
-Local validation (2026-11-02): 36 filesystem service cases include five actual
+Step 2 baseline validation (2026-11-02, before local MCP): 36 service cases include five actual
 child-process exits at intent/stage/committing/published/applied, interrupted
 replace/delete recovery, lost-response replay, audit expiry, ambiguous outcomes,
 and delayed incremental/rebuild publication versus deletion. The full local

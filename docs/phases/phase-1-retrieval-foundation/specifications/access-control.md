@@ -80,6 +80,11 @@ other webhook methods require admin. No general sync-path bypass is allowed.
 All existing MCP tools are read operations; unknown tools cannot dispatch
 mutations. Adding a future mutation tool requires an explicit admin check.
 
+The opt-in [local MCP mutation extension](../../mcp-vault-mutations/specifications/local-mcp.md)
+adds three admin-only MCP tools, including preview/status. Read callers cannot
+list/call them. Enabled HTTP writes require distinct read/admin credentials,
+including localhost; authenticate every request and bind sessions to their role.
+
 Missing credentials return 401 `AUTH_REQUIRED`; malformed/unknown credentials
 return 403 `AUTH_FAILED`; read on admin returns 403 `ADMIN_REQUIRED`, before
 request body parsing or side effects. Local REST and MCP HTTP use this model;

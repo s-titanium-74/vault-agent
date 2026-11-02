@@ -1,4 +1,10 @@
 import { tools } from "./tool-definitions.js";
+import {
+  LocalMutationRuntime,
+  mutationTools,
+  MUTATION_NAMES,
+  mutationMcpError,
+} from "./mutations.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
   CallToolRequestSchema,
@@ -54,6 +60,7 @@ export interface McpAdapterContext {
   config: Config;
   embeddingProvider: EmbeddingProvider | null;
   freshnessMachine: FreshnessMachine | null;
+  mutations?: LocalMutationRuntime | null;
 }
 
 const MCP_MAX_RESULT_PAYLOAD_BYTES = 50 * 1024 * 1024;
@@ -69,6 +76,11 @@ export function setMcpToolTimeoutMs(ms: number): void {
 const NOTE_ID_PATTERN = /^[0-9a-f]{32}$/;
 
 export function createMcpServer(context: McpAdapterContext): Server {
+  const owned =
+    context.config.write?.enabled && !context.mutations
+      ? new LocalMutationRuntime(context.config, context.freshnessMachine)
+      : null;
+  context = { ...context, mutations: context.mutations ?? owned };
   const server = new Server(
     {
       name: "vault-agent",
@@ -106,38 +118,79 @@ export function createMcpServer(context: McpAdapterContext): Server {
     return { ...sdkResult, protocolVersion };
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return { tools };
+  const mayWrite = (auth?: { scopes: string[] }) =>
+    !auth || auth.scopes.includes("admin");
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
+    const readTools = context.config.write?.enabled
+      ? tools.map((tool) =>
+          tool.name === "get_chunk"
+            ? {
+                ...tool,
+                inputSchema: {
+                  ...tool.inputSchema,
+                  required: [
+                    ...(tool.inputSchema.required ?? []),
+                    "expected_version",
+                  ],
+                },
+              }
+            : tool,
+        )
+      : tools;
+    return {
+      tools:
+        context.config.write?.enabled && mayWrite(extra.authInfo)
+          ? [...readTools, ...mutationTools]
+          : readTools,
+    };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+    if (MUTATION_NAMES.has(request.params.name)) {
+      if (!context.config.write?.enabled || !context.mutations)
+        throw mutationMcpError({ code: "WRITE_DISABLED" });
+      if (!mayWrite(extra.authInfo))
+        throw mutationMcpError({ code: "ADMIN_REQUIRED" });
+    }
     const result = await withTimeout(
       dispatchTool(context, request.params.name, request.params.arguments),
       MCP_TOOL_TIMEOUT_MS,
     );
+    const serialized = JSON.stringify(result);
+    if (
+      context.mutations &&
+      Buffer.byteLength(serialized, "utf8") > MCP_MAX_RESULT_PAYLOAD_BYTES
+    )
+      throw createMcpError("QUERY_TOO_LARGE", "Result exceeds MCP size limit.");
     return {
       content: [
         {
           type: "text",
-          text: JSON.stringify(result),
+          text: serialized,
         },
       ],
     };
   });
 
+  if (owned)
+    server.onclose = () => {
+      void owned.close();
+    };
+
   return server;
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     promise,
     new Promise<never>((_, reject) => {
-      setTimeout(
+      timer = setTimeout(
         () => reject(createMcpError("TIMEOUT", "Tool invocation timed out.")),
         ms,
       );
     }),
-  ]);
+  ]).finally(() => clearTimeout(timer));
 }
 
 async function dispatchTool(
@@ -146,6 +199,11 @@ async function dispatchTool(
   args: Record<string, unknown> | undefined,
 ): Promise<Record<string, unknown>> {
   const arguments_ = args ?? {};
+  if (MUTATION_NAMES.has(name)) {
+    if (!context.config.write?.enabled || !context.mutations)
+      throw mutationMcpError({ code: "WRITE_DISABLED" });
+    return context.mutations.call(name, arguments_);
+  }
   switch (name) {
     case "search":
       return handleSearch(context, arguments_);
@@ -461,6 +519,21 @@ async function handleGetNote(
   }
   const allowLarge = getBooleanArg(args, "allowLarge");
 
+  if (context.mutations) {
+    try {
+      const note = await context.mutations.getNote(noteId, allowLarge);
+      if (!note) throw createMcpError("NOTE_NOT_FOUND");
+      return {
+        ...note,
+        freshness: note.index_state === "failed" ? "stale" : note.index_state,
+        warnings: [],
+      };
+    } catch (error) {
+      if (error instanceof McpError) throw error;
+      throw mutationMcpError(error);
+    }
+  }
+
   const safeResolution = checkSafeResolution(store, config);
   if (safeResolution.blocked) {
     throw createMcpError("INDEX_INCOMPATIBLE", safeResolution.message);
@@ -506,6 +579,24 @@ async function handleGetChunk(
     );
   }
 
+  if (context.mutations) {
+    try {
+      const expected = getStringArg(args, "expected_version");
+      if (!expected || expected.length > 1024)
+        throw mutationMcpError({ code: "INVALID_REQUEST" });
+      const result = await context.mutations.service.getChunk(
+        noteId,
+        chunkIndex,
+        expected,
+      );
+      if (!result) throw createMcpError("CHUNK_NOT_FOUND");
+      return { ...result, freshness: "fresh", warnings: [] };
+    } catch (error) {
+      if (error instanceof McpError) throw error;
+      throw mutationMcpError(error);
+    }
+  }
+
   const safeResolution = checkSafeResolution(store, config);
   if (safeResolution.blocked) {
     throw createMcpError("INDEX_INCOMPATIBLE", safeResolution.message);
@@ -548,6 +639,38 @@ async function handleGetAttachment(
 
   if (vaultRelativePath.includes("..") || vaultRelativePath.includes("\0")) {
     throw createMcpError("INVALID_PATH");
+  }
+
+  if (context.mutations) {
+    try {
+      const current =
+        context.mutations.service.getFileVersion(vaultRelativePath);
+      if (!current) throw createMcpError("ATTACHMENT_NOT_FOUND");
+      const metadata = getAttachmentMetadata(
+        config.vault.root,
+        vaultRelativePath,
+        config.vault.exclude,
+      );
+      if (!metadata) throw createMcpError("ATTACHMENT_NOT_ALLOWED");
+      if (!download)
+        return { ...metadata, version: current.version, warnings: [] };
+      const attachment = context.mutations.service.getAttachment(
+        vaultRelativePath,
+        allowLarge,
+      );
+      if (!attachment) throw createMcpError("ATTACHMENT_NOT_FOUND");
+      return {
+        ...metadata,
+        version: attachment.version,
+        size: attachment.size,
+        content: Buffer.from(attachment.bytes).toString("base64"),
+        encoding: "base64",
+        warnings: [],
+      };
+    } catch (error) {
+      if (error instanceof McpError) throw error;
+      throw mutationMcpError(error);
+    }
   }
 
   const metadata: AttachmentMetadataResult | null = await getAttachmentMetadata(

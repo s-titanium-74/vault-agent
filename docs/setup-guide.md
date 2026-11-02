@@ -6,6 +6,53 @@ client.
 `vault-agent` handles one vault root per server process. Run separate server
 instances for separate vaults.
 
+## Optional Local MCP File Changes
+
+After configuring the vault, enable note/attachment create, update and permanent
+delete explicitly in user-local settings:
+
+```bash
+vault-agent config set write.enabled true
+vault-agent config set write.mode review
+```
+
+`vault-agent mcp` then exposes `preview_changes`, `apply_changes` and
+`get_change_status` over stdio without HTTP keys. Review mode requires the
+preview's ID and binding with the same operations at apply; client execution
+confirmation is what provides human review. `write.mode direct` permits apply
+without a diff/binding, but an operation ID must still be allocated first.
+
+For HTTP, enable `mcp.enabled` and configure distinct read/admin keys, including
+on localhost. For example, generate independent temporary environment keys:
+
+```bash
+export VAULT_AGENT_READ_KEY="$(openssl rand -hex 32)"
+export VAULT_AGENT_ADMIN_KEY="$(openssl rand -hex 32)"
+vault-agent serve --mcp-enabled
+```
+
+Store long-lived keys in a private environment or user-local configuration and
+give mutation clients only the admin credential they need. Read clients cannot
+list/call the change tools or read their previews/status. Legacy single apiKey
+cannot enable HTTP writes; start a new MCP session when switching roles.
+
+Detected version conflicts are rejected immediately before saving. Ordinary
+Obsidian editing is supported, but an external edit between the final check and
+save/delete may be missed and overwritten. There is no force override, trash,
+restore or automatic link repair. Save success and pending index state are
+separate; retry lost responses with the same issued ID/request. Defaults are
+5 MiB/file, 20 files and 20 MiB final bytes per batch, plus 32 MiB raw MCP JSON.
+The index directory must be outside the source vault. pCloud stays read-only;
+this extension's R2/Workers transport is not implemented yet.
+
+With writes enabled, chunk reads require a version from compact search/related
+results or a current note read. MCP uses `get_chunk.expected_version`; REST uses
+the `expected_version` query parameter and CLI uses `get chunk --expected-version`.
+This prevents cached chunk references from silently returning newer text after
+indexing finishes. Write-disabled retrieval keeps its existing behavior.
+
+See [local mutation behavior and settings](phases/mcp-vault-mutations/specifications/local-mcp.md).
+
 ## Local Vault With Automatic Indexing
 
 Use this path when the Markdown vault already exists on the same machine as the

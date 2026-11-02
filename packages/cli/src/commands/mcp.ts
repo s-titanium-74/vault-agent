@@ -20,7 +20,18 @@ export function registerMcpCommand(
       let config: import("@vault-agent/core").Config;
       try {
         config = loadConfig(context.resolveConfigPath());
-      } catch {
+      } catch (error) {
+        const issues = (error as { issues?: { path?: unknown[] }[] })?.issues;
+        if (
+          !issues?.length ||
+          issues.some((issue) => issue.path?.join(".") !== "vault.root")
+        ) {
+          console.error(
+            "CONFIG_INVALID: Check the user-local MCP configuration.",
+          );
+          process.exitCode = 2;
+          return;
+        }
         console.error(
           "No vault root configured. MCP server will start but return VAULT_NOT_CONFIGURED for tool calls.",
         );
@@ -68,7 +79,17 @@ export function registerMcpCommand(
         embeddingProvider,
         freshnessMachine,
       };
-      const mcpServer = createMcpServer(mcpContext);
+      let mcpServer;
+      try {
+        mcpServer = createMcpServer(mcpContext);
+      } catch {
+        await store?.close();
+        console.error(
+          "MCP_STARTUP_FAILED: Check filesystem and write settings.",
+        );
+        process.exitCode = 2;
+        return;
+      }
 
       try {
         await runMcpStdio(mcpServer);

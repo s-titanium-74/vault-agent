@@ -9,6 +9,127 @@ import { indexVault, loadConfig } from "@vault-agent/core";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cliPath = path.resolve(__dirname, "../dist/main.js");
 
+describe("MCP stdio opt-in file changes", () => {
+  let vaultDir: string,
+    indexDir: string,
+    child: ChildProcessWithoutNullStreams | undefined;
+  beforeEach(() => {
+    vaultDir = createTestVault();
+    indexDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "vault-agent-write-stdio-"),
+    );
+    child = undefined;
+  });
+  afterEach(async () => {
+    if (child && child.exitCode === null && !child.killed)
+      await new Promise<void>((resolve) => {
+        child!.once("exit", () => resolve());
+        child!.kill("SIGINT");
+      });
+    fs.rmSync(vaultDir, { recursive: true, force: true });
+    fs.rmSync(indexDir, { recursive: true, force: true });
+  });
+  it("previews, saves, reads and permanently deletes through the actual CLI without HTTP credentials", async () => {
+    const file = path.join(indexDir, "config.toml");
+    writeTestConfig(file, vaultDir, indexDir, false);
+    fs.appendFileSync(file, "\n[write]\nenabled = true\n");
+    child = await spawnMcpChild(file);
+    const initialize = await sendRequest(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "synthetic-write", version: "1" },
+      },
+    });
+    expect(initialize.result).toBeDefined();
+    let id = 1;
+    async function call(
+      name: string,
+      args: Record<string, unknown>,
+    ): Promise<Record<string, any>> {
+      const response = await sendRequest(child!, {
+        jsonrpc: "2.0",
+        id: ++id,
+        method: "tools/call",
+        params: { name, arguments: args },
+      });
+      expect(response.error).toBeUndefined();
+      return JSON.parse(
+        (response.result as { content: { text: string }[] }).content[0]!.text,
+      );
+    }
+    const operations = [
+      {
+        type: "create_note",
+        path: "Notes/Stdio.md",
+        content: "# Stdio synthetic\n\nOriginal marker.",
+      },
+    ];
+    const plan = await call("preview_changes", { operations });
+    expect(fs.existsSync(path.join(vaultDir, "Notes/Stdio.md"))).toBe(false);
+    const applied = await call("apply_changes", {
+      operations,
+      operation_id: plan.operation_id,
+      preview_binding: plan.preview_binding,
+    });
+    const note = await call("get_note", { noteId: applied.results[0].note_id });
+    expect(note.content).toContain("Original marker");
+    expect(note.version).toMatch(/^fs1:/);
+    const changes = [
+      {
+        type: "replace_note",
+        path: "Notes/Stdio.md",
+        expected_version: note.version,
+        content: "# Stdio updated\n\nUpdated marker.",
+      },
+    ];
+    const next = await call("preview_changes", { operations: changes });
+    const updated = await call("apply_changes", {
+      operations: changes,
+      operation_id: next.operation_id,
+      preview_binding: next.preview_binding,
+    });
+    expect((await call("get_note", { noteId: note.id })).content).toContain(
+      "Updated marker",
+    );
+    const deletions = [
+      {
+        type: "delete_file",
+        path: "Notes/Stdio.md",
+        expected_version: updated.results[0].version,
+      },
+    ];
+    const removal = await call("preview_changes", { operations: deletions });
+    await call("apply_changes", {
+      operations: deletions,
+      operation_id: removal.operation_id,
+      preview_binding: removal.preview_binding,
+    });
+    expect(fs.existsSync(path.join(vaultDir, "Notes/Stdio.md"))).toBe(false);
+    expect(
+      (await call("get_change_status", { operation_id: removal.operation_id }))
+        .results[0].status,
+    ).toBe("applied");
+  });
+  it("rejects invalid write configuration instead of silently starting a read-only fallback", async () => {
+    const file = path.join(indexDir, "config.toml");
+    writeTestConfig(file, vaultDir, indexDir, false);
+    fs.appendFileSync(file, '\n[write]\nenabled = true\nmode = "force"\n');
+    child = spawnMcpChildRaw(file);
+    const streams = collectStreams(child);
+    const code = await new Promise<number | null>((resolve) =>
+      child!.once("exit", resolve),
+    );
+    expect(code).toBe(2);
+    expect(streams.stderrRaw()).toContain("CONFIG_INVALID");
+    expect(streams.stdoutRaw()).toBe("");
+    streams.detach();
+  });
+});
+
 function createTestVault(): string {
   const vaultDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "vault-agent-mcp-stdio-vault-"),
