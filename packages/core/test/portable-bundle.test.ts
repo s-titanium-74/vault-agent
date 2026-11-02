@@ -49,5 +49,86 @@ describe("portable dependency boundary", () => {
     ).toMatch(/^[a-f0-9]{32}$/);
     expect(api.sourcePolicy(["Notes"])("Notes/Example.md")).toBe(true);
     expect(api.sourcePolicy(["Notes"])(".env")).toBe(false);
+    const mutation = await api.prepareMutationBatch(
+      {
+        vaultId: "synthetic-vault",
+        sourceId: "synthetic-source",
+        sourceKind: "r2",
+        policyRevision: "policy-v1",
+        includes: ["Notes", "Images"],
+        settings: { enabled: true },
+        snapshot: async (path: string, options: { readContent: boolean }) =>
+          path === "Notes/Example.md"
+            ? {
+                version: "source-v1",
+                ...(options.readContent ? { content: "Alpha Beta😀" } : {}),
+              }
+            : null,
+      },
+      {
+        operations: [
+          {
+            type: "patch_note",
+            path: "Notes/Example.md",
+            expected_version: "source-v1",
+            replacements: [
+              {
+                match_type: "regex",
+                pattern: "(\\w+) (\\w+)",
+                replacement: "$2 $1",
+              },
+            ],
+          },
+          {
+            type: "upload_attachment",
+            path: "Images/New.png",
+            content_base64: "AQID",
+          },
+        ],
+      },
+      { preview: true },
+    );
+    expect(
+      mutation.items.map((item: { status: string }) => item.status),
+    ).toEqual(["prepared", "prepared"]);
+    expect(new TextDecoder().decode(mutation.items[0].bytes)).toBe(
+      "Beta Alpha😀",
+    );
+    expect(Array.from(mutation.items[1].bytes)).toEqual([1, 2, 3]);
+    expect(JSON.stringify(api.mutationBatchSummary(mutation))).not.toContain(
+      "Beta Alpha",
+    );
+    expect(api.previewMutationBatch(mutation).results[0].diff).toMatchObject({
+      removed: "Alpha Bet",
+      added: "Beta Alph",
+      truncated: false,
+    });
+    const rejected = await api.prepareMutationBatch(
+      {
+        vaultId: "synthetic-vault",
+        sourceId: "synthetic-source",
+        sourceKind: "r2",
+        policyRevision: "policy-v1",
+        includes: ["."],
+        settings: { enabled: true },
+        snapshot: async () => ({
+          version: "source-v1",
+          content: "a".repeat(1024 * 1024) + "!",
+        }),
+      },
+      {
+        operations: [
+          {
+            type: "patch_note",
+            path: "Example.md",
+            expected_version: "source-v1",
+            replacements: [
+              { match_type: "regex", pattern: "(a+)+$", replacement: "X" },
+            ],
+          },
+        ],
+      },
+    );
+    expect(rejected.items[0].code).toBe("REGEX_BUDGET_EXCEEDED");
   });
 });

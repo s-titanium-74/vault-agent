@@ -9,6 +9,9 @@ import {
   type VaultSource,
   type RetrievalContext,
   type EmbeddingProviderContract,
+  prepareMutationBatch,
+  previewMutationBatch,
+  type MutationPreparationContext,
 } from "../dist/portable/index.js";
 declare const source: VaultSource;
 declare const context: RetrievalContext;
@@ -18,3 +21,7 @@ const result = search(context, "synthetic", "lexical", 10);
 const note = id.then((value) => getNote(context.metadata, source, value));
 const descriptor = provider.describe();
 void [result, note, descriptor, chunkNote, getMetadataProfile];
+declare const mutations: MutationPreparationContext;
+void prepareMutationBatch(mutations, { operations: [] }).then(
+  previewMutationBatch,
+);

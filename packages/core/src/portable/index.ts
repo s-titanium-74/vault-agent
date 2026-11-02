@@ -71,3 +71,16 @@ export {
 } from "./index-updates.js";
 
 export * from "./pcloud.js";
+export * from "./mutation-schemas.js";
+export {
+  prepareMutationBatch,
+  mutationBatchSummary,
+  type MutationPreparationContext,
+  type MutationSnapshot,
+  type PreparedMutationBatch,
+  type PreparedMutationItem,
+} from "./mutations.js";
+export {
+  previewMutationBatch,
+  type MutationNoteDiff,
+} from "./mutation-preview.js";
