@@ -1,6 +1,7 @@
 # MCP Mutation Contract
 
-Status: Step 1 preparation implemented; source mutations and MCP tools not implemented.
+Status: Step 1 preparation and the [internal filesystem service](filesystem.md)
+implemented; public mutation tools remain unimplemented.
 Tool/field names below are an implementation
 proposal; the agreed behavior is in [requirements](../requirements.md).
 
@@ -84,10 +85,12 @@ Attachments show path, size and create/replace; deletion shows the target.
 existing 2 MiB indexing limit is marked `oversized_for_index` in preparation;
 the 5 MiB storage limit does not promise full-text indexing.
 
-Operation identity signing/retention, durable application, version-aware latest
-reads, tombstones, upload baselines and all transport enablement are still
-unimplemented. The remaining implementation design gates in the requirements
-remain mandatory; this preparation layer does not close #54.
+The [filesystem service](filesystem.md) implements local operation identity,
+journal recovery, source reads, access suppression and pending index work under
+its explicit coordination boundary. R2/upload baselines and transport enablement
+remain open. Filesystem editor/parent races outside that boundary remain a
+design gate before exposing the feature to users. The remaining implementation
+design gates in the requirements remain mandatory; these layers do not close #54.
 
 ## MCP tools and modes
 

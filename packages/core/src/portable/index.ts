@@ -74,6 +74,7 @@ export * from "./pcloud.js";
 export * from "./mutation-schemas.js";
 export {
   prepareMutationBatch,
+  mutationRequestDigest,
   mutationBatchSummary,
   type MutationPreparationContext,
   type MutationSnapshot,

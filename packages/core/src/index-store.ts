@@ -17,6 +17,7 @@ import { prepareIndexRows } from "./portable/index-data.js";
 import type { IndexRow, PreparedEmbedding } from "./portable/index.js";
 import { escapeFTSQuery, textToTrigrams } from "./index-store-fts.js";
 import { SCHEMA_SQL, VEC_SCHEMA_SQL } from "./index-store-sql.js";
+import { MutationReadState } from "./local/mutation-state.js";
 import {
   float32ArrayToBuffer,
   parseVectorDimension,
@@ -26,10 +27,12 @@ export class IndexStore {
   private db: Database.Database;
   private dbPath: string;
   private vecLoaded = false;
+  private mutations: MutationReadState;
 
   private constructor(db: Database.Database, dbPath: string) {
     this.db = db;
     this.dbPath = dbPath;
+    this.mutations = new MutationReadState(dbPath);
   }
 
   static async open(
@@ -417,21 +420,38 @@ export class IndexStore {
     const row = this.db
       .prepare("SELECT * FROM notes WHERE note_id = ?")
       .get(noteId) as Record<string, unknown> | undefined;
-    return row ?? null;
+    return row && this.mutations.visible(row) ? row : null;
   }
 
   getNoteByPath(vaultRelativePath: string): Record<string, unknown> | null {
     const row = this.db
       .prepare("SELECT * FROM notes WHERE path = ?")
       .get(vaultRelativePath) as Record<string, unknown> | undefined;
-    return row ?? null;
+    return row && this.mutations.visible(row) ? row : null;
   }
 
   getAllNotePaths(): string[] {
     const rows = this.db.prepare("SELECT path FROM notes").all() as Array<{
       path: string;
     }>;
-    return rows.map((r) => r.path);
+    return rows
+      .filter((r) => this.getNoteByPath(r.path) !== null)
+      .map((r) => r.path);
+  }
+
+  listNotesAfter(after: string, limit: number): Record<string, unknown>[] {
+    const results: Record<string, unknown>[] = [];
+    let cursor = after;
+    while (results.length < limit) {
+      const rows = this.db
+        .prepare("SELECT * FROM notes WHERE path > ? ORDER BY path LIMIT ?")
+        .all(cursor, limit) as Record<string, unknown>[];
+      for (const row of rows)
+        if (this.mutations.visible(row)) results.push(row);
+      if (rows.length < limit) break;
+      cursor = String(rows.at(-1)!.path);
+    }
+    return results.slice(0, limit);
   }
 
   getChunks(
@@ -439,6 +459,7 @@ export class IndexStore {
     limit = -1,
     offset = 0,
   ): Array<Record<string, unknown>> {
+    if (!this.getNote(noteId)) return [];
     return this.db
       .prepare(
         "SELECT * FROM chunks WHERE note_id = ? ORDER BY chunk_index LIMIT ? OFFSET ?",
@@ -447,6 +468,7 @@ export class IndexStore {
   }
 
   getChunk(noteId: string, chunkIndex: number): Record<string, unknown> | null {
+    if (!this.getNote(noteId)) return null;
     const chunkId = `${noteId}:${chunkIndex}`;
     return (
       (this.db
@@ -485,7 +507,9 @@ export class IndexStore {
       Record<string, unknown>
     >;
 
-    return ftsResults;
+    return ftsResults.filter(
+      (row) => this.getNote(String(row.note_id)) !== null,
+    );
   }
 
   searchTrigrams(
@@ -525,12 +549,14 @@ export class IndexStore {
         limit * 3,
       ) as Array<Record<string, unknown>>;
 
-    return results.map((r) => ({
-      chunk_id: r.chunk_id,
-      matched_grams: r.matched_grams,
-      total_query_grams: r.total_query_grams,
-      coverage: r.coverage,
-    }));
+    return results
+      .filter((row) => this.getChunkById(String(row.chunk_id)) !== null)
+      .map((r) => ({
+        chunk_id: r.chunk_id,
+        matched_grams: r.matched_grams,
+        total_query_grams: r.total_query_grams,
+        coverage: r.coverage,
+      }));
   }
 
   searchNotes(
@@ -545,13 +571,24 @@ export class IndexStore {
       .all() as Array<Record<string, unknown>>;
 
     return matchFallbackNotes(
-      rows.filter((row) => !allowed || allowed.has(row.note_id as string)),
+      rows.filter(
+        (row) =>
+          this.mutations.visible(row) &&
+          (!allowed || allowed.has(row.note_id as string)),
+      ),
       query,
       limit,
     );
   }
 
   getAllNotes(): Array<Record<string, unknown>> {
+    return this.getAllNotesForUpdate().filter((row) =>
+      this.mutations.visible(row),
+    );
+  }
+
+  /** Storage preparation reads suppressed rows to remove/replace them; never an API read. */
+  getAllNotesForUpdate(): Array<Record<string, unknown>> {
     return this.db.prepare("SELECT * FROM notes").all() as Array<
       Record<string, unknown>
     >;
@@ -561,7 +598,9 @@ export class IndexStore {
     const rows = this.db.prepare("SELECT chunk_id FROM chunks").all() as Array<{
       chunk_id: string;
     }>;
-    return rows.map((r) => r.chunk_id);
+    return rows
+      .filter((r) => this.getChunkById(r.chunk_id) !== null)
+      .map((r) => r.chunk_id);
   }
 
   getAllNoteStems(): Map<
@@ -594,11 +633,10 @@ export class IndexStore {
   }
 
   getChunkById(chunkId: string): Record<string, unknown> | null {
-    return (
-      (this.db
-        .prepare("SELECT * FROM chunks WHERE chunk_id = ?")
-        .get(chunkId) as Record<string, unknown> | undefined) ?? null
-    );
+    const row = this.db
+      .prepare("SELECT * FROM chunks WHERE chunk_id = ?")
+      .get(chunkId) as Record<string, unknown> | undefined;
+    return row && this.getNote(String(row.note_id)) ? row : null;
   }
 
   storeEmbeddings(
@@ -659,7 +697,7 @@ export class IndexStore {
           distance: number;
         }>;
 
-        return rows;
+        return rows.filter((row) => this.getChunkById(row.chunk_id) !== null);
       }
 
       const rows = this.db
@@ -675,7 +713,7 @@ export class IndexStore {
         distance: number;
       }>;
 
-      return rows;
+      return rows.filter((row) => this.getChunkById(row.chunk_id) !== null);
     } catch {
       if (allowedChunkIds) {
         const allowed = new Set(allowedChunkIds);
@@ -709,7 +747,9 @@ export class IndexStore {
         distance: number;
       }>;
 
-      return rows.slice(0, limit);
+      return rows
+        .filter((row) => this.getChunkById(row.chunk_id) !== null)
+        .slice(0, limit);
     } catch {
       return [];
     }
@@ -761,6 +801,7 @@ export class IndexStore {
   }
 
   close(): void {
+    this.mutations.close();
     this.db.close();
   }
 
