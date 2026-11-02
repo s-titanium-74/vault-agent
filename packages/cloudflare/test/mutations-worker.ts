@@ -5,10 +5,35 @@ import { CloudError, boundedBytes } from "../src/errors.js";
 import { R2MutationService, R2MutationInterruption } from "../src/mutations.js";
 import { RetrievalService } from "../src/service.js";
 import { tick } from "../src/ingestion.js";
+import {
+  maintainMutations,
+  refreshMutationPaths,
+} from "../src/mutation-maintenance.js";
+function stagingFailure(env: Env): Env {
+  return {
+    ...env,
+    SOURCE: new Proxy(env.SOURCE!, {
+      get(target, key) {
+        if (key === "list")
+          return (options?: R2ListOptions) => {
+            if (options?.prefix?.includes("/mutations/"))
+              throw new Error("synthetic private provider response");
+            return target.list(options);
+          };
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }),
+  };
+}
 export default {
   async fetch(request: Request, env: Env) {
     const route = new URL(request.url).pathname;
     if (route === "/__tick") {
+      if (new URL(request.url).searchParams.has("staging_failure"))
+        env = stagingFailure(env);
+      if (new URL(request.url).searchParams.get("ingestion") === "false")
+        env = { ...env, INGESTION_ENABLED: "false" };
       await tick(env, () => {});
       return Response.json({ ok: true });
     }
@@ -22,6 +47,9 @@ export default {
         ),
       );
       const now = args.now ?? Date.now();
+      if (args.staging_failure) env = stagingFailure(env);
+      if (args.ingestion === false)
+        env = { ...env, INGESTION_ENABLED: "false" };
       if (args.adminToken) env = { ...env, ADMIN_TOKEN: args.adminToken };
       if (args.vaultId) env = { ...env, VAULT_ID: args.vaultId };
       if (args.provider === "pcloud")
@@ -53,6 +81,23 @@ export default {
           }),
         };
       }
+      if (args.action === "maintain")
+        return Response.json({
+          data: await maintainMutations(
+            env,
+            args.deadline ?? now + 2000,
+            () => now,
+          ),
+        });
+      if (args.action === "refresh")
+        return Response.json({
+          data: await refreshMutationPaths(
+            env,
+            args.limit ?? 8,
+            args.deadline ?? now + 2000,
+            () => now,
+          ),
+        });
       const service = await R2MutationService.open(env, {
         settings: { enabled: true, ...args.settings },
         now: () => now,

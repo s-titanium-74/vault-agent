@@ -43,10 +43,10 @@ references must be rejected when the source or requested indexed version differs
 
 Existing source ingestion owns parsing/chunking/linking/publication; source saves
 do not duplicate those operations. Existing Cron/advance can resume source
-observation/indexing independently of the original client. Receipt recovery and
-audit cleanup are bounded internal methods; automatic wiring awaits the Workers
-runtime integration step. This step does not promise immediate full
-indexing of a saved Markdown file above the existing 2 MiB cloud ingestion bound.
+observation/indexing independently of the original client. Receipt recovery,
+audit cleanup, external recreation and oversized metadata-only indexing are
+connected by the subsequent [step 4c maintenance](r2-maintenance.md). Files over
+2 MiB do not gain full-text indexing or embeddings.
 The portable entry point exports its existing `noteFromRow` result builder so
 latest-source retrieval keeps the shared note response schema without importing
 Node/local modules or reconstructing transport-specific note results.
@@ -62,9 +62,8 @@ request. These are explicit design gates before public enablement; the accepted
 filesystem race limitation must not silently weaken R2's requirements.
 
 Do not add public write settings/tools in this step. Remaining work includes the
-public R2 consistency boundary, oversized-save ingestion behavior, deletion
-reference warnings and physical-derived cleanup evidence, external recreation
-reconciliation, Workers transport/auth wiring and isolated hosted verification.
+public R2 consistency boundary, deletion reference warnings and physical-derived
+cleanup evidence, Workers transport/auth wiring and isolated hosted verification.
 This step alone does not close #54 or authorize a production deployment.
 
 Apply migration `0007_r2_mutations.sql` after the baseline migration while old

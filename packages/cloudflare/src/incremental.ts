@@ -1,4 +1,5 @@
 import { isPCloud, readPCloudEntry } from "./source.js";
+import { cloudSourceLimit } from "./source-limits.js";
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { boundedBytes, CloudError } from "./errors.js";
@@ -51,7 +52,10 @@ export async function stageDeltaFile(
       object.customMetadata?.deleted === "true"
     )
       throw new CloudError("REVISION_CONFLICT", 409);
-    bytes = await boundedBytes(object.body, core.uploadLimit(entry.kind));
+    bytes = await boundedBytes(
+      object.body,
+      await cloudSourceLimit(env.DB, entry.path, entry.kind, entry.size),
+    );
   }
   const digest = await core.contentRevision(bytes);
   const old = await env.DB.prepare(

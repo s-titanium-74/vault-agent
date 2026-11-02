@@ -1,5 +1,15 @@
 import type { Env } from "./config.js";
 import { CloudError } from "./errors.js";
+import { contentRevision } from "@vault-agent/core/portable";
+
+export async function r2SourceVersion(
+  vaultId: string,
+  path: string,
+  generation: string,
+  digest: string,
+) {
+  return `r2v1.${await contentRevision(JSON.stringify([vaultId, path, generation, digest]))}`;
+}
 
 export interface R2MutationPath {
   path: string;

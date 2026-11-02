@@ -3,7 +3,8 @@
 Status: Portable preparation, [filesystem service](filesystem.md) and
 [local MCP tools](local-mcp.md) implemented. R2 has
 [upload baselines](upload-baseline.md) and an
-[internal mutation service](r2-service.md); public Workers enablement and hosted
+[internal mutation service](r2-service.md) with
+[runtime maintenance](r2-maintenance.md); public Workers enablement and hosted
 verification remain open.
 Tool/field names below are an implementation
 proposal; the agreed behavior is in [requirements](../requirements.md).
