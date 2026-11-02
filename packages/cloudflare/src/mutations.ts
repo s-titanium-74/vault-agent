@@ -3,6 +3,7 @@ import { config, type Env } from "./config.js";
 import { boundedBytes, CloudError } from "./errors.js";
 import {
   mutationPath,
+  mutationSuppression,
   r2SourceVersion,
   type R2MutationPath,
 } from "./mutation-state.js";
@@ -17,7 +18,11 @@ type Result = {
   version?: string;
   index_state?: "pending" | "fresh";
   oversized_for_index?: boolean;
-  warnings: { code: string }[];
+  warnings: {
+    code: string;
+    references?: { note_id: string; path: string }[];
+    truncated?: boolean;
+  }[];
 };
 type Operation = {
   id: string;
@@ -401,6 +406,8 @@ export class R2MutationService {
     try {
       const prior = await mutationPath(this.env, item.path);
       if (prior?.state === "uncertain") fail("SOURCE_UNAVAILABLE", 503);
+      if (item.action === "delete")
+        result.warnings = await this.deletionWarnings(item.path, item.note_id);
       const current = await this.read(item.path);
       if (
         item.action === "create"
@@ -444,8 +451,13 @@ export class R2MutationService {
         ),
         this.pathGuard(op.id, item.index, item.path),
         this.env.DB.prepare(
-          "UPDATE r2_mutation_items SET state='committing',recovery=? WHERE operation_id=? AND item_index=?",
-        ).bind(JSON.stringify(intent), op.id, item.index),
+          "UPDATE r2_mutation_items SET state='committing',recovery=?,result=? WHERE operation_id=? AND item_index=?",
+        ).bind(
+          JSON.stringify(intent),
+          JSON.stringify(result),
+          op.id,
+          item.index,
+        ),
         this.env.DB.prepare(
           "UPDATE r2_mutation_meta SET epoch=epoch+1 WHERE id=1",
         ),
@@ -507,6 +519,53 @@ export class R2MutationService {
         ]);
       }
     }
+  }
+  private async deletionWarnings(
+    path: string,
+    noteId?: string,
+  ): Promise<Result["warnings"]> {
+    const warnings: Result["warnings"] = [{ code: "BACKLINKS_MAY_BE_STALE" }];
+    try {
+      const active = await this.env.DB.prepare(
+        "SELECT revision FROM deployment WHERE id=1",
+      ).first<{ revision: string }>();
+      if (!active) return warnings;
+      const suppressed = await mutationSuppression(this.env, active.revision);
+      const rows = await this.env.DB.prepare(
+        `SELECT note_id,path,EXISTS(SELECT 1 FROM json_each(json_extract(notes.data,?)) ref WHERE ${noteId ? "json_extract(ref.value,'$.resolved')" : "ref.value"}=?) AS linked FROM notes WHERE revision=? ORDER BY path LIMIT 501`,
+      )
+        .bind(
+          noteId ? "$.links_json" : "$.attachment_refs_json",
+          noteId ?? path,
+          active.revision,
+        )
+        .all<{
+          note_id: string;
+          path: string;
+          linked: number;
+        }>();
+      const references: { note_id: string; path: string }[] = [];
+      let truncated = rows.results.length > 500;
+      for (const row of rows.results.slice(0, 500)) {
+        if (
+          row.note_id === noteId ||
+          !config(this.env).allowed(row.path) ||
+          suppressed.has(row.path)
+        )
+          continue;
+        if (!row.linked) continue;
+        if (references.length === 20) {
+          truncated = true;
+          break;
+        }
+        references.push({ note_id: row.note_id, path: row.path });
+      }
+      if (references.length)
+        warnings.push({ code: "INCOMING_LINKS", references, truncated });
+    } catch {
+      /* Warnings must never block deletion or disclose raw index failures. */
+    }
+    return warnings;
   }
   private async acknowledge(
     id: string,

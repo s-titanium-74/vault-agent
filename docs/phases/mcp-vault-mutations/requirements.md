@@ -1,17 +1,20 @@
 # MCP Vault Mutations Requirements
 
-Status: Local filesystem steps 1–3 implemented; R2/Workers steps 4–5 remain open.
+Status: Local filesystem steps 1–3 and default-disabled Workers integration
+implemented. R2 guarantee confirmation and hosted acceptance remain open.
 
 Implementation tracking (#54): step 1 adds portable request validation,
 preparation and bounded previews. Step 2 adds an internal filesystem service;
 see [the accepted race boundary](specifications/filesystem.md). Step 3 exposes
 opt-in [local MCP tools](specifications/local-mcp.md), disabled by default.
-R2/Workers integration and hosted verification remain open.
+Workers integration is documented in [step 4d](specifications/workers-mcp.md).
+Hosted verification and the R2 guarantee decision remain open.
 
 Step 4 is staged: [4a, durable upload baselines](specifications/upload-baseline.md),
 then [4b, internal R2 mutation recovery/revocation](specifications/r2-service.md),
 then [4c, runtime maintenance and saved-source indexing](specifications/r2-maintenance.md),
-then Workers MCP integration. These prerequisites do not enable cloud mutation tools.
+then [4d, Workers MCP integration](specifications/workers-mcp.md).
+The committed configurations keep cloud mutation tools disabled.
 
 ## Purpose
 

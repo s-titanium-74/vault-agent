@@ -8,6 +8,7 @@ import { authenticate, config, type Env } from "./config.js";
 import { CloudError, boundedBytes, failure } from "./errors.js";
 import { RetrievalService, cloudStatus } from "./service.js";
 import { mcp } from "./mcp.js";
+import { MCP_WRITE_REQUEST_BYTES } from "../../server/src/mcp/mutation-tool-definitions.js";
 import {
   ingestionEnabled,
   createUpload,
@@ -19,7 +20,7 @@ import {
   requestIndex,
   tick,
 } from "./ingestion.js";
-async function body(request: Request) {
+async function body(request: Request, maxBytes = 65536) {
   if (
     !request.headers
       .get("Content-Type")
@@ -28,12 +29,12 @@ async function body(request: Request) {
       .endsWith("/json")
   )
     throw new CloudError("INVALID_PARAMETER");
-  if (Number(request.headers.get("Content-Length") ?? 0) > 65536)
+  if (Number(request.headers.get("Content-Length") ?? 0) > maxBytes)
     throw new CloudError("QUERY_TOO_LARGE", 413);
   if (!request.body) throw new CloudError("INVALID_PARAMETER");
   let bytes: Uint8Array;
   try {
-    bytes = await boundedBytes(request.body, 65536, request.signal);
+    bytes = await boundedBytes(request.body, maxBytes, request.signal);
   } catch (error) {
     if (error instanceof CloudError && error.code === "SOURCE_TOO_LARGE")
       throw new CloudError("QUERY_TOO_LARGE", 413);
@@ -66,7 +67,7 @@ async function dispatch(request: Request, env: Env) {
     throw new CloudError("QUERY_TOO_LARGE", 413);
   if (url.protocol !== "https:") throw new CloudError("HTTPS_REQUIRED", 403);
   const admin = requiredHttpRole(url.pathname, request.method) === "admin";
-  await authenticate(request, env, admin);
+  const role = await authenticate(request, env, admin);
   const origin = request.headers.get("Origin");
   if (origin && !settings.origins.includes(origin))
     throw new CloudError("ORIGIN_FORBIDDEN", 403);
@@ -137,7 +138,17 @@ async function dispatch(request: Request, env: Env) {
     if (request.method !== "POST")
       return new Response(null, { status: 405, headers: { Allow: "POST" } });
     try {
-      return await mcp(request, env, await body(request));
+      return await mcp(
+        request,
+        env,
+        await body(
+          request,
+          settings.write.enabled && role === "admin"
+            ? MCP_WRITE_REQUEST_BYTES
+            : 65536,
+        ),
+        role,
+      );
     } catch (error) {
       if (error instanceof CloudError && error.code === "INVALID_PARAMETER")
         return Response.json(
@@ -151,7 +162,9 @@ async function dispatch(request: Request, env: Env) {
       throw error;
     }
   }
-  const service = await RetrievalService.open(env);
+  const service = await RetrievalService.open(env, {
+    allowUnindexed: /^\/(notes|attachments)\//.test(url.pathname),
+  });
   const revision = service.revision();
   if (url.pathname === "/status" && request.method === "GET") {
     const status = await service.status(url.hostname);
