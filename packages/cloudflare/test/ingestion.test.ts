@@ -154,6 +154,7 @@ beforeAll(async () => {
     "0003_ingestion.sql",
     "0004_incremental.sql",
     "0005_source_observations.sql",
+    "0006_upload_baselines.sql",
   ])
     for (const sql of (await readFile("migrations/" + file, "utf8"))
       .replace(/--[^\n]*/g, "")
@@ -326,6 +327,12 @@ describe("durable scoped ingestion", () => {
     }
   });
   it("refuses to overwrite direct edits racing an upload and preserves published bytes", async () => {
+    // Adopt the independently edited source only when both sides already agree.
+    const current = "# Apple\nRevised citrus orchard. [[Plum]]\n";
+    const adopted = await create({ "Notes/Apple.md": current });
+    await put(adopted.id, "Notes/Apple.md", current);
+    await request(`/uploads/${adopted.id}/commit`, "POST");
+    await settle();
     const { id } = await create({
       "Notes/Apple.md": "# Planned\nclient version\n",
     });
@@ -339,7 +346,7 @@ describe("durable scoped ingestion", () => {
       checkpoint: 1,
     });
     expect(result.data.state).toBe("failed");
-    expect(result.data.error.code).toBe("REVISION_CONFLICT");
+    expect(result.data.error.code).toBe("UPLOAD_CONFLICT");
     expect(
       await (await bucket.get(prefix + "Notes/Apple.md"))!.text(),
     ).toContain("direct version");
@@ -382,6 +389,11 @@ describe("durable scoped ingestion", () => {
     );
   });
   it("applies explicit deletion tombstones idempotently without deleting unrelated source objects", async () => {
+    const current = "# Plum\nauthoritative version\n";
+    const adopted = await create({ "Notes/Plum.md": current });
+    await put(adopted.id, "Notes/Plum.md", current);
+    await request(`/uploads/${adopted.id}/commit`, "POST");
+    await settle();
     const { id } = await create({}, ["Notes/Plum.md"]);
     const job = (await request(`/uploads/${id}/commit`, "POST")).data;
     await request(`/jobs/${id}/advance`, "POST", {

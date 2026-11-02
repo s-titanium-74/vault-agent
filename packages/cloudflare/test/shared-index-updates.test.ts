@@ -76,6 +76,7 @@ it("runs the same synthetic change/rename/delete corpus through local watch and 
       "0003_ingestion.sql",
       "0004_incremental.sql",
       "0005_source_observations.sql",
+      "0006_upload_baselines.sql",
     ])
       for (const sql of (await readFile("migrations/" + file, "utf8"))
         .replace(/--[^\n]*/g, "")
