@@ -232,6 +232,18 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
       .run();
     for (let n = 0; n < 12; n++)
       expect((await request("/__tick")).status).toBe(200);
+    // Idle R2 preflight must not skip pCloud's digest scan or require a bucket.
+    api.files.get("Notes/Plum.md")!.text = "# Pear\n\nSynthetic bloom.\n";
+    for (let n = 0; n < 12; n++)
+      expect((await request("/__tick")).status).toBe(200);
+    expect(
+      (await db
+        .prepare(
+          "SELECT data FROM notes WHERE path='Notes/Plum.md' AND revision=(SELECT revision FROM deployment)",
+        )
+        .first<{ data: string }>())!.data,
+    ).toContain("Synthetic bloom.");
+    await compare();
     expect((await request("/status")).data.deployment.capabilities.upload).toBe(
       false,
     );

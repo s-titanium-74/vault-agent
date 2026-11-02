@@ -199,6 +199,7 @@ async function sourceSignature(env: Env, entries: Entry[]) {
           e.etag,
           e.object_version ?? null,
           e.updated,
+          ...(isPCloud(env) ? [e.digest ?? null] : []),
         ]),
     ]),
   );
@@ -222,6 +223,10 @@ async function detectionFence(env: Env) {
 }
 
 async function probeSources(env: Env, deadline: number) {
+  // pCloud requires body digests; R2 metadata-only equality cannot prove reuse.
+  if (isPCloud(env)) return { result: "changed" as const, pages: 0, files: 0 };
+  const bucket = env.SOURCE;
+  if (!bucket) throw new CloudError("CONFIG_INVALID", 503);
   const before = await detectionFence(env);
   let pages = 0;
   const entries = new Map<string, Entry>();
@@ -236,7 +241,7 @@ async function probeSources(env: Env, deadline: number) {
   const allowed = config(env).allowed;
   let cursor: string | undefined;
   while (pages < 8 && Date.now() < deadline) {
-    const page = await env.SOURCE.list({
+    const page = await bucket.list({
       prefix: sourcePrefix(env),
       limit: 100,
       cursor,

@@ -9,6 +9,12 @@ existing opt-in storage/semantic boundaries.
 
 ## Detection before job admission
 
+This metadata-only preflight applies to R2 sources. pCloud bypasses it and
+uses the durable digest-observation path in [pCloud source](pcloud-source.md).
+Its signature includes each verified body digest, since provider hash/mtime
+equality alone cannot establish unchanged content. No R2 binding is accessed
+for pCloud detection.
+
 Resume committed uploads and active scans first. Otherwise read the published
 store/snapshot/epoch and ingestion state, then list only the mutable source
 prefix. Use the existing admission rules, including exclusions, attachments and
