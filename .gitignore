@@ -3,6 +3,7 @@ dist/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+.vault-agent-mutation-*.tmp
 .env
 coverage/
 logs/

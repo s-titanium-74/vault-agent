@@ -1,10 +1,12 @@
 # MCP Vault Mutations Requirements
 
-Status: Step 1 preparation implemented; source mutations and MCP tools not implemented.
+Status: Steps 1–2 implemented as preparation and an internal coordinated filesystem
+service; public mutation tools remain unimplemented.
 
 Implementation tracking (#54): step 1 adds portable request validation,
-preparation and bounded previews only. No writable adapter or MCP mutation tool
-is enabled. Steps 2–5 and their runtime/security acceptance checks remain open.
+preparation and bounded previews. Step 2 adds an internal filesystem service;
+see [its supported coordination boundary](specifications/filesystem.md).
+No MCP mutation tool is enabled. Public enablement and steps 3–5 remain open.
 
 ## Purpose
 

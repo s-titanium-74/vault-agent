@@ -9,6 +9,10 @@ import { resolveIndexDir } from "./paths.js";
 import { IndexError } from "./errors.js";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  mutationSequence,
+  withMutationPublication,
+} from "./local/mutation-state.js";
 
 export interface IndexOptions {
   requireEmbeddings?: boolean;
@@ -65,6 +69,7 @@ export async function reindexVault(
       : validateVaultPath(config.vault.root);
     const dbPath = getIndexPath(config);
     const { indexPath, tmpPath } = getReindexPaths(dbPath);
+    const sourceSequence = mutationSequence(dbPath);
 
     const dir = path.dirname(indexPath);
     if (!fs.existsSync(dir)) {
@@ -116,21 +121,23 @@ export async function reindexVault(
 
     tmpStore.close();
 
-    if (fs.existsSync(indexPath + "-wal")) {
-      fs.unlinkSync(indexPath + "-wal");
-    }
-    if (fs.existsSync(indexPath + "-shm")) {
-      fs.unlinkSync(indexPath + "-shm");
-    }
+    withMutationPublication(dbPath, sourceSequence, () => {
+      if (fs.existsSync(indexPath + "-wal")) {
+        fs.unlinkSync(indexPath + "-wal");
+      }
+      if (fs.existsSync(indexPath + "-shm")) {
+        fs.unlinkSync(indexPath + "-shm");
+      }
 
-    fs.renameSync(tmpPath, indexPath);
+      fs.renameSync(tmpPath, indexPath);
 
-    if (fs.existsSync(tmpPath + "-wal")) {
-      fs.unlinkSync(tmpPath + "-wal");
-    }
-    if (fs.existsSync(tmpPath + "-shm")) {
-      fs.unlinkSync(tmpPath + "-shm");
-    }
+      if (fs.existsSync(tmpPath + "-wal")) {
+        fs.unlinkSync(tmpPath + "-wal");
+      }
+      if (fs.existsSync(tmpPath + "-shm")) {
+        fs.unlinkSync(tmpPath + "-shm");
+      }
+    });
 
     return result;
   } finally {

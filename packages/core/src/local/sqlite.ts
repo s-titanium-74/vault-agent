@@ -48,10 +48,7 @@ export class SqliteMetadataStore implements MetadataLexicalStore {
     pageLimit(request.limit);
     request.signal?.throwIfAborted();
     const after = request.cursor ?? "";
-    const items = this.store
-      .getDb()
-      .prepare("SELECT * FROM notes WHERE path > ? ORDER BY path LIMIT ?")
-      .all(after, request.limit + 1) as Record<string, unknown>[];
+    const items = this.store.listNotesAfter(after, request.limit + 1);
     const more = items.length > request.limit;
     if (more) items.pop();
     return { items, cursor: more ? String(items.at(-1)!.path) : undefined };

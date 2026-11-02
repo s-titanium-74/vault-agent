@@ -1,4 +1,5 @@
 import { pcloudSource } from "./source.js";
+import { mutationSequence, withMutationPublication } from "./mutation-state.js";
 import { indexRowsEqual as rowsEqual } from "../portable/index-updates.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -44,9 +45,10 @@ export async function updateLocalIndex(
   config: Config,
   options: LocalIndexUpdateOptions,
 ): Promise<IndexResult> {
+  const sourceSequence = mutationSequence(store.getDbPath());
   const priorManifest = store.getManifest();
   const priorSignature = JSON.stringify(priorManifest);
-  const previousRows = store.getAllNotes();
+  const previousRows = store.getAllNotesForUpdate();
   const previous = new Map(previousRows.map((row) => [String(row.path), row]));
   const before: IndexedSource[] = previousRows.map((row) => ({
     path: String(row.path),
@@ -235,8 +237,11 @@ export async function updateLocalIndex(
   const remainingIds = new Set(
     [...target.values()].map((row) => String(row.note_id)),
   );
-  const chunkRows: IndexRow[] = store.getAllChunkIds().flatMap((id) => {
-    const chunk = store.getChunkById(id);
+  const rawChunks = store
+    .getDb()
+    .prepare("SELECT * FROM chunks")
+    .all() as IndexRow[];
+  const chunkRows: IndexRow[] = rawChunks.flatMap((chunk) => {
     return chunk &&
       remainingIds.has(String(chunk.note_id)) &&
       !replacedIds.has(String(chunk.note_id))
@@ -367,38 +372,40 @@ export async function updateLocalIndex(
       "SOURCE_REVISION_MISMATCH",
       "Source changed while preparing the index.",
     );
-  store.beginTransaction();
-  try {
-    if (JSON.stringify(store.getManifest()) !== priorSignature)
-      throw new IndexError(
-        "INDEX_BUSY",
-        "Index changed while update data was being prepared.",
-      );
-    for (const p of removed) store.deleteNoteByPath(p);
-    for (const p of prepared) store.upsertPreparedNote(p.note, p.chunks);
-    for (const row of reused) {
-      const old = previous.get(String(row.path));
-      if (old?.file_size !== row.file_size || old?.mtime_ms !== row.mtime_ms)
-        store.updateNoteObservation(row);
+  withMutationPublication(store.getDbPath(), sourceSequence, () => {
+    store.beginTransaction();
+    try {
+      if (JSON.stringify(store.getManifest()) !== priorSignature)
+        throw new IndexError(
+          "INDEX_BUSY",
+          "Index changed while update data was being prepared.",
+        );
+      for (const p of removed) store.deleteNoteByPath(p);
+      for (const p of prepared) store.upsertPreparedNote(p.note, p.chunks);
+      for (const row of reused) {
+        const old = previous.get(String(row.path));
+        if (old?.file_size !== row.file_size || old?.mtime_ms !== row.mtime_ms)
+          store.updateNoteObservation(row);
+      }
+      for (const row of linked) {
+        const old = target.get(String(row.path));
+        if (
+          !indexRowsEqual(old?.links_json, row.links_json) ||
+          !indexRowsEqual(old?.wikilinks_json, row.wikilinks_json)
+        )
+          store.updateNoteLinks(row);
+      }
+      if (vectors.length) {
+        store.initVecTable(dimension!);
+        store.storePreparedEmbeddings(vectors);
+      }
+      store.setManifest(manifest);
+      store.commit();
+    } catch (error) {
+      store.rollback();
+      throw error;
     }
-    for (const row of linked) {
-      const old = target.get(String(row.path));
-      if (
-        !indexRowsEqual(old?.links_json, row.links_json) ||
-        !indexRowsEqual(old?.wikilinks_json, row.wikilinks_json)
-      )
-        store.updateNoteLinks(row);
-    }
-    if (vectors.length) {
-      store.initVecTable(dimension!);
-      store.storePreparedEmbeddings(vectors);
-    }
-    store.setManifest(manifest);
-    store.commit();
-  } catch (error) {
-    store.rollback();
-    throw error;
-  }
+  });
   return {
     mode: options.full ? "full" : "incremental",
     notesIndexed: prepared.length,

@@ -262,7 +262,20 @@ export async function prepareMutationBatch(
     items.push(item);
   }
   // Fixed-order schema output makes omitted defaults and explicit defaults equivalent.
-  const request_digest = await contentRevision(
+  const request_digest = await mutationRequestDigest(context, batch);
+  return { request_digest, total_bytes: totalBytes, items };
+}
+
+/** Canonical binding material without reading source bodies (also used for replay). */
+export async function mutationRequestDigest(
+  context: MutationPreparationContext,
+  input: unknown,
+): Promise<string> {
+  const settings = mutationSettingsSchema.safeParse(context.settings ?? {});
+  const batch = mutationBatchSchema.safeParse(input);
+  if (!settings.success || !batch.success)
+    throw new MutationError("INVALID_REQUEST");
+  return contentRevision(
     JSON.stringify({
       vault: context.vaultId,
       source: context.sourceId,
@@ -270,11 +283,10 @@ export async function prepareMutationBatch(
       policy: context.policyRevision,
       includes: context.includes,
       excludes: context.excludes ?? [],
-      settings,
-      operations: batch.operations,
+      settings: settings.data,
+      operations: batch.data.operations,
     }),
   );
-  return { request_digest, total_bytes: totalBytes, items };
 }
 
 /** Content-free metadata suitable for explicit summaries. Not an applied-operation receipt. */
