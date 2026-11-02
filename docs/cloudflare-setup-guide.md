@@ -203,6 +203,34 @@ last immutable snapshot remains retrievable during detection/building, including
 content pending deletion. Published deletion revokes it. Stale/failed status is
 visible through `/status`; do not interpret health as index freshness.
 
+With [read-only idle reconciliation](phases/cloudflare-deployment/specifications/idle-reconciliation.md),
+unchanged checks leave no D1 observation history. Detection `idle` means the
+last durable reconciliation completed; it does not prove the scheduler is
+currently running. `lastObservedAt` can remain old during healthy polling.
+`monitoring: "not_persisted"`, index freshness `unknown`, and retrieval warning
+`INDEX_FRESHNESS_UNKNOWN` make this limitation explicit. Recorded failures and
+active work still appear as `stale` and `updating`.
+
+To observe current checks, open and connect the Worker's real-time log viewer
+in the dashboard, or, from `packages/cloudflare`, run:
+
+```sh
+npx wrangler tail <worker-name> --config <private-config.jsonc> --format json
+```
+
+Look for `event: "reconciliation"`, `result: "start"` followed by `unchanged`,
+`changed`, `resumed`, `deferred`, or `failed`. Outcomes include only counts,
+elapsed milliseconds and sanitized error codes. `deferred` means the read-only
+page/time budget was exhausted and a durable scan was admitted/resumed; it is
+not an unchanged result. Empty cache deletion is skipped, but eligible retention
+and optional semantic catch-up can still write during an unchanged tick.
+
+Opening a real-time viewer does not require persisted Workers Logs. Keep the
+template's `observability.enabled: false`; do not enable persisted history just
+to check console output. Real-time viewing can be sampled and is not a reliable
+long-term heartbeat or notification service. See the
+[official real-time log guide](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
+
 For recovery, inspect the status error and job checkpoint; correct invalid
 source/scope or provider availability, then request a fresh `/index` with
 `{"newScan":true}` using admin authentication. Cron continues committed jobs
