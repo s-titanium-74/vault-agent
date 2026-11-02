@@ -1,7 +1,10 @@
 # MCP Mutation Contract
 
 Status: Portable preparation, [filesystem service](filesystem.md) and
-[local MCP tools](local-mcp.md) implemented. R2/Workers remain unimplemented.
+[local MCP tools](local-mcp.md) implemented. R2 has
+[upload baselines](upload-baseline.md) and an
+[internal mutation service](r2-service.md); public Workers enablement and hosted
+verification remain open.
 Tool/field names below are an implementation
 proposal; the agreed behavior is in [requirements](../requirements.md).
 
@@ -88,8 +91,9 @@ the 5 MiB storage limit does not promise full-text indexing.
 The [filesystem service](filesystem.md) implements local operation identity,
 journal recovery, source reads, access suppression and pending index work under
 the accepted final-check race boundary. Local transport enablement is documented
-in [local MCP](local-mcp.md). R2/upload baselines and hosted verification remain
-open. External edits after the final filesystem check may be missed; this
+in [local MCP](local-mcp.md). The R2 groundwork does not yet expose public mutation
+tools; Workers enablement and hosted verification remain open.
+External edits after the final filesystem check may be missed; this
 accepted limitation is explicit in setup and tools. These layers do not close #54.
 
 ## MCP tools and modes

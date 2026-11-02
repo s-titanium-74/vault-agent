@@ -9,8 +9,8 @@ opt-in [local MCP tools](specifications/local-mcp.md), disabled by default.
 R2/Workers integration and hosted verification remain open.
 
 Step 4 is staged: [4a, durable upload baselines](specifications/upload-baseline.md),
-then R2 mutation recovery/revocation and Workers MCP integration. The baseline
-prerequisite does not enable cloud mutation tools.
+then [4b, internal R2 mutation recovery/revocation](specifications/r2-service.md),
+then Workers MCP integration. These prerequisites do not enable cloud mutation tools.
 
 ## Purpose
 

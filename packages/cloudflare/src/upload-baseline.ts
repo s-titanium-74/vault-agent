@@ -5,6 +5,7 @@ import {
 } from "@vault-agent/core/portable";
 import { type Env } from "./config.js";
 import { CloudError, boundedBytes } from "./errors.js";
+import { mutationEpoch, mutationPath } from "./mutation-state.js";
 
 export type UploadBaseline = { digest: string | null; job: string };
 export type UploadTarget = {
@@ -17,6 +18,13 @@ export type UploadTarget = {
 };
 
 const conflict = () => new CloudError("UPLOAD_CONFLICT", 409);
+async function checkMutationOutcome(env: Env, path: string) {
+  if (
+    (await mutationEpoch(env)) !== null &&
+    (await mutationPath(env, path))?.state === "uncertain"
+  )
+    throw conflict();
+}
 export function baseline(env: Env, path: string) {
   return env.DB.prepare("SELECT digest,job FROM upload_baselines WHERE path=?")
     .bind(path)
@@ -68,6 +76,7 @@ function compare(
 
 /** Capture a genuine common ancestor, never adopt HEAD's digest as a baseline. */
 export async function captureUploadTarget(env: Env, entry: UploadTarget) {
+  await checkMutationOutcome(env, entry.path);
   const prior = await baseline(env, entry.path);
   const current = await currentUploadTarget(env, entry.path, entry.kind);
   compare(prior, current.digest, entry.digest);
@@ -79,6 +88,7 @@ export async function captureUploadTarget(env: Env, entry: UploadTarget) {
 
 /** Recheck at commit; an attempted write with a lost receipt is not blindly retried. */
 export async function checkUploadTarget(env: Env, entry: UploadTarget) {
+  await checkMutationOutcome(env, entry.path);
   const prior = await baseline(env, entry.path);
   if ((prior?.job ?? null) !== (entry.baseline_job ?? null)) throw conflict();
   const current = await currentUploadTarget(env, entry.path, entry.kind);

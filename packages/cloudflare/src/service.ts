@@ -15,6 +15,12 @@ import {
 } from "./provider.js";
 import { VectorizeStore } from "./vectorize.js";
 import { semanticProgress } from "./semantic-work.js";
+import {
+  mutationEpoch,
+  mutationPath,
+  mutationSuppression,
+} from "./mutation-state.js";
+import { readMutationSource } from "./mutations.js";
 
 const compatibility = { stale: false, incompatible: false, details: "" };
 function detectionFreshness(
@@ -30,6 +36,7 @@ const getSchema = z.object({
   chunkIndex: z.number().int().min(0).optional(),
   allowLarge: z.boolean().optional(),
   snapshot: z.string().optional(),
+  expected_version: z.string().min(1).max(1024).optional(),
 });
 const fileSchema = z.object({
   path: z.string().min(1),
@@ -76,6 +83,8 @@ export class RetrievalService {
     readonly store = snapshot,
     readonly epoch = 0,
     readonly incremental = false,
+    readonly mutationReadEpoch: number | null = null,
+    readonly suppressed: ReadonlySet<string> = new Set(),
   ) {
     ftsName(snapshot);
     this.settings = config(env);
@@ -96,6 +105,8 @@ export class RetrievalService {
       manifest,
       this.settings.allowed,
       incremental,
+      suppressed,
+      mutationReadEpoch !== null && mutationReadEpoch > 0,
     );
     this.vectors = new VectorizeStore(
       this.settings.semantic ? env.VECTORS : undefined,
@@ -116,6 +127,7 @@ export class RetrievalService {
       },
     });
     env = { ...env, DB };
+    const sourceEpoch = isPCloud(env) ? null : await mutationEpoch(env);
     const incremental = !!(await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='publications'",
     ).first());
@@ -151,9 +163,18 @@ export class RetrievalService {
       row.revision,
       row.epoch,
       incremental,
+      sourceEpoch,
+      sourceEpoch === null
+        ? new Set()
+        : await mutationSuppression(env, row.revision),
     );
   }
   async current() {
+    if (
+      this.mutationReadEpoch !== null &&
+      (await mutationEpoch(this.env)) !== this.mutationReadEpoch
+    )
+      throw new CloudError("REVISION_CHANGED", 409);
     const row = await this.env.DB.prepare(
       this.incremental
         ? "SELECT d.revision,coalesce(p.epoch,0) AS epoch FROM deployment d LEFT JOIN publications p ON p.store=d.revision WHERE d.id=1"
@@ -213,6 +234,103 @@ export class RetrievalService {
     const detection = await detectionStatus(this.env);
     let data: unknown;
     let warnings: core.WarningItem[] = [];
+    if (
+      this.mutationReadEpoch !== null &&
+      ["get_note", "get_chunk"].includes(operation)
+    ) {
+      const p = parse(getSchema, args);
+      this.pin(p.snapshot);
+      const managed = await this.env.DB.prepare(
+        "SELECT path FROM r2_mutation_paths WHERE note_id=?",
+      )
+        .bind(p.noteId)
+        .first<{ path: string }>();
+      if (managed) {
+        const state = await mutationPath(this.env, managed.path);
+        if (state?.state === "uncertain")
+          throw new CloudError("SOURCE_UNAVAILABLE", 503);
+        if (state?.state === "deleted")
+          throw new CloudError("NOTE_NOT_FOUND", 404);
+        const value = await readMutationSource(
+          this.env,
+          managed.path,
+          operation === "get_note",
+          operation === "get_note" && !p.allowLarge
+            ? core.DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT
+            : 20 * 1024 * 1024,
+        ).catch((error) => {
+          if (
+            error instanceof CloudError &&
+            error.code === "SOURCE_TOO_LARGE" &&
+            operation === "get_note"
+          )
+            throw new CloudError("NOTE_TOO_LARGE", 413);
+          throw error;
+        });
+        if (!value) throw new CloudError("NOTE_NOT_FOUND", 404);
+        const indexed = await this.metadata.getNote(p.noteId);
+        if (operation === "get_chunk") {
+          const chunk =
+            p.chunkIndex === undefined
+              ? null
+              : await this.metadata.getChunk(p.noteId, p.chunkIndex);
+          if (
+            !indexed ||
+            !chunk ||
+            indexed.content_hash !== value.digest ||
+            !p.expected_version ||
+            ![value.version, core.indexedChunkVersion(indexed, chunk)].includes(
+              p.expected_version,
+            )
+          )
+            throw new CloudError("REVISION_CHANGED", 409);
+          const payload = await core.getChunk(
+            this.metadata,
+            p.noteId,
+            p.chunkIndex!,
+          );
+          await this.current();
+          return { data: { ...payload, version: value.version }, warnings: [] };
+        }
+        const parsed = core.parseMarkdown(
+          value.content!.replace(/^\uFEFF/, ""),
+        );
+        const latest: core.IndexRow = {
+          path: managed.path,
+          frontmatter_title: parsed.frontmatter?.title ?? parsed.title,
+          aliases_json: JSON.stringify(parsed.aliases),
+          tags_json: JSON.stringify(parsed.tags),
+          date_value: parsed.frontmatter?.date ?? null,
+          created_value: parsed.frontmatter?.created ?? null,
+          updated_value: parsed.frontmatter?.updated ?? null,
+          attachment_refs_json: JSON.stringify(parsed.attachmentReferences),
+        };
+        await this.current();
+        return {
+          data: {
+            ...core.noteFromRow(
+              p.noteId,
+              latest,
+              value.content!,
+              value.bytes.length,
+            ),
+            version: value.version,
+            index_state:
+              indexed?.content_hash === value.digest ? "fresh" : "pending",
+            indexed_version: indexed?.content_hash ?? null,
+          },
+          warnings:
+            indexed?.content_hash === value.digest
+              ? []
+              : [
+                  {
+                    code: "INDEX_UPDATING",
+                    message: "Saved source is awaiting index publication.",
+                  },
+                ],
+        };
+      }
+    }
     if (operation === "search") {
       const p = parse(core.searchRequestSchema, args);
       const result = await core.search(
@@ -265,6 +383,51 @@ export class RetrievalService {
     ) {
       const p = parse(fileSchema, args);
       this.pin(p.snapshot);
+      if (this.mutationReadEpoch !== null) {
+        const state = await mutationPath(this.env, p.path);
+        if (state?.state === "uncertain")
+          throw new CloudError("SOURCE_UNAVAILABLE", 503);
+        if (state?.state === "deleted")
+          throw new CloudError(
+            operation === "get_attachment"
+              ? "ATTACHMENT_NOT_FOUND"
+              : "GUIDANCE_NOT_FOUND",
+            404,
+          );
+        if (state && operation === "get_attachment") {
+          if (core.uploadKind(p.path) !== "attachment")
+            throw new CloudError("ATTACHMENT_NOT_FOUND", 404);
+          const value = await readMutationSource(
+            this.env,
+            p.path,
+            false,
+            p.download && !p.allowLarge ? 10 * 1024 * 1024 : 20 * 1024 * 1024,
+          );
+          if (!value) throw new CloudError("ATTACHMENT_NOT_FOUND", 404);
+          const data = {
+            path: p.path,
+            fileName: p.path.split("/").at(-1)!,
+            size: value.bytes.length,
+            downloadAvailable: true,
+            contentType: attachmentType(p.path),
+            version: value.version,
+            ...(p.download
+              ? {
+                  stream: new ReadableStream<Uint8Array>({
+                    start(c) {
+                      c.enqueue(value.bytes);
+                      c.close();
+                    },
+                  }),
+                }
+              : {}),
+          };
+          await this.current();
+          return { data, warnings: [] };
+        }
+        if (state && this.suppressed.has(p.path))
+          throw new CloudError("REVISION_CHANGED", 409);
+      }
       const entry = await this.source.stat(p.path);
       const guidance = operation === "vault_guidance_get";
       if (
@@ -313,7 +476,9 @@ export class RetrievalService {
       if (page.cursor) throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
       data = {
         guidance: page.items
-          .filter((e) => core.guidanceKind(e.path))
+          .filter(
+            (e) => !this.suppressed.has(e.path) && core.guidanceKind(e.path),
+          )
           .map((e) => this.guidance(e)),
       };
     } else {
