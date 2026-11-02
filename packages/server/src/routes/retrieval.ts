@@ -6,7 +6,7 @@ import {
   getAttachmentBytes,
   getAttachmentMetadata,
   getChunk,
-  getNote,
+  getConfiguredNote,
   resolveVaultRelativePath,
   validateVaultPath,
 } from "@vault-agent/core";
@@ -48,10 +48,10 @@ export function registerRetrievalRoutes(app: FastifyInstance): void {
     }
 
     try {
-      const result = await getNote(
+      const result = await getConfiguredNote(
         store,
         noteId,
-        config.vault.root,
+        config,
         allowLarge === "true",
       );
 
@@ -146,6 +146,17 @@ export function registerRetrievalRoutes(app: FastifyInstance): void {
         .code(500)
         .send(err("CONFIG_INVALID", "Server not configured.", request.id));
     }
+
+    if (config.vault.pcloud)
+      return reply
+        .code(501)
+        .send(
+          err(
+            "CAPABILITY_UNSUPPORTED",
+            "pCloud attachments are unsupported.",
+            request.id,
+          ),
+        );
 
     const vaultRelativePath = (request.params as { "*": string })["*"];
     const { download, allowLarge } = request.query as {

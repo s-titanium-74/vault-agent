@@ -87,3 +87,9 @@ failure keeps lexical retrieval while revoking replaced vectors. Run local,
 portable bundle/type, distribution and Worker regression checks. Repeat hosted
 synthetic ingestion/cache/deletion validation after changing the Worker adapter;
 record source revision and resource teardown independently of local simulation.
+
+## pCloud runtime integration
+
+See [pCloud source contract](pcloud-source.md) for read-only scope, explicit setup,
+SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
+R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

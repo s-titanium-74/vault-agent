@@ -163,3 +163,6 @@ export type {
   FullStatus,
 } from "./status.js";
 export { buildStatus } from "./status.js";
+
+export { configuredVaultIdentity, pcloudSource } from "./local/source.js";
+export { getConfiguredNote } from "./local/retrieval.js";

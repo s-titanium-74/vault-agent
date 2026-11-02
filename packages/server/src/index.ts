@@ -1,3 +1,4 @@
+import { SourceError } from "@vault-agent/core/portable";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -66,6 +67,22 @@ export async function createServer(
       level: appConfig.server.logLevel,
     },
     bodyLimit: 64 * 1024,
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof SourceError)
+      return reply
+        .code(
+          error.code === "SOURCE_REVISION_MISMATCH"
+            ? 409
+            : error.code === "SOURCE_TOO_LARGE"
+              ? 413
+              : error.code === "SOURCE_EXCLUDED"
+                ? 403
+                : 503,
+        )
+        .send(err(error.code, "Source operation failed.", request.id));
+    return reply.send(error);
   });
 
   if (appConfig.cors.enabled && appConfig.cors.allowedOrigins.length > 0) {
@@ -200,7 +217,7 @@ export async function startServer(
   });
 
   let watcher: VaultWatcher | null = null;
-  if (preparedConfig.watch.enabled) {
+  if (preparedConfig.watch.enabled && !preparedConfig.vault.pcloud) {
     watcher = new VaultWatcher(
       preparedConfig.vault.root,
       preparedConfig.vault.exclude,
@@ -235,7 +252,7 @@ export async function startServer(
   }
 
   let gitSync: GitSync | null = null;
-  if (preparedConfig.sync.repo) {
+  if (preparedConfig.sync.repo && !preparedConfig.vault.pcloud) {
     gitSync = new GitSync(preparedConfig);
     gitSync.setVaultRoot(preparedConfig.vault.root);
 
@@ -263,6 +280,27 @@ export async function startServer(
     gitSync ?? undefined,
     freshnessMachine,
   );
+
+  if (preparedConfig.vault.pcloud && preparedConfig.watch.enabled) {
+    let running = false;
+    const timer = setInterval(async () => {
+      if (running) return;
+      running = true;
+      try {
+        freshnessMachine.writerStarted();
+        await indexVault(preparedConfig);
+        freshnessMachine.writerSucceeded();
+      } catch {
+        freshnessMachine.writerFailed("SOURCE_UNAVAILABLE");
+      } finally {
+        running = false;
+      }
+    }, preparedConfig.vault.pcloud.poll_seconds * 1000);
+    timer.unref();
+    app.addHook("onClose", async () => {
+      clearInterval(timer);
+    });
+  }
 
   try {
     await app.listen({

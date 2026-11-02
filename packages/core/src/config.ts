@@ -1,8 +1,18 @@
 import { z } from "zod";
 import TOML from "smol-toml";
 
+const pcloudConfigSchema = z
+  .object({
+    region: z.enum(["us", "eu"]),
+    folder_id: z.string().regex(/^\d+$/),
+    access_token: z.string().default(""),
+    includes: z.array(z.string()).min(1),
+    poll_seconds: z.number().int().min(60).max(86400).default(300),
+  })
+  .strict();
 export const vaultConfigSchema = z.object({
-  root: z.string().min(1, "Vault root path is required"),
+  pcloud: pcloudConfigSchema.optional(),
+  root: z.string(),
   exclude: z.array(z.string()).default([]),
 });
 
@@ -108,6 +118,24 @@ export const configSchema = z
     profiles: profilesConfigSchema,
   })
   .superRefine((config, ctx) => {
+    if (config.vault.pcloud && !config.vault.pcloud.access_token)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["vault", "pcloud", "access_token"],
+        message: "pCloud access token is required.",
+      });
+    if (!config.vault.pcloud && !config.vault.root)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["vault", "root"],
+        message: "Vault root path is required",
+      });
+    if (config.vault.pcloud && config.sync.repo)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sync", "repo"],
+        message: "Git sync is unavailable for pCloud sources.",
+      });
     if (config.watch.max_batch_delay_ms < config.watch.debounce_ms) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -197,7 +225,12 @@ export const DEFAULT_CONFIG: Config = {
   },
 };
 
-const SECRET_KEYS = new Set(["server.apiKey", "sync.webhook_secret"]);
+const SECRET_KEYS = new Set([
+  "server.apiKey",
+  "sync.webhook_secret",
+  "vault.pcloud",
+  "vault.pcloud.access_token",
+]);
 
 function applyEnvOverrides(config: Config): Config {
   const envMapping: Record<
@@ -334,11 +367,14 @@ function applyEnvOverrides(config: Config): Config {
     target[mapping.path[mapping.path.length - 1]!] = parsed;
   }
 
+  const pcloud = (result as unknown as Config).vault.pcloud;
+  if (pcloud && process.env.VAULT_AGENT_PCLOUD_ACCESS_TOKEN)
+    pcloud.access_token = process.env.VAULT_AGENT_PCLOUD_ACCESS_TOKEN;
   return configSchema.parse(result);
 }
 
 const KNOWN_SECTIONS: Record<string, Set<string>> = {
-  vault: new Set(["root", "exclude"]),
+  vault: new Set(["root", "exclude", "pcloud"]),
   server: new Set([
     "endpoint",
     "host",
@@ -406,7 +442,11 @@ function validateConfigKeys(parsed: Record<string, unknown>): void {
 
 function toTOMLObject(config: Config): Record<string, unknown> {
   return {
-    vault: { root: config.vault.root, exclude: config.vault.exclude },
+    vault: {
+      root: config.vault.root,
+      exclude: config.vault.exclude,
+      ...(config.vault.pcloud ? { pcloud: config.vault.pcloud } : {}),
+    },
     server: {
       endpoint: config.server.endpoint,
       host: config.server.host,
@@ -540,6 +580,7 @@ function configFromTOMLParsed(
     const v = parsed.vault as Record<string, unknown>;
     result.vault = {
       root: (v.root as string) ?? DEFAULT_CONFIG.vault.root,
+      ...(v.pcloud ? { pcloud: pcloudConfigSchema.parse(v.pcloud) } : {}),
       exclude: (v.exclude as string[]) ?? DEFAULT_CONFIG.vault.exclude,
     };
   }

@@ -23,7 +23,7 @@ import {
   getAgentGuidance,
   getChunk,
   listAgentGuidance,
-  getNote,
+  getConfiguredNote,
   getRelated,
   search,
   getOverview,
@@ -189,7 +189,7 @@ async function dispatchTool(
 }
 
 function ensureConfig(context: McpAdapterContext): Config {
-  if (!context.config.vault.root) {
+  if (!context.config.vault.root && !context.config.vault.pcloud) {
     throw createMcpError("VAULT_NOT_CONFIGURED");
   }
   return context.config;
@@ -201,7 +201,7 @@ function ensureContext(context: McpAdapterContext): {
   embeddingProvider: EmbeddingProvider | null;
   freshnessMachine: FreshnessMachine | null;
 } {
-  if (!context.config.vault.root) {
+  if (!context.config.vault.root && !context.config.vault.pcloud) {
     throw createMcpError("VAULT_NOT_CONFIGURED");
   }
   if (!context.store) {
@@ -467,10 +467,10 @@ async function handleGetNote(
   }
 
   try {
-    const result: NoteRetrieveResult | null = await getNote(
+    const result: NoteRetrieveResult | null = await getConfiguredNote(
       store,
       noteId,
-      config.vault.root,
+      config,
       allowLarge,
     );
     if (!result) {
@@ -533,6 +533,11 @@ async function handleGetAttachment(
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const { config } = ensureContext(context);
+  if (config.vault.pcloud)
+    throw createMcpError(
+      "INVALID_TYPE",
+      "This pCloud source supports notes and chunks only.",
+    );
 
   const vaultRelativePath = getStringArg(args, "vaultRelativePath");
   if (!vaultRelativePath) {
@@ -832,6 +837,8 @@ async function handleVaultGuidanceList(
   context: McpAdapterContext,
 ): Promise<Record<string, unknown>> {
   const config = ensureConfig(context);
+  if (config.vault.pcloud)
+    throw createMcpError("INVALID_TYPE", "pCloud guidance is unsupported.");
 
   try {
     const result = listAgentGuidance(config.vault.root, config.vault.exclude);
@@ -849,6 +856,8 @@ async function handleVaultGuidanceGet(
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = ensureConfig(context);
+  if (config.vault.pcloud)
+    throw createMcpError("INVALID_TYPE", "pCloud guidance is unsupported.");
 
   const guidancePath = getStringArg(args, "path");
   if (!guidancePath) {

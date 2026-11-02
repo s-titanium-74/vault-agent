@@ -264,7 +264,14 @@ export default {
               ? 413
               : error.code === "SOURCE_REVISION_MISMATCH"
                 ? 409
-                : 400,
+                : error.code === "SOURCE_NOT_FOUND"
+                  ? 404
+                  : error.code === "SOURCE_RATE_LIMITED"
+                    ? 429
+                    : error.code === "SOURCE_AUTH_FAILED" ||
+                        error.code === "SOURCE_UNAVAILABLE"
+                      ? 503
+                      : 400,
         );
       else if (error instanceof RetrievalSizeError)
         response = failure(error.code, 413);

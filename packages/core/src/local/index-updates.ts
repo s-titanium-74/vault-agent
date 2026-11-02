@@ -1,3 +1,5 @@
+import { pcloudSource } from "./source.js";
+import { indexRowsEqual as rowsEqual } from "../portable/index-updates.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -54,7 +56,10 @@ export async function updateLocalIndex(
   const root = path.resolve(config.vault.root),
     discovery = new VaultDiscovery(root, config.vault.exclude);
   const paths =
-    options.paths ?? discovery.discover().files.map((f) => f.vaultRelativePath);
+    options.paths ??
+    (config.vault.pcloud
+      ? []
+      : discovery.discover().files.map((f) => f.vaultRelativePath));
   const observations: SourceObservation[] = [];
   const reads = new Map<
     string,
@@ -79,71 +84,99 @@ export async function updateLocalIndex(
       ...(size === undefined ? {} : { size }),
     });
   };
-  for (const candidate of new Set(paths)) {
-    const absolute = resolveVaultRelativePath(root, candidate),
-      p = toVaultRelative(absolute, root);
-    if (!p || p === ".") continue;
-    if (!INDEXED_EXTENSIONS.includes(path.extname(p).toLowerCase())) continue;
-    const observation: SourceObservation = { path: p, source: null };
-    observations.push(observation);
-    if (
-      p.split("/").some((segment) => segment.startsWith(".")) ||
-      !discovery.isIndexPathInsideVault(p)
-    )
-      continue;
-    try {
-      let current = root,
-        symlink = false;
-      for (const segment of p.split("/")) {
-        current = path.join(current, segment);
-        if (fs.existsSync(current) && fs.lstatSync(current).isSymbolicLink()) {
-          symlink = true;
-          break;
-        }
-      }
-      if (symlink || !fs.existsSync(absolute)) continue;
-      const stat = fs.statSync(absolute);
-      if (!stat.isFile()) continue;
-      observation.unavailable = true;
+  const remote = config.vault.pcloud ? pcloudSource(config) : null;
+  const remoteObserved = remote ? await remote.observe() : null;
+  if (remote && remoteObserved) {
+    for (const observed of remoteObserved) {
+      const { entry, bytes } = await remote.readObserved(observed);
       let text: string;
       try {
-        text = new TextDecoder("utf-8", { fatal: true }).decode(
-          fs.readFileSync(absolute),
-        );
+        text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       } catch {
-        warn("encoding", p);
-        continue;
+        throw new IndexError("SOURCE_NOT_UTF8", "Source is not valid UTF-8.");
       }
-      if (text.includes("\0")) {
-        warn("binary", p);
-        continue;
-      }
-      const after = fs.statSync(absolute);
+      if (text.includes("\0"))
+        throw new IndexError("SOURCE_NOT_UTF8", "Source is not valid text.");
+      observations.push({
+        path: entry.path,
+        source: { path: entry.path, kind: "note", revision: entry.revision },
+      });
+      reads.set(entry.path, {
+        entry,
+        text,
+        mtimeMs: Date.parse(entry.updated),
+      });
+    }
+  } else {
+    for (const candidate of new Set(paths)) {
+      const absolute = resolveVaultRelativePath(root, candidate),
+        p = toVaultRelative(absolute, root);
+      if (!p || p === ".") continue;
+      if (!INDEXED_EXTENSIONS.includes(path.extname(p).toLowerCase())) continue;
+      const observation: SourceObservation = { path: p, source: null };
+      observations.push(observation);
       if (
-        after.size !== stat.size ||
-        after.mtimeMs !== stat.mtimeMs ||
-        after.ctimeMs !== stat.ctimeMs
-      ) {
-        warn("read", p);
+        p.split("/").some((segment) => segment.startsWith(".")) ||
+        !discovery.isIndexPathInsideVault(p)
+      )
         continue;
+      try {
+        let current = root,
+          symlink = false;
+        for (const segment of p.split("/")) {
+          current = path.join(current, segment);
+          if (
+            fs.existsSync(current) &&
+            fs.lstatSync(current).isSymbolicLink()
+          ) {
+            symlink = true;
+            break;
+          }
+        }
+        if (symlink || !fs.existsSync(absolute)) continue;
+        const stat = fs.statSync(absolute);
+        if (!stat.isFile()) continue;
+        observation.unavailable = true;
+        let text: string;
+        try {
+          text = new TextDecoder("utf-8", { fatal: true }).decode(
+            fs.readFileSync(absolute),
+          );
+        } catch {
+          warn("encoding", p);
+          continue;
+        }
+        if (text.includes("\0")) {
+          warn("binary", p);
+          continue;
+        }
+        const after = fs.statSync(absolute);
+        if (
+          after.size !== stat.size ||
+          after.mtimeMs !== stat.mtimeMs ||
+          after.ctimeMs !== stat.ctimeMs
+        ) {
+          warn("read", p);
+          continue;
+        }
+        const revision = createHash("sha256")
+          .update(text)
+          .digest("hex")
+          .slice(0, 32);
+        const entry: SourceEntry = {
+          path: p,
+          kind: "note",
+          size: stat.size,
+          revision,
+          updated: stat.mtime.toISOString(),
+        };
+        observation.unavailable = false;
+        observation.source = { path: p, kind: "note", revision };
+        reads.set(p, { entry, text, mtimeMs: stat.mtimeMs });
+      } catch {
+        observation.unavailable = true;
+        warn("read", p);
       }
-      const revision = createHash("sha256")
-        .update(text)
-        .digest("hex")
-        .slice(0, 32);
-      const entry: SourceEntry = {
-        path: p,
-        kind: "note",
-        size: stat.size,
-        revision,
-        updated: stat.mtime.toISOString(),
-      };
-      observation.unavailable = false;
-      observation.source = { path: p, kind: "note", revision };
-      reads.set(p, { entry, text, mtimeMs: stat.mtimeMs });
-    } catch {
-      observation.unavailable = true;
-      warn("read", p);
     }
   }
   const force =
@@ -329,6 +362,11 @@ export async function updateLocalIndex(
     chunkCount: chunkRows.length,
     indexedAt: Date.now(),
   };
+  if (remote && !rowsEqual(remoteObserved, await remote.observe()))
+    throw new IndexError(
+      "SOURCE_REVISION_MISMATCH",
+      "Source changed while preparing the index.",
+    );
   store.beginTransaction();
   try {
     if (JSON.stringify(store.getManifest()) !== priorSignature)

@@ -1,8 +1,8 @@
+import { configuredVaultIdentity } from "./local/source.js";
 import { matchFallbackNotes } from "./index-store-fts.js";
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
-import { vaultIdentity } from "./identifiers.js";
 import { Config } from "./config.js";
 import { IndexManifest, Note } from "./types.js";
 import {
@@ -151,7 +151,7 @@ export class IndexStore {
       };
     }
 
-    const vid = vaultIdentity(path.resolve(config.vault.root));
+    const vid = configuredVaultIdentity(config);
 
     if (manifest.schemaVersion !== INDEX_SCHEMA_VERSION) {
       return {
@@ -774,9 +774,7 @@ export class IndexStore {
 }
 
 export function getIndexPath(config: Config): string {
-  const vaultRoot = config.vault.root;
-  const resolvedVault = path.resolve(vaultRoot);
-  const vid = vaultIdentity(resolvedVault);
+  const vid = configuredVaultIdentity(config);
   const indexDir = resolveIndexDir(config.index.dir || undefined);
 
   return path.join(indexDir, vid, "index.sqlite");

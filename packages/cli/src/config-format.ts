@@ -18,7 +18,17 @@ export function getNestedValue(
 
 export function maskSecrets(config: Config): Record<string, unknown> {
   return {
-    vault: config.vault,
+    vault: {
+      ...config.vault,
+      ...(config.vault.pcloud
+        ? {
+            pcloud: {
+              ...config.vault.pcloud,
+              access_token: config.vault.pcloud.access_token ? "***" : "",
+            },
+          }
+        : {}),
+    },
     server: {
       ...config.server,
       apiKey: config.server.apiKey ? "***" : "",

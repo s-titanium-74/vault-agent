@@ -1,3 +1,4 @@
+import { isPCloud } from "./source.js";
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { D1MetadataStore } from "./d1.js";
@@ -194,9 +195,9 @@ export async function cleanupIncremental(env: Env) {
       .bind(cutoff, env.VAULT_ID)
       .all<{ object_key: string }>()
   ).results;
-  for (const object of objects) {
+  for (const object of isPCloud(env) ? [] : objects) {
     if (!object.object_key.startsWith(`${env.VAULT_ID}/`)) continue;
-    await env.SOURCE.delete(object.object_key);
+    await env.SOURCE!.delete(object.object_key);
     await env.DB.prepare("DELETE FROM retired_objects WHERE object_key=?")
       .bind(object.object_key)
       .run();

@@ -10,6 +10,8 @@ export class SourceError extends Error {
       | "SOURCE_REVISION_MISMATCH"
       | "SOURCE_TOO_LARGE"
       | "SOURCE_UNAVAILABLE"
+      | "SOURCE_AUTH_FAILED"
+      | "SOURCE_RATE_LIMITED"
       | "SOURCE_NOT_UTF8"
       | "INVALID_CURSOR",
     message = "Source operation failed.",

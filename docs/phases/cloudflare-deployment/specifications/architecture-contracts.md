@@ -55,7 +55,7 @@ delegate to the same portable use cases as HTTP.
   `.` or `..` segments. Reject absolute/drive/UNC paths, backslashes, NUL,
   URL-like paths, invalid UTF-8, and normalization collisions. Decode HTTP paths
   exactly once and apply the same validator to manifests and adapter results.
-- Source revision is a SHA-256 content digest, not a timestamp or R2 ETag.
+- Verified source revision is a SHA-256 content digest, not a provider hash, timestamp or R2 ETag. Provider observations are separate adapter evidence.
   A manifest binds path, kind, size, digest, and source timestamp (if known).
   Public paths never contain R2 prefixes or machine roots.
 
@@ -97,7 +97,13 @@ semantic policy is cloud-specific; lexical filtering remains complete.
 
 Source adapters are not required to use R2. A future pCloud or other source
 must provide the same scoped revision reads, or reject unsupported consistency
-requirements. Such adapters, OAuth setup, and polling are follow-up work.
+requirements. The pCloud adapter and polling are specified in [pCloud source](pcloud-source.md); interactive OAuth setup remains follow-up work.
 
 Index mutation policy and prepared data are shared across local and cloud runtimes:
 [shared index updates](shared-index-updates.md).
+
+## Source-specific revision evidence
+
+See [pCloud source contract](pcloud-source.md) for read-only scope, explicit setup,
+SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
+R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

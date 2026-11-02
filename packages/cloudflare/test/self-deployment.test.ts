@@ -69,6 +69,26 @@ describe("operator deployment tools", () => {
       expect(semantic.vectorize[0].binding).toBe("VECTORS");
       expect(semantic.vars.EXTERNAL_EMBEDDING_CONSENT).toBe("true");
       expect(semantic.limits.cpu_ms).toBe(1000);
+      await rm(file);
+      expect(
+        run(
+          "test-trial",
+          "11111111-1111-4111-8111-111111111111",
+          "lexical",
+          "paid",
+          "pcloud",
+          "eu",
+          "123456",
+        ).status,
+      ).toBe(0);
+      const pcloud = JSON.parse(await readFile(file, "utf8"));
+      expect(pcloud.r2_buckets).toBeUndefined();
+      expect(pcloud.vars).toMatchObject({
+        SOURCE_PROVIDER: "pcloud",
+        PCLOUD_REGION: "eu",
+        PCLOUD_FOLDER_ID: "123456",
+      });
+      expect(pcloud.vars.PCLOUD_ACCESS_TOKEN).toBeUndefined();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
