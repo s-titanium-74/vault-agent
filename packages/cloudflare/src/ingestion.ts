@@ -181,6 +181,90 @@ async function policyDigest(env: Env) {
     ]),
   );
 }
+async function sourceSignature(env: Env, entries: Entry[]) {
+  return core.contentRevision(
+    JSON.stringify([
+      "source-signature-v2",
+      await policyDigest(env),
+      [...entries]
+        .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+        .map((e) => [
+          e.path,
+          e.kind,
+          e.size,
+          e.etag,
+          e.object_version ?? null,
+          e.updated,
+        ]),
+    ]),
+  );
+}
+
+// One statement captures the durable reader/writer state on either side of LIST.
+async function detectionFence(env: Env) {
+  return env.DB.prepare(
+    "SELECT s.job,s.signature,s.error,j.state,j.checkpoint,d.revision AS store,p.snapshot,p.epoch,(SELECT id FROM ingestion_jobs WHERE kind='upload' AND state='applying' ORDER BY created LIMIT 1) AS upload FROM ingestion_state s LEFT JOIN ingestion_jobs j ON j.id=s.job LEFT JOIN deployment d ON d.id=1 LEFT JOIN publications p ON p.store=d.revision WHERE s.id=1",
+  ).first<{
+    job: string | null;
+    signature: string | null;
+    error: string | null;
+    state: string | null;
+    checkpoint: number | null;
+    store: string | null;
+    snapshot: string | null;
+    epoch: number | null;
+    upload: string | null;
+  }>();
+}
+
+async function probeSources(env: Env, deadline: number) {
+  const before = await detectionFence(env);
+  let pages = 0;
+  const entries = new Map<string, Entry>();
+  if (
+    !before?.store ||
+    !before.signature ||
+    before.error ||
+    before.state !== "complete" ||
+    before.upload
+  )
+    return { result: "changed" as const, pages, files: 0 };
+  const allowed = config(env).allowed;
+  let cursor: string | undefined;
+  while (pages < 8 && Date.now() < deadline) {
+    const page = await env.SOURCE.list({
+      prefix: sourcePrefix(env),
+      limit: 100,
+      cursor,
+      include: ["customMetadata"],
+    });
+    pages++;
+    for (const obj of page.objects) {
+      const entry = admitObservedObject(env, obj, allowed);
+      if (!entry) continue;
+      if (entries.has(entry.path))
+        throw new CloudError("REVISION_CONFLICT", 409);
+      entries.set(entry.path, entry);
+      if (entries.size > 500)
+        throw new CloudError("INDEX_BUDGET_EXCEEDED", 413);
+    }
+    if (!page.truncated) {
+      const signature = await sourceSignature(env, [...entries.values()]);
+      const after = await detectionFence(env);
+      return {
+        result:
+          signature === before.signature &&
+          JSON.stringify(before) === JSON.stringify(after)
+            ? ("unchanged" as const)
+            : ("changed" as const),
+        pages,
+        files: entries.size,
+      };
+    }
+    cursor = page.cursor;
+  }
+  return { result: "deferred" as const, pages, files: entries.size };
+}
 async function newData(env: Env, parent: string | null): Promise<Data> {
   const current = await publication(env);
   return {
@@ -785,16 +869,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
       .filter((change) => change.action === "remove")
       .map((change) => change.path);
 
-    d.signature = await core.contentRevision(
-      JSON.stringify([
-        entries,
-        env.INCLUDE_PATHS,
-        env.EXCLUDE_PATHS,
-        d.semantic,
-        descriptor(env.EMBEDDING_MODEL_REVISION),
-        core.INDEX_SCHEMA_VERSION,
-      ]),
-    );
+    d.signature = await sourceSignature(env, entries);
     const previous = await env.DB.prepare(
       "SELECT signature FROM ingestion_state WHERE id=1",
     ).first<{ signature: string | null }>();
@@ -1406,24 +1481,81 @@ async function step(env: Env, job: Job, token: string, d: Data) {
   }
   throw new CloudError("INVALID_JOB_STATE", 409);
 }
-export async function tick(env: Env) {
+export type ReconciliationLog = {
+  event: "reconciliation";
+  result: "start" | "unchanged" | "changed" | "resumed" | "deferred" | "failed";
+  files?: number;
+  pages?: number;
+  elapsedMs?: number;
+  errorCode?: string;
+};
+const logCodes = new Set([
+  "CONFIG_INVALID",
+  "UPLOAD_TOO_LARGE",
+  "INDEX_BUDGET_EXCEEDED",
+  "REVISION_CONFLICT",
+  "INDEX_BUSY",
+  "INGESTION_UPGRADE_REQUIRED",
+  "EMBEDDING_UNAVAILABLE",
+  "SOURCE_REVISION_MISMATCH",
+  "SOURCE_UNAVAILABLE",
+]);
+function logCode(code: string) {
+  return logCodes.has(code) ? code : "INGESTION_FAILED";
+}
+export async function tick(
+  env: Env,
+  log: (entry: ReconciliationLog) => void = (entry) => console.log(entry),
+) {
   if (!ingestionEnabled(env)) return;
-  config(env);
-  const deadline = Date.now() + 20000;
-  await cleanupIncremental(env);
-  await cleanupStep(env);
-  // Finish committed upload intents without requiring their local client.
-  const uploads = (
-    await env.DB.prepare(
-      "SELECT id FROM ingestion_jobs WHERE kind='upload' AND state='applying' ORDER BY created LIMIT 1",
-    ).all<{ id: string }>()
-  ).results;
-  const id = uploads[0]?.id ?? (await startScan(env));
-  for (let n = 0; n < 8 && Date.now() < deadline; n++) {
-    const result = await advance(env, id);
-    if (["complete", "failed"].includes(result.state)) break;
+  const start = Date.now();
+  log({ event: "reconciliation", result: "start" });
+  try {
+    config(env);
+    const deadline = start + 20000;
+    await cleanupIncremental(env);
+    await cleanupStep(env);
+    // Resume durable work before a read-only probe; uploads must remain autonomous.
+    const state = await detectionFence(env);
+    const resumed =
+      state?.upload ??
+      (state?.job &&
+      state.state &&
+      !["complete", "failed"].includes(state.state)
+        ? state.job
+        : null);
+    const probe = resumed
+      ? { result: "resumed" as const, files: 0, pages: 0 }
+      : await probeSources(env, deadline);
+    let failure: string | undefined;
+    if (probe.result !== "unchanged") {
+      const id = resumed ?? (await startScan(env));
+      for (let n = 0; n < 8 && Date.now() < deadline; n++) {
+        const result = await advance(env, id);
+        if (result.state === "failed")
+          failure = logCode(result.error?.code ?? "");
+        if (["complete", "failed"].includes(result.state)) break;
+      }
+    }
+    if (Date.now() < deadline) await advanceSemantic(env);
+    log({
+      event: "reconciliation",
+      ...probe,
+      result: failure ? "failed" : probe.result,
+      elapsedMs: Date.now() - start,
+      ...(failure ? { errorCode: failure } : {}),
+    });
+  } catch (error) {
+    const code = logCode(error instanceof CloudError ? error.code : "");
+    log({
+      event: "reconciliation",
+      result: "failed",
+      elapsedMs: Date.now() - start,
+      errorCode: code,
+    });
+    // The platform may log uncaught exceptions: never rethrow raw binding errors.
+    throw new CloudError(code, 503);
   }
-  if (Date.now() < deadline) await advanceSemantic(env);
 }
 export async function detectionStatus(env: Env) {
   if (!ingestionEnabled(env)) return null;
@@ -1437,15 +1569,17 @@ export async function detectionStatus(env: Env) {
     job_error: string | null;
     target_revision: string | null;
   }>();
-  const stale = !row?.observed || Date.now() - row.observed > 180000;
   return {
     state:
-      row?.error || row?.state === "failed" || stale
+      row?.error || row?.state === "failed"
         ? "stale"
         : row?.state && row.state !== "complete"
           ? "updating"
-          : "observed",
+          : row?.observed
+            ? "idle"
+            : "unknown",
     lastObservedAt: row?.observed ?? null,
+    monitoring: "not_persisted",
     activeJobId:
       row?.state && !["complete", "failed"].includes(row.state)
         ? row.job
@@ -1634,6 +1768,12 @@ async function cleanupStep(env: Env) {
     return;
   }
   // Keep exact-input cache entries while a target can still reference them.
+  const cache = await env.DB.prepare(
+    "SELECT 1 FROM embedding_cache c WHERE c.created<? AND NOT EXISTS(SELECT 1 FROM ingestion_vectors v WHERE v.cache_key=c.key) AND NOT EXISTS(SELECT 1 FROM vector_work w WHERE w.input_key=c.key) AND NOT EXISTS(SELECT 1 FROM ingestion_jobs WHERE state NOT IN ('complete','failed','uploading','preparing')) LIMIT 1",
+  )
+    .bind(cutoff)
+    .first();
+  if (!cache) return;
   await env.DB.prepare(
     "DELETE FROM embedding_cache WHERE key IN (SELECT c.key FROM embedding_cache c WHERE c.created<? AND NOT EXISTS(SELECT 1 FROM ingestion_vectors v WHERE v.cache_key=c.key) AND NOT EXISTS(SELECT 1 FROM vector_work w WHERE w.input_key=c.key) LIMIT 16) AND NOT EXISTS(SELECT 1 FROM ingestion_jobs WHERE state NOT IN ('complete','failed','uploading','preparing'))",
   )

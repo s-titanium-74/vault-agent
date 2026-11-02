@@ -2,6 +2,13 @@
 
 Status: Ready for Review
 
+Follow-up #43: [idle reconciliation](idle-reconciliation.md) adds detection
+states `idle`/`unknown` and `monitoring: "not_persisted"`. `lastObservedAt` is the
+last durable reconciliation, not a Cron heartbeat. Autonomous idle status,
+HTTP aggregate `indexFreshness`, and MCP retrieval freshness report `unknown`
+with `INDEX_FRESHNESS_UNKNOWN`, rather than inferring freshness or failure from
+the observation's age. Updating and recorded failure remain explicit.
+
 Accepted follow-up #48: [incremental publication](incremental-publication.md)
 specifies additive semantic progress/status, `SEMANTIC_UPDATING` warnings,
 partial semantic results, and lexical-versus-semantic CLI completion reporting.

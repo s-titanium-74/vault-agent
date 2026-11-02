@@ -66,6 +66,11 @@ Operator rollout, hosted semantic catch-up and actual Cron/CLI timing remain sep
 
 ## Validation And Delivery Gates
 
+Idle reconciliation #43 follows [read-only detection](specifications/idle-reconciliation.md):
+completed unchanged checks write no D1 rows; bounded-scan fallback, resumable
+work and retention are separate costs. Runtime logs provide transient detection
+outcomes; status must not infer Cron health from persisted observation age.
+
 R2 + D1 + Workers AI + Vectorize is the selected initial composition subject
 to the bounded compatibility tasks recorded in the validation specification.
 Official documentation establishes feasibility, not application compatibility.
