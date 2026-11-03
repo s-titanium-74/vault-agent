@@ -53,7 +53,7 @@ deletion regression verifies that incremental publication removes the active
 D1 chunks and schedules the immutable R2 copy for retirement. The Worker
 scheduled handler preserves that copy during retention, then removes it after
 the test ages the retirement record, preserving the active copy of another note.
-Hosted Vectorize cleanup remains unverified. The R2 condition compares ETag;
+Hosted Vectorize cleanup is covered by the semantic trial below. The R2 condition compares ETag;
 the last generation check cannot turn it into a generation-ID CAS or cancel an
 already-dispatched storage request.
 
@@ -95,3 +95,26 @@ and a new publication revision after deletion after 61 seconds. The deleted
 note was already unavailable to explicit retrieval and search before publication.
 These are observations from one trial. Both trials ended with the temporary
 Worker, D1 database, and R2 bucket absent from the account inventory.
+
+## Hosted semantic deletion and reclamation
+
+An isolated production Worker used a dedicated 1024-dimension cosine Vectorize
+index with a `chunkId` metadata index. Workers AI embedded two synthetic notes
+with explicit consent for the trial. Both notes appeared in meaning-based
+search before deletion. MCP deletion immediately suppressed the target while
+its old vector IDs were still listed by Vectorize and the control note was
+still searchable.
+
+After incremental publication, the trial aged only the target's retirement
+records to cross the 24-hour cutoff. Cron removed the target vectors and cleared
+their retirement records within 328 seconds of the start of the cleanup
+observation. The control's original vector IDs remained listed and its note
+still appeared in meaning-based search. This measured an age-equivalent cleanup
+rather than waiting out the full retention period.
+
+Earlier attempts encountered a Wrangler authentication error, a visibility
+observation window that expired during indexing, and a smoke-driver assumption
+that initial vectors were stored in the incremental vector-work table. The
+successful driver resolved both initial and incremental vector IDs and used a
+longer visibility window. Every attempt ended with the temporary Worker, D1,
+R2, and Vectorize resources confirmed absent from the account inventory.
