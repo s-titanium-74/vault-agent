@@ -87,9 +87,41 @@ export async function updateLocalIndex(
     });
   };
   const remote = config.vault.pcloud ? pcloudSource(config) : null;
+  const unchanged = new Set<string>();
+  const requestedPaths = new Set(options.paths);
   const remoteObserved = remote ? await remote.observe() : null;
   if (remote && remoteObserved) {
+    const published = new Map(
+      store
+        .getDb()
+        .prepare("SELECT path, version FROM pcloud_observations")
+        .all()
+        .map((row) => {
+          const { path, version } = row as { path: string; version: string };
+          return [path, version] as const;
+        }),
+    );
     for (const observed of remoteObserved) {
+      const old = previous.get(observed.path);
+      if (
+        !options.full &&
+        !requestedPaths.has(observed.path) &&
+        priorManifest?.schemaVersion === INDEX_SCHEMA_VERSION &&
+        old &&
+        typeof old.wikilinks_json === "string" &&
+        published.get(observed.path) === observed.version
+      ) {
+        observations.push({
+          path: observed.path,
+          source: {
+            path: observed.path,
+            kind: "note",
+            revision: String(old.content_hash),
+          },
+        });
+        unchanged.add(observed.path);
+        continue;
+      }
       const { entry, bytes } = await remote.readObserved(observed);
       let text: string;
       try {
@@ -192,7 +224,7 @@ export async function updateLocalIndex(
   const prepared: { note: IndexRow; chunks: IndexRow[] }[] = [];
   const reused: IndexRow[] = [];
   const removed: string[] = [];
-  let notesSkipped = 0;
+  let notesSkipped = unchanged.size;
   const ids = new Map(
     previousRows.map((row) => [String(row.note_id), String(row.path)]),
   );
@@ -203,6 +235,7 @@ export async function updateLocalIndex(
       continue;
     }
     if (change.action === "ignore" || change.action === "preserve") continue;
+    if (unchanged.has(change.path)) continue;
     const read = reads.get(change.path)!;
     const id = String(
       previous.get(change.path)?.note_id ?? noteIdFromPath(change.path),
@@ -398,6 +431,22 @@ export async function updateLocalIndex(
       if (vectors.length) {
         store.initVecTable(dimension!);
         store.storePreparedEmbeddings(vectors);
+      }
+      if (remoteObserved) {
+        const db = store.getDb();
+        const forget = db.prepare(
+          "DELETE FROM pcloud_observations WHERE path=?",
+        );
+        const save = db.prepare(
+          "INSERT INTO pcloud_observations VALUES (?,?) ON CONFLICT(path) DO UPDATE SET version=excluded.version WHERE version<>excluded.version",
+        );
+        for (const path of removed) forget.run(path);
+        for (const observed of remoteObserved) {
+          const read = reads.get(observed.path);
+          if (!read) continue;
+          if (target.get(observed.path)?.content_hash === read.entry.revision)
+            save.run(observed.path, observed.version);
+        }
       }
       store.setManifest(manifest);
       store.commit();

@@ -14,6 +14,11 @@ CREATE TABLE IF NOT EXISTS manifest (
   config_fingerprint TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pcloud_observations (
+  path TEXT PRIMARY KEY,
+  version TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS notes (
   note_id TEXT PRIMARY KEY,
   path TEXT NOT NULL,

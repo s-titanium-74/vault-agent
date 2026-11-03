@@ -160,8 +160,12 @@ it("uses existing SQLite updates for additions, edits, link changes, rename and 
       "Synthetic orchard",
     );
     const before = store.getAllNotes();
+    api.requests.length = 0;
     expect((await indexVault(config)).notesIndexed).toBe(0);
     expect(store.getAllNotes()).toEqual(before);
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(0);
     api.set("Notes/Pear.md", "# Pear\n\nSynthetic fruit.\n");
     await indexVault(config);
     expect(JSON.parse(String(store.getNote(id)!.links_json))).toEqual(
@@ -169,8 +173,12 @@ it("uses existing SQLite updates for additions, edits, link changes, rename and 
         expect.objectContaining({ resolved: noteIdFromPath("Notes/Pear.md") }),
       ]),
     );
+    api.requests.length = 0;
     api.set("Notes/Pear.md", "# Pear\n\nSynthetic plant.\n");
     expect((await indexVault(config)).notesIndexed).toBe(1);
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(1);
     api.set("Notes/Plum.md", api.files.get("Notes/Pear.md")!.text);
     api.files.delete("Notes/Pear.md");
     await indexVault(config);
@@ -181,6 +189,7 @@ it("uses existing SQLite updates for additions, edits, link changes, rename and 
     await expect(indexVault(config)).rejects.toBeDefined();
     expect(store.getAllNotes()).toEqual(preserved);
     api.partial = false;
+    api.set("Notes/Apple.md", "# Apple\n\nChanged orchard.\n");
     api.onDownload = () => api.set("Notes/New.md", "# New\n");
     await expect(indexVault(config)).rejects.toMatchObject({
       code: "SOURCE_REVISION_MISMATCH",

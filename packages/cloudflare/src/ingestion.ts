@@ -215,7 +215,6 @@ async function sourceSignature(env: Env, entries: Entry[]) {
           e.etag,
           e.object_version ?? null,
           e.updated,
-          ...(isPCloud(env) ? [e.digest ?? null] : []),
         ]),
     ]),
   );
@@ -840,7 +839,7 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     const entries = await pcloudEntries(env);
     d.filesAccepted = entries.length;
     await save(
-      "pcloud_observing",
+      "planning",
       entries.map((e) =>
         env.DB.prepare(
           "INSERT OR REPLACE INTO ingestion_entries(job,path,kind,size,etag,updated,object_version) VALUES(?,?,?,?,?,?,?)",
@@ -859,26 +858,11 @@ async function step(env: Env, job: Job, token: string, d: Data) {
   }
   if (job.state === "pcloud_observing") {
     if (!isPCloud(env)) throw new CloudError("CONFIGURATION_CHANGED", 409);
-    const entry = await env.DB.prepare(
-      "SELECT * FROM ingestion_entries WHERE job=? AND processed=0 ORDER BY path LIMIT 1",
-    )
-      .bind(job.id)
-      .first<Entry>();
-    if (!entry) {
-      await save("planning", [
-        env.DB.prepare(
-          "UPDATE ingestion_entries SET processed=0 WHERE job=?",
-        ).bind(job.id),
-      ]);
-      return;
-    }
-    const digest = await core.contentRevision(
-      await readPCloudEntry(env, entry),
-    );
-    await save("pcloud_observing", [
+    // A checkpoint from the previous scanner may already contain body digests.
+    await save("planning", [
       env.DB.prepare(
-        "UPDATE ingestion_entries SET processed=1,digest=? WHERE job=? AND path=?",
-      ).bind(digest, job.id, entry.path),
+        "UPDATE ingestion_entries SET processed=0,digest=NULL WHERE job=?",
+      ).bind(job.id),
     ]);
     return;
   }
@@ -1116,6 +1100,39 @@ async function step(env: Env, job: Job, token: string, d: Data) {
     }
     if (!config(env).allowed(entry.path))
       throw new CloudError("SOURCE_EXCLUDED", 403);
+    if (isPCloud(env) && !d.force && d.parent) {
+      const previous = await env.DB.prepare(
+        `SELECT s.digest,n.note_id FROM ingestion_entries e
+         JOIN sources s ON s.revision=? AND s.path=e.path
+         JOIN source_observations o ON o.revision=s.revision AND o.path=s.path
+         JOIN notes n ON n.revision=s.revision AND n.path=s.path
+         WHERE e.job=? AND e.path=? AND json_type(n.data,'$.wikilinks_json')='text' AND ${reusableObservation}`,
+      )
+        .bind(d.parent, job.id, entry.path)
+        .first<{ digest: string; note_id: string }>();
+      if (previous) {
+        d.filesProcessed = (d.filesProcessed ?? 0) + 1;
+        d.notesSkipped = (d.notesSkipped ?? 0) + 1;
+        await save("files", [
+          env.DB.prepare(
+            "INSERT INTO sources SELECT ?,path,kind,size,digest,updated FROM sources WHERE revision=? AND path=?",
+          ).bind(d.revision, d.parent, entry.path),
+          env.DB.prepare(
+            "INSERT INTO source_observations SELECT ?,path,digest,etag,object_version FROM source_observations WHERE revision=? AND path=?",
+          ).bind(d.revision, d.parent, entry.path),
+          env.DB.prepare(
+            "INSERT INTO notes SELECT ?,note_id,path,data FROM notes WHERE revision=? AND path=?",
+          ).bind(d.revision, d.parent, entry.path),
+          env.DB.prepare(
+            "INSERT INTO chunks SELECT ?,chunk_id,note_id,chunk_index,data FROM chunks WHERE revision=? AND note_id=?",
+          ).bind(d.revision, d.parent, previous.note_id),
+          env.DB.prepare(
+            "UPDATE ingestion_entries SET processed=1,digest=? WHERE job=? AND path=?",
+          ).bind(previous.digest, job.id, entry.path),
+        ]);
+        return;
+      }
+    }
     let bytes: Uint8Array;
     if (isPCloud(env)) bytes = await readPCloudEntry(env, entry);
     else {

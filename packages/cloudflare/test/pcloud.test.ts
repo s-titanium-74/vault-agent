@@ -174,7 +174,11 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
       .first();
     api.set("Notes/Apple.md", "# Apple\n\nSynthetic gardens. [[Pear]]\n");
     expect((await request(`/notes/${id}`)).data.index_state).toBe("pending");
+    api.requests.length = 0;
     const update = await run();
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(1);
     expect(update.state).toBe("complete");
     expect(update.updatePath).toBe("incremental");
     await compare();
@@ -183,14 +187,31 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
         .prepare("SELECT data FROM notes WHERE path='Notes/Pear.md'")
         .first(),
     ).toEqual(before);
-    // Simulate a changed body even when provider hash/mtime remain unchanged.
-    const originalProviderHash = api.files.get("Notes/Pear.md")!.hash;
-    api.files.get("Notes/Pear.md")!.text = "# Pear\n\nSynthetic plant.\n";
-    expect(api.files.get("Notes/Pear.md")!.hash).toBe(originalProviderHash);
+    await db
+      .prepare(
+        "INSERT INTO delta_fallbacks SELECT signature FROM ingestion_state WHERE id=1",
+      )
+      .run();
+    await db
+      .prepare("UPDATE ingestion_state SET signature=NULL WHERE id=1")
+      .run();
+    api.requests.length = 0;
     expect(await run()).toMatchObject({
       state: "complete",
-      updatePath: "incremental",
+      updatePath: "rebuild-recovery",
     });
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(0);
+    await compare();
+    // Metadata-only polling intentionally skips a body whose provider marker did not change.
+    const pear = api.files.get("Notes/Pear.md")!;
+    pear.text = "# Pear\n\nSynthetic plant.\n";
+    api.requests.length = 0;
+    expect(await run()).toMatchObject({ state: "complete" });
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(0);
     await compare();
     api.set("Notes/Plum.md", api.files.get("Notes/Pear.md")!.text);
     api.files.delete("Notes/Pear.md");
@@ -251,8 +272,8 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
       .run();
     for (let n = 0; n < 12; n++)
       expect((await request("/__tick")).status).toBe(200);
-    // Idle R2 preflight must not skip pCloud's digest scan or require a bucket.
-    api.files.get("Notes/Plum.md")!.text = "# Pear\n\nSynthetic bloom.\n";
+    // Cron checks pCloud metadata without requiring a bucket.
+    api.set("Notes/Plum.md", "# Pear\n\nSynthetic bloom.\n");
     for (let n = 0; n < 12; n++)
       expect((await request("/__tick")).status).toBe(200);
     expect(

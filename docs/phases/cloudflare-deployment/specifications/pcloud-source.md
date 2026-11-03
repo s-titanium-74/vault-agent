@@ -87,9 +87,14 @@ listing. No application token is forwarded to content download servers.
 Scope budgets are explicit and fail closed rather than publishing a truncated
 vault. Initial limits: 500 admitted notes, 2 MiB per note, bounded metadata
 responses and folder traversal. Large delta fallback follows existing Worker
-rebuild rules. Polling verifies body digests even when provider metadata is unchanged; it
-does not rewrite unchanged notes/chunks. Workers checkpoint one digest read
-per step before planning; provider markers alone never authorize digest reuse.
+rebuild rules. Ordinary reconciliation trusts the complete provider observation (file ID,
+hash, size, timestamp and parent) to detect changes. Only new or changed notes
+need a body download during incremental reconciliation. A changed body with
+identical provider metadata is detected by an explicit revision-checked read
+or full reindex. SHA-256 still identifies the downloaded bytes. SQLite records
+the provider version alongside the index transaction. Existing SQLite indexes
+without those observations download the scoped corpus once to establish them.
+Workers reuse the observations already stored in D1.
 
 ## Evidence
 
@@ -174,5 +179,4 @@ token and delete D1/Vectorize and Worker resources separately.
 
 Worker cron advances up to eight checkpoints per invocation; a large folder can
 require many scheduled invocations per scan. This initial correctness-first
-path rereads admitted originals each scan and does not claim low API cost or
-instant freshness. Local source data and staged derived rows remain private.
+path lists metadata each scan and reads changed originals. Local source data and staged derived rows remain private.
