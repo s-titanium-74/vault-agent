@@ -1,6 +1,6 @@
 # Setup Guide
 
-This guide covers two common ways to run `vault-agent` and expose it to an MCP
+This guide covers common ways to run `vault-agent` and expose it to an MCP
 client.
 
 `vault-agent` handles one vault root per server process. Run separate server
@@ -162,6 +162,44 @@ For MCP clients that only support stdio, use:
 Stdio MCP does not start the server. It uses the configured vault root and an
 existing usable local index, so start `vault-agent serve` once first or run
 `vault-agent index` before relying on stdio.
+
+## pCloud Vault With Local Indexing
+
+Install the CLI using the [local install steps](#1-install). Start with a
+dedicated pCloud folder containing a synthetic Markdown note under `Notes/`.
+Obtain a [pCloud OAuth access token](https://docs.pcloud.com/methods/oauth_2.0/authorize.html)
+and look up the folder's numeric `folderid` using
+[pCloud listfolder](https://docs.pcloud.com/methods/folder/listfolder.html).
+
+Add this section to your user-local `config.toml`:
+
+```toml
+[vault.pcloud]
+region = "eu"
+folder_id = "123456"
+includes = ["Notes"]
+poll_seconds = 300
+```
+
+Use `us` or `eu` to match your pCloud account region. Replace the example ID
+and set `includes` to the Markdown paths you want indexed, relative to that
+folder. The include list limits indexing scope. The OAuth token may have
+broader permissions.
+
+Supply the token through your secret manager or a hidden Bash prompt:
+
+```bash
+read -rs -p 'pCloud access token: ' VAULT_AGENT_PCLOUD_ACCESS_TOKEN
+export VAULT_AGENT_PCLOUD_ACCESS_TOKEN
+vault-agent serve
+```
+
+From another terminal, run `vault-agent status` to check source freshness, then
+`vault-agent search "<term from the sample note>"` and
+`vault-agent get note "<note-id>"` to verify retrieval. The server polls pCloud
+for changes and stores the derived index locally in SQLite. To expose it to an
+agent, follow [Connect An Agent](#5-connect-an-agent). For Workers deployment,
+see [the Cloudflare pCloud setup](cloudflare-setup-guide.md#optional-pcloud-source).
 
 ## Git Repository In Docker
 
