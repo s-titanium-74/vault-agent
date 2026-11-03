@@ -20,7 +20,7 @@ export function pcloudSource(
   return new PCloudSource({
     vaultId: configuredVaultIdentity(config),
     writesEnabled,
-    maxNotes: 1_000_000,
+    maxNotes: 10_000,
     region: p.region,
     folderId: p.folder_id,
     accessToken: p.access_token,

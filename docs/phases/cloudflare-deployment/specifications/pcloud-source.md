@@ -85,9 +85,9 @@ This avoids inheriting connection-level authentication/formatting state. The
 listing. No application token is forwarded to content download servers.
 
 Scope budgets are explicit and fail closed rather than publishing a truncated
-vault. The note-count ceiling is 1,000,000 locally and 500 on Workers.
+vault. The note-count ceiling is 10,000 locally and 500 on Workers.
 A recursive listing remains limited to 10,000 entries and a 4 MiB response,
-so those bounds constrain the usable scope before the local note-count ceiling.
+so folders and metadata size can reduce the usable note count.
 The per-note limit is 2 MiB. Large delta fallback follows existing Worker
 rebuild rules.
 Ordinary reconciliation trusts the complete provider observation (file ID,
