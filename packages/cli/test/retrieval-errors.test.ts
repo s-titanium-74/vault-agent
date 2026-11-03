@@ -1,9 +1,25 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 
 const cli = fileURLToPath(new URL("../dist/main.js", import.meta.url));
+
+let vaultDir: string;
+let configPath: string;
+
+beforeAll(async () => {
+  vaultDir = await mkdtemp(join(tmpdir(), "vault-agent-retrieval-"));
+  configPath = join(vaultDir, "config.toml");
+  await writeFile(configPath, `vault.root = ${JSON.stringify(vaultDir)}\n`);
+});
+
+afterAll(async () => {
+  if (vaultDir) await rm(vaultDir, { recursive: true, force: true });
+});
 
 const note = {
   path: "synthetic.md",
@@ -75,6 +91,8 @@ it.each([
                 process.execPath,
                 [
                   cli,
+                  "--config",
+                  configPath,
                   "--endpoint",
                   `http://127.0.0.1:${address.port}`,
                   "--api-key",
@@ -83,7 +101,14 @@ it.each([
                   ...args,
                   ...(json ? ["--json"] : []),
                 ],
-                { timeout: 4000 },
+                {
+                  timeout: 4000,
+                  env: Object.fromEntries(
+                    Object.entries(process.env).filter(
+                      ([key]) => !key.startsWith("VAULT_AGENT_"),
+                    ),
+                  ),
+                },
                 (error, stdout, stderr) =>
                   resolve({ code: error?.code ?? 0, stdout, stderr }),
               );
