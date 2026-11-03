@@ -10,7 +10,7 @@ import { PublishedSourceCatalog } from "./source-catalog.js";
 import { CloudError } from "./errors.js";
 
 export const isPCloud = (env: Env) => env.SOURCE_PROVIDER === "pcloud";
-export function pcloudSource(env: Env) {
+export function pcloudSource(env: Env, writesEnabled = false) {
   if (
     !isPCloud(env) ||
     !env.PCLOUD_REGION ||
@@ -20,6 +20,7 @@ export function pcloudSource(env: Env) {
     throw new CloudError("CONFIG_INVALID", 503);
   return new PCloudSource({
     vaultId: env.VAULT_ID,
+    writesEnabled,
     region: env.PCLOUD_REGION,
     folderId: env.PCLOUD_FOLDER_ID,
     accessToken: env.PCLOUD_ACCESS_TOKEN,

@@ -71,12 +71,9 @@ export function prepareServerAccessConfig(
 
 export function validateServerAccessConfig(appConfig: Config): void {
   localAccessCredentials(appConfig.server);
-  if (
-    appConfig.write?.enabled &&
-    (!hasRoleKeys(appConfig.server) || appConfig.vault.pcloud)
-  )
+  if (appConfig.write?.enabled && !hasRoleKeys(appConfig.server))
     throw new Error(
-      "CONFIG_INVALID: Local HTTP writes require filesystem and distinct read/admin keys.",
+      "CONFIG_INVALID: Local HTTP writes require distinct read/admin keys.",
     );
   if (hasRoleKeys(appConfig.server) || isLocalhostHost(appConfig.server.host))
     return;

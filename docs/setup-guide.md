@@ -42,8 +42,11 @@ save/delete may be missed and overwritten. There is no force override, trash,
 restore or automatic link repair. Save success and pending index state are
 separate; retry lost responses with the same issued ID/request. Defaults are
 5 MiB/file, 20 files and 20 MiB final bytes per batch, plus 32 MiB raw MCP JSON.
-The index directory must be outside the source vault. pCloud stays read-only;
-this extension's R2/Workers transport is not implemented yet.
+The index directory must be outside a filesystem source vault. For pCloud,
+set `[write] enabled = true` and `mode = "review"` to enable Markdown-only MCP
+writes. Supply `VAULT_AGENT_PCLOUD_ACCESS_TOKEN` through the process environment
+with write access. Use one vault-agent writer and disable other writers
+(including pCloud Sync) for that scope. pCloud allows up to 2 MiB per note.
 
 With writes enabled, chunk reads require a version from compact search/related
 results or a current note read. MCP uses `get_chunk.expected_version`; REST uses
@@ -541,6 +544,6 @@ vault-agent search --mode hybrid --limit 5 --json "retrieval architecture"
 
 ## Optional pCloud source
 
-See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for read-only scope, explicit setup,
+See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for source scope, explicit setup,
 SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
 R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

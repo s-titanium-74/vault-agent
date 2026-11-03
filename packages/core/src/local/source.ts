@@ -11,11 +11,16 @@ export function configuredVaultIdentity(config: Config): string {
       : path.resolve(config.vault.root),
   );
 }
-export function pcloudSource(config: Config): PCloudSource {
+export function pcloudSource(
+  config: Config,
+  writesEnabled = false,
+): PCloudSource {
   const p = config.vault.pcloud;
   if (!p) throw new Error("pCloud source is not configured.");
   return new PCloudSource({
     vaultId: configuredVaultIdentity(config),
+    writesEnabled,
+    maxNotes: 10_000,
     region: p.region,
     folderId: p.folder_id,
     accessToken: p.access_token,

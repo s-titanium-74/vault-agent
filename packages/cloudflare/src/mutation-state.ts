@@ -60,7 +60,8 @@ export async function mutationSuppression(env: Env, store: string) {
         (r) =>
           r.state !== "saved" ||
           r.digest !== r.indexed_digest ||
-          r.object_version !== r.indexed_version,
+          (env.SOURCE_PROVIDER !== "pcloud" &&
+            r.object_version !== r.indexed_version),
       )
       .map((r) => r.path),
   );

@@ -1,3 +1,4 @@
+import { PCLOUD_MAX_NOTE_BYTES } from "./pcloud.js";
 import {
   sourcePolicy,
   canonicalSourcePath,
@@ -103,8 +104,13 @@ export async function prepareMutationBatch(
   );
   if (!parsedSettings.success) throw new MutationError("INVALID_REQUEST");
   const settings = parsedSettings.data;
+  if (context.sourceKind === "pcloud")
+    settings.max_file_bytes = Math.min(
+      settings.max_file_bytes,
+      PCLOUD_MAX_NOTE_BYTES,
+    );
   if (!settings.enabled) throw new MutationError("WRITE_DISABLED");
-  if (context.sourceKind !== "filesystem" && context.sourceKind !== "r2")
+  if (context.sourceKind === "pcloud" && settings.mode !== "review")
     throw new MutationError("SOURCE_WRITE_UNSUPPORTED");
   const parsed = mutationBatchSchema.safeParse(input);
   if (!parsed.success) throw new MutationError("INVALID_REQUEST");

@@ -7,6 +7,8 @@ export class SyntheticPCloud {
   downloadHost = "c1.pcloud.com";
   onDownload?: () => void;
   private serial = 10;
+  private readonly folderIds = new Map([["", 1]]);
+  private readonly emptyFolders = new Set<string>();
   set(path: string, text: string) {
     this.files.set(path, {
       text,
@@ -16,7 +18,18 @@ export class SyntheticPCloud {
   }
   fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
-    const params = new URLSearchParams(String(init?.body ?? ""));
+    const form =
+      url.pathname === "/uploadfile" ? (init?.body as FormData) : undefined;
+    const params = new URLSearchParams();
+    if (form) {
+      form.forEach((value, key) => {
+        if (typeof value === "string") params.append(key, value);
+      });
+    } else {
+      new URLSearchParams(String(init?.body ?? "")).forEach((value, key) =>
+        params.append(key, value),
+      );
+    }
     this.requests.push({ host: url.host, method: url.pathname, params });
     if (init?.signal?.aborted) throw new Error("secret transport error");
     if (this.failure !== null)
@@ -40,12 +53,19 @@ export class SyntheticPCloud {
       });
     if (params.has("nofiles"))
       throw new Error("nofiles is a presence flag and would hide all notes");
-    if (url.pathname !== "/listfolder")
-      throw new Error("Unexpected API mutation");
+    if (url.pathname === "/deletefile") {
+      const entry = [...this.files].find(
+        ([, file]) => file.fileid === Number(params.get("fileid")),
+      );
+      if (!entry) return Response.json({ result: 2009 });
+      this.files.delete(entry[0]);
+      return Response.json({ result: 0 });
+    }
     const folders = [
       "",
-      ...new Set(
-        [...this.files.keys()].flatMap((p) =>
+      ...new Set([
+        ...this.emptyFolders,
+        ...[...this.files.keys()].flatMap((p) =>
           p
             .split("/")
             .slice(0, -1)
@@ -56,9 +76,13 @@ export class SyntheticPCloud {
                 .join("/"),
             ),
         ),
-      ),
-    ].sort();
-    const folderId = (p: string) => (p === "" ? 1 : folders.indexOf(p) + 100);
+      ]),
+    ];
+    const folderId = (p: string) => {
+      if (!this.folderIds.has(p))
+        this.folderIds.set(p, this.folderIds.size + 100);
+      return this.folderIds.get(p)!;
+    };
     const build = (
       prefix: string,
       recursive: boolean,
@@ -96,6 +120,33 @@ export class SyntheticPCloud {
       (p) => folderId(p) === Number(params.get("folderid")),
     );
     if (prefix === undefined) return Response.json({ result: 2002 });
+    if (url.pathname === "/createfolderifnotexists") {
+      const name = params.get("name")!;
+      const child = prefix ? `${prefix}/${name}` : name;
+      if (!folders.includes(child)) folders.push(child);
+      this.emptyFolders.add(child);
+      return Response.json({
+        result: 0,
+        metadata: {
+          name,
+          folderid: folderId(child),
+          parentfolderid: folderId(prefix),
+          isfolder: true,
+        },
+      });
+    }
+    if (url.pathname === "/uploadfile") {
+      const file = form?.get("file");
+      if (!file || typeof file === "string" || !params.has("nopartial"))
+        throw new Error("Invalid upload");
+      this.set(
+        prefix ? `${prefix}/${file.name}` : file.name,
+        await file.text(),
+      );
+      return Response.json({ result: 0 });
+    }
+    if (url.pathname !== "/listfolder")
+      throw new Error("Unexpected API mutation");
     const metadata = build(prefix, params.get("recursive") === "1");
     if (this.partial) delete metadata.contents;
     return new Response(

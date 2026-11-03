@@ -10,7 +10,7 @@ Worker settings mirror the local write settings: `WRITE_ENABLED=false`,
 `WRITE_MAX_BATCH_BYTES=20971520`, `WRITE_MAX_BATCH_OPERATIONS=20`,
 `WRITE_HISTORY_RETENTION_DAYS=7`. Settings are deployment-local; credentials stay
 in the existing read/admin secrets. Reject malformed values, unsupported runtime
-limits and enabled writes on pCloud. Enabling requires ingestion/Cron enabled
+limits and direct mode on pCloud. Enabling requires ingestion/Cron enabled
 and migrations through 0008 so asynchronous indexing/recovery can progress.
 
 Expose the shared `preview_changes`, `apply_changes`, `get_change_status` schemas

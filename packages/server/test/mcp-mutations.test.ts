@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { SyntheticPCloud } from "../../core/test/helpers/pcloud.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -168,6 +169,43 @@ describe("local MCP file changes", () => {
     expect(result.statusCode).toBe(200);
     return String(result.headers["mcp-session-id"]);
   }
+
+  it("updates a pCloud note through the MCP client and publishes it to search", async () => {
+    const api = new SyntheticPCloud();
+    api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard.");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(api.fetch);
+    try {
+      config.index.dir = path.join(directory, "pcloud-index");
+      config.vault.pcloud = {
+        region: "us",
+        folder_id: "1",
+        access_token: "synthetic",
+        includes: ["Notes"],
+        poll_seconds: 60,
+      };
+      await indexVault(config);
+      store.close();
+      store = await IndexStore.open(getIndexPath(config));
+      await connect();
+      const relative = "Notes/Apple.md";
+      const note = await call("get_note", { noteId: noteIdFromPath(relative) });
+      const result = await apply([update(relative, note.version)]);
+      expect(result.results[0]).toMatchObject({ status: "applied" });
+      await runtime!.flush();
+      const status = await call("get_change_status", {
+        operation_id: result.operation_id,
+      });
+      expect(status.results[0]).toMatchObject({ index_state: "fresh" });
+      expect(
+        (await call("get_note", { noteId: noteIdFromPath(relative) })).content,
+      ).toContain("Changedbody");
+    } finally {
+      await runtime?.close();
+      fetchMock.mockRestore();
+    }
+  });
 
   it("keeps mutations absent/default-off and refuses direct calls with no journal", async () => {
     await connect(false);

@@ -22,7 +22,7 @@ export async function maintainMutations(
     pathsInspected: 0,
     failed: false,
   };
-  if (env.SOURCE_PROVIDER === "pcloud" || !env.SOURCE) return result;
+  if (env.SOURCE_PROVIDER !== "pcloud" && !env.SOURCE) return result;
   try {
     if (
       !(await env.DB.prepare(
@@ -49,7 +49,7 @@ export async function maintainMutations(
     } catch {
       result.failed = true;
     }
-    if (now() < deadline)
+    if (env.SOURCE_PROVIDER !== "pcloud" && now() < deadline)
       result.pathsInspected = await refreshMutationPaths(env, 8, deadline, now);
   } catch {
     // No raw provider responses, paths, IDs, or credentials enter platform logs.

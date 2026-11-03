@@ -21,6 +21,8 @@ export interface PCloudOptions {
   includes: readonly string[];
   excludes?: readonly string[];
   timeoutMs?: number;
+  maxNotes?: number;
+  writesEnabled?: boolean;
   fetch?: typeof fetch;
 }
 export interface PCloudObservation {
@@ -32,7 +34,7 @@ export interface PCloudObservation {
   version: string;
 }
 type Metadata = Record<string, unknown>;
-const MAX_BYTES = 2 * 1024 * 1024;
+export const PCLOUD_MAX_NOTE_BYTES = 2 * 1024 * 1024;
 const unavailable = () => new SourceError("SOURCE_UNAVAILABLE");
 function record(value: unknown): Metadata {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -86,7 +88,14 @@ async function bounded(response: Response, max: number): Promise<Uint8Array> {
   return bytes;
 }
 
-/** Scoped read-only Web API adapter shared by Node and Workers. */
+/** The expected note state failed before a provider file write was sent. */
+export class PCloudWriteConflict extends SourceError {
+  constructor() {
+    super("SOURCE_REVISION_MISMATCH");
+  }
+}
+
+/** Scoped Web API adapter shared by Node and Workers. */
 export class PCloudSource implements VaultSource {
   readonly vaultId: string;
   private readonly allowed: (path: string) => boolean;
@@ -98,6 +107,8 @@ export class PCloudSource implements VaultSource {
       !["us", "eu"].includes(options.region) ||
       !/^\d+$/.test(options.folderId) ||
       !options.accessToken ||
+      (options.maxNotes !== undefined &&
+        (!Number.isSafeInteger(options.maxNotes) || options.maxNotes < 1)) ||
       (options.timeoutMs !== undefined &&
         (!Number.isSafeInteger(options.timeoutMs) ||
           options.timeoutMs < 1 ||
@@ -128,24 +139,41 @@ export class PCloudSource implements VaultSource {
     }
   }
   private async call(
-    method: "listfolder" | "getfilelink",
+    method:
+      | "listfolder"
+      | "getfilelink"
+      | "uploadfile"
+      | "deletefile"
+      | "createfolderifnotexists",
     params: Record<string, string>,
     signal: AbortSignal,
+    upload?: { name: string; bytes: Uint8Array },
   ) {
+    const fields = new URLSearchParams({
+      ...params,
+      logout: "1",
+      filtermeta: "0",
+      filterfilemeta: "0",
+      filterfoldermeta: "0",
+      timeformat: "rfc2822",
+      access_token: this.options.accessToken,
+    });
+    let body: URLSearchParams | FormData = fields;
+    if (upload) {
+      const form = new FormData();
+      fields.forEach((value, key) => form.append(key, value));
+      form.append(
+        "file",
+        new Blob([Uint8Array.from(upload.bytes)]),
+        upload.name,
+      );
+      body = form;
+    }
     const response = await this.fetcher(`${this.api}/${method}`, {
       method: "POST",
       redirect: "manual",
       signal,
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        ...params,
-        logout: "1",
-        filtermeta: "0",
-        filterfilemeta: "0",
-        filterfoldermeta: "0",
-        timeformat: "rfc2822",
-        access_token: this.options.accessToken,
-      }),
+      body,
     });
     if (response.status === 429) throw new SourceError("SOURCE_RATE_LIMITED");
     if (response.status === 401 || response.status === 403)
@@ -192,7 +220,8 @@ export class PCloudSource implements VaultSource {
       !Number.isFinite(Date.parse(String(m.modified)))
     )
       throw unavailable();
-    if (Number(m.size) > MAX_BYTES) throw new SourceError("SOURCE_TOO_LARGE");
+    if (Number(m.size) > PCLOUD_MAX_NOTE_BYTES)
+      throw new SourceError("SOURCE_TOO_LARGE");
     return {
       path,
       kind: "note",
@@ -209,6 +238,7 @@ export class PCloudSource implements VaultSource {
   }
   private check(path: string) {
     canonicalSourcePath(path);
+    if (path.length > 512) throw new SourceError("INVALID_PATH");
     if (
       !this.allowed(path) ||
       guidanceKind(path) ||
@@ -261,7 +291,8 @@ export class PCloudSource implements VaultSource {
             if (seen.has(fileId)) throw unavailable();
             seen.add(fileId);
             items.push(this.observation(child, path, folderId));
-            if (items.length > 500) throw new SourceError("SOURCE_TOO_LARGE");
+            if (items.length > (this.options.maxNotes ?? 500))
+              throw new SourceError("SOURCE_TOO_LARGE");
           }
         }
       };
@@ -271,7 +302,11 @@ export class PCloudSource implements VaultSource {
       );
     });
   }
-  private async resolve(path: string, signal: AbortSignal) {
+  private async locate(
+    path: string,
+    signal: AbortSignal,
+    createParents = false,
+  ) {
     this.check(path);
     const segments = path.split("/");
     if (segments.length > 64) throw new SourceError("SOURCE_EXCLUDED");
@@ -282,13 +317,37 @@ export class PCloudSource implements VaultSource {
         { folderid: folderId },
         signal,
       );
+      if (data.truncated || data.has_more) throw unavailable();
       const folder = this.folder(data.metadata, folderId);
       const matches = (folder.contents as unknown[])
         .map(record)
         .filter((c) => c.name === segments[i]);
       if (matches.length > 1) throw unavailable();
       const child = matches[0];
-      if (!child) return null;
+      if (!child) {
+        if (i === segments.length - 1) return { folderId, entry: null };
+        if (!createParents) return null;
+        const created = record(
+          (
+            await this.call(
+              "createfolderifnotexists",
+              { folderid: folderId, name: segments[i]! },
+              signal,
+            )
+          ).metadata,
+        );
+        if (
+          created.isfolder !== true ||
+          created.name !== segments[i] ||
+          id(created.parentfolderid) !== folderId ||
+          created.encrypted ||
+          created.isencrypted ||
+          created.isdeleted
+        )
+          throw unavailable();
+        folderId = id(created.folderid);
+        continue;
+      }
       if (
         id(child.parentfolderid) !== folderId ||
         child.encrypted ||
@@ -297,12 +356,66 @@ export class PCloudSource implements VaultSource {
       )
         throw new SourceError("SOURCE_EXCLUDED");
       if (i === segments.length - 1)
-        return this.observation(child, path, folderId);
+        return { folderId, entry: this.observation(child, path, folderId) };
       if (child.isfolder !== true) return null;
       folderId = id(child.folderid);
     }
     return null;
   }
+  private async resolve(path: string, signal: AbortSignal) {
+    return (await this.locate(path, signal))?.entry ?? null;
+  }
+
+  /** Requires exclusive write ownership of the configured folder scope. */
+  async writeNote(
+    path: string,
+    expectedRevision: string | null,
+    bytes: Uint8Array | null,
+    signal?: AbortSignal,
+  ): Promise<SourceEntry | null> {
+    if (!this.options.writesEnabled) throw unavailable();
+    if (bytes && bytes.length > PCLOUD_MAX_NOTE_BYTES)
+      throw new SourceError("SOURCE_TOO_LARGE");
+    if (bytes) {
+      try {
+        if (
+          new TextDecoder("utf-8", { fatal: true }).decode(bytes).includes("\0")
+        )
+          throw new Error();
+      } catch {
+        throw new SourceError("SOURCE_NOT_UTF8");
+      }
+    }
+    const desired = bytes ? await contentRevision(bytes) : null;
+    return this.operation(signal, async (signal) => {
+      const target = await this.locate(
+        path,
+        signal,
+        expectedRevision === null && bytes !== null,
+      );
+      if (!target) throw new PCloudWriteConflict();
+      const current = target.entry
+        ? (await this.readObserved(target.entry, signal)).entry.revision
+        : null;
+      if (current !== expectedRevision) throw new PCloudWriteConflict();
+      if (bytes) {
+        await this.call(
+          "uploadfile",
+          { folderid: target.folderId, nopartial: "1" },
+          signal,
+          { name: path.split("/").at(-1)!, bytes },
+        );
+      } else if (target.entry) {
+        const [fileid] = JSON.parse(target.entry.version) as [string];
+        await this.call("deletefile", { fileid }, signal);
+      }
+      const after = await this.stat(path, signal);
+      if ((after?.revision ?? null) !== desired)
+        throw new SourceError("SOURCE_REVISION_MISMATCH");
+      return after;
+    });
+  }
+
   async readObserved(entry: PCloudObservation, signal?: AbortSignal) {
     return this.operation(signal, async (signal) => {
       const before = await this.resolve(entry.path, signal);
@@ -334,7 +447,7 @@ export class PCloudSource implements VaultSource {
         throw unavailable();
       const bytes = await bounded(
         await this.fetcher(url, { signal, redirect: "manual" }),
-        Math.min(MAX_BYTES, entry.size),
+        Math.min(PCLOUD_MAX_NOTE_BYTES, entry.size),
       );
       const after = await this.resolve(entry.path, signal);
       if (bytes.length !== entry.size || after?.version !== entry.version)
@@ -357,9 +470,21 @@ export class PCloudSource implements VaultSource {
       };
     });
   }
-  async stat(path: string, signal?: AbortSignal): Promise<SourceEntry | null> {
+  async readCurrent(
+    path: string,
+    maxBytes = PCLOUD_MAX_NOTE_BYTES,
+    signal?: AbortSignal,
+  ) {
     const observed = await this.operation(signal, (s) => this.resolve(path, s));
-    return observed ? (await this.readObserved(observed, signal)).entry : null;
+    if (!observed) return null;
+    if (observed.size > maxBytes) throw new SourceError("SOURCE_TOO_LARGE");
+    return this.readObserved(observed, signal);
+  }
+  async stat(path: string, signal?: AbortSignal): Promise<SourceEntry | null> {
+    return (
+      (await this.readCurrent(path, PCLOUD_MAX_NOTE_BYTES, signal))?.entry ??
+      null
+    );
   }
   async readBytes(path: string, options: SourceReadOptions) {
     if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 0)

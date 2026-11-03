@@ -58,7 +58,7 @@ describe("opt-in write configuration", () => {
     vi.stubEnv("VAULT_AGENT_WRITE_MAX_BATCH_BYTES", "5abc");
     expect(() => new ConfigManager(file).load()).toThrow();
   });
-  it("rejects unknown TOML safety fields and pCloud enablement", () => {
+  it("rejects unknown TOML safety fields and direct pCloud writes", () => {
     fs.appendFileSync(file, "[write]\nforce = true\n");
     expect(() => new ConfigManager(file).load()).toThrow();
     expect(
@@ -73,7 +73,7 @@ describe("opt-in write configuration", () => {
             includes: ["."],
           },
         },
-        write: { ...DEFAULT_CONFIG.write, enabled: true },
+        write: { ...DEFAULT_CONFIG.write, enabled: true, mode: "direct" },
       }).success,
     ).toBe(false);
   });

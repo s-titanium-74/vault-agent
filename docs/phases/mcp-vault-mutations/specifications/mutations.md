@@ -330,7 +330,8 @@ not undo a successful source save; they remain visible and retryable.
 `get_note` on filesystem/R2 resolves the current allowed source and returns its
 version, indexed version if known, and freshness. A newly created note must be
 addressable before index publication. This targeted read extension supersedes
-indexed-only body retrieval for these sources; it does not change pCloud.
+indexed-only body retrieval for these sources. pCloud write mode uses a
+[separate source contract](../../cloudflare-deployment/specifications/pcloud-source.md#mcp-writes-67).
 Do not make the current note version look identical to the indexed chunk version.
 
 Attach indexed content version to search/chunk references as needed. Before

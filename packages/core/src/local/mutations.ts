@@ -1,3 +1,4 @@
+import { PCloudWriteConflict } from "../portable/pcloud.js";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -6,12 +7,13 @@ import type { Config } from "../config.js";
 import { IndexError } from "../errors.js";
 import { DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT } from "../schemas.js";
 import { IndexStore, getIndexPath } from "../index-store.js";
-import { configuredVaultIdentity } from "./source.js";
+import { configuredVaultIdentity, pcloudSource } from "./source.js";
 import { updateLocalIndex } from "./index-updates.js";
 import { noteIdFromPath, isValidNoteId } from "../identifiers.js";
 import { parseMarkdown } from "../markdown-shared.js";
 import { chunkFromRows } from "../retrieval-shared.js";
 import { indexedChunkVersion } from "../result-shared.js";
+import { contentRevision } from "../portable/identifiers.js";
 import { sourcePolicy } from "../portable/source-policy.js";
 import {
   prepareMutationBatch,
@@ -49,6 +51,7 @@ interface RecoveryIntent {
   desired?: FileFingerprint;
   indexHash?: string;
   prior?: MutationPathState;
+  remoteDigest?: string | null;
 }
 export interface LocalMutationOptions {
   settings?: Partial<MutationSettings>;
@@ -62,7 +65,8 @@ export interface LocalMutationOptions {
 
 export class LocalMutationService {
   private readonly journal: MutationJournal;
-  private readonly source: MutationFilesystem;
+  private readonly source!: MutationFilesystem;
+  private readonly remote?: ReturnType<typeof pcloudSource>;
   private readonly settings: MutationSettings;
   private readonly config: Config;
   private readonly context: MutationPreparationContext;
@@ -82,19 +86,22 @@ export class LocalMutationService {
       this.settings = parsed.data;
       if (!this.settings.enabled)
         throw new LocalMutationError("WRITE_DISABLED");
-      if (config.vault.pcloud)
-        throw new LocalMutationError("SOURCE_WRITE_UNSUPPORTED");
+      if (config.vault.pcloud && this.settings.mode !== "review")
+        throw new LocalMutationError("PREVIEW_REQUIRED");
       this.config = structuredClone(config);
       this.now = options.now ?? Date.now;
-      this.source = new MutationFilesystem(
-        config.vault.root,
-        configuredVaultIdentity(config),
-      );
+      if (config.vault.pcloud) this.remote = pcloudSource(this.config, true);
+      else
+        this.source = new MutationFilesystem(
+          config.vault.root,
+          configuredVaultIdentity(config),
+        );
       this.indexPath = getIndexPath(config);
       const directory = path.resolve(path.dirname(this.indexPath));
       if (
-        directory === this.source.root ||
-        directory.startsWith(this.source.root + path.sep)
+        !this.remote &&
+        (directory === this.source.root ||
+          directory.startsWith(this.source.root + path.sep))
       )
         throw new LocalMutationError("SOURCE_EXCLUDED");
       fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -104,11 +111,12 @@ export class LocalMutationService {
       )
         throw new LocalMutationError("SOURCE_EXCLUDED");
       fs.chmodSync(directory, 0o700);
-      this.allowed = sourcePolicy(["."], config.vault.exclude);
+      const includes = config.vault.pcloud?.includes ?? ["."];
+      this.allowed = sourcePolicy(includes, config.vault.exclude);
       const identity = digestBytes(
         JSON.stringify([
           configuredVaultIdentity(config),
-          this.source.identityKey(),
+          this.remote ? "pcloud" : this.source.identityKey(),
         ]),
       );
       this.policy = digestBytes(
@@ -124,13 +132,14 @@ export class LocalMutationService {
         identity,
         this.now,
       );
-      this.source.syncDirectory(directory);
+      if (!this.remote) this.source.syncDirectory(directory);
       this.context = {
         vaultId: configuredVaultIdentity(config),
         sourceId: identity,
-        sourceKind: "filesystem",
+        sourceKind: this.remote ? "pcloud" : "filesystem",
         policyRevision: this.policy,
-        includes: ["."],
+        includes,
+        ...(this.remote ? { attachmentAllowed: () => false } : {}),
         excludes: config.vault.exclude,
         settings: this.settings,
         // Conservative collision rejection across filesystem spelling conventions.
@@ -139,6 +148,20 @@ export class LocalMutationService {
           this.assertAllowed(relative);
           if (this.journal.path(relative)?.blocked)
             throw new MutationError("SOURCE_UNAVAILABLE");
+          if (this.remote) {
+            const current = await this.remote.readCurrent(
+              relative,
+              read.maxBytes,
+            );
+            return current
+              ? {
+                  version: current.entry.revision,
+                  ...(read.readContent
+                    ? { content: this.decode(current.bytes) }
+                    : {}),
+                }
+              : null;
+          }
           if (!read.readContent) {
             const stat = this.source.stat(relative);
             return stat ? { version: stat.version } : null;
@@ -192,7 +215,7 @@ export class LocalMutationService {
     const preview = options.preview ?? true;
     if (!preview && this.settings.mode !== "direct")
       throw new LocalMutationError("PREVIEW_REQUIRED");
-    this.recover();
+    await this.recover();
     const prepared = await prepareMutationBatch(this.context, input, {
       preview,
     });
@@ -230,11 +253,11 @@ export class LocalMutationService {
       (!operation.preview || !this.journal.checkBinding(id, previewBinding))
     )
       throw new LocalMutationError("PREVIEW_REQUIRED");
-    this.recover();
+    await this.recover();
     if (this.journal.operation(id)?.state !== "issued")
       return this.getStatus(id);
     const prepared = await prepareMutationBatch(this.context, input);
-    return this.journal.exclusive(() => {
+    return this.journal.exclusive(async () => {
       this.journal.verify(id, this.now());
       if (this.journal.operation(id)?.state !== "issued")
         return this.getStatus(id);
@@ -263,9 +286,154 @@ export class LocalMutationService {
         })
         .immediate();
       for (const item of prepared.items)
-        if (item.status === "prepared") this.applyItem(id, item);
+        if (item.status === "prepared") {
+          if (this.remote) await this.applyRemoteItem(id, item);
+          else this.applyItem(id, item);
+        }
       this.journal.finish(id);
       return this.getStatus(id);
+    });
+  }
+  private async applyRemoteItem(id: string, item: PreparedMutationItem) {
+    const result: MutationResult = {
+      index: item.index,
+      path: item.path,
+      type: item.type,
+      note_id: item.note_id,
+      expected_version: item.expected_version,
+      status: "pending",
+      warnings:
+        item.action === "delete" && item.note_id
+          ? this.backlinkWarnings(item.note_id)
+          : [],
+    };
+    const prior = this.journal.path(item.path);
+    if (prior?.blocked) {
+      result.status = "failed";
+      result.code = "SOURCE_UNAVAILABLE";
+      this.journal.putItem(id, result, "failed");
+      return;
+    }
+    const intent: RecoveryIntent = {
+      action: item.action!,
+      expected: item.expected_version,
+      prior,
+      remoteDigest: item.bytes ? await contentRevision(item.bytes) : null,
+    };
+    this.journal.db
+      .transaction(() => {
+        this.journal.putItem(id, result, "committing", intent);
+        this.journal.putPath({
+          path: item.path,
+          note_id: item.note_id ?? null,
+          version: null,
+          index_hash: null,
+          blocked: 1,
+          deleted: 0,
+          pending: 1,
+        });
+      })
+      .immediate();
+    try {
+      await this.remote!.writeNote(
+        item.path,
+        intent.expected ?? null,
+        item.bytes ?? null,
+      );
+      this.completeRemoteItem(id, result, intent);
+    } catch (error) {
+      if (error instanceof PCloudWriteConflict) {
+        this.failRemoteItem(id, result, intent, error.code);
+        return;
+      }
+      result.status = "reconciling";
+      result.code = "OUTCOME_UNKNOWN";
+      this.journal.putItem(id, result, "reconciling", intent);
+    }
+  }
+  private completeRemoteItem(
+    id: string,
+    result: MutationResult,
+    intent: RecoveryIntent,
+  ) {
+    this.journal.db
+      .transaction(() => {
+        result.status = "applied";
+        delete result.code;
+        result.version = intent.remoteDigest ?? undefined;
+        result.index_state = "pending";
+        this.journal.putPath({
+          path: result.path,
+          note_id: result.note_id ?? null,
+          version: intent.remoteDigest ?? null,
+          index_hash: intent.remoteDigest ?? null,
+          blocked: 0,
+          deleted: Number(intent.action === "delete"),
+          pending: 1,
+        });
+        this.journal.putItem(id, result, "applied");
+      })
+      .immediate();
+  }
+  private failRemoteItem(
+    id: string,
+    result: MutationResult,
+    intent: RecoveryIntent,
+    code: string,
+  ) {
+    this.journal.db
+      .transaction(() => {
+        result.status = "failed";
+        result.code = code;
+        if (intent.prior) this.journal.putPath(intent.prior);
+        else
+          this.journal.db
+            .prepare("DELETE FROM mutation_paths WHERE path=?")
+            .run(result.path);
+        this.journal.putItem(id, result, "failed");
+      })
+      .immediate();
+  }
+  private recoverRemote() {
+    return this.journal.exclusive(async () => {
+      const rows = this.journal.db
+        .prepare(
+          "SELECT * FROM mutation_items WHERE state NOT IN ('applied','failed') ORDER BY operation_id,item_index LIMIT 100",
+        )
+        .all() as ItemRow[];
+      for (const row of rows) {
+        const result = JSON.parse(row.result) as MutationResult;
+        const intent = row.recovery
+          ? (JSON.parse(row.recovery) as RecoveryIntent)
+          : null;
+        if (!intent) {
+          result.status = "failed";
+          result.code = "OPERATION_INTERRUPTED";
+          this.journal.putItem(row.operation_id, result, "failed");
+        } else {
+          if (row.updated + 60000 > this.now()) continue;
+          let entry;
+          try {
+            entry = await this.remote!.stat(row.path);
+          } catch {
+            continue;
+          }
+          if ((entry?.revision ?? null) === intent.remoteDigest) {
+            this.completeRemoteItem(row.operation_id, result, intent);
+          } else {
+            this.failRemoteItem(
+              row.operation_id,
+              result,
+              intent,
+              (entry?.revision ?? null) === (intent.expected ?? null)
+                ? "OPERATION_INTERRUPTED"
+                : "SOURCE_REVISION_MISMATCH",
+            );
+          }
+        }
+        this.journal.finish(row.operation_id);
+      }
+      return rows.length;
     });
   }
   private applyItem(id: string, item: PreparedMutationItem) {
@@ -443,6 +611,7 @@ export class LocalMutationService {
     this.source.syncDirectory(path.dirname(stage));
   }
   recover() {
+    if (this.remote) return this.recoverRemote();
     return this.journal.exclusive(() => {
       const rows = this.journal.db
         .prepare(
@@ -599,16 +768,23 @@ export class LocalMutationService {
       ? relative
       : null;
   }
+  private async readNoteBytes(relative: string) {
+    if (!this.remote) return this.source.read(relative, 20 * 1024 * 1024);
+    const current = await this.remote.readCurrent(relative);
+    return current
+      ? { version: current.entry.revision, bytes: current.bytes }
+      : null;
+  }
   async getNote(id: string) {
     const store = await IndexStore.open(this.indexPath);
     try {
       const relative = this.resolveNote(id, store);
       if (!relative) return null;
       this.assertAllowed(relative);
-      this.refreshPath(relative);
+      if (!this.remote) this.refreshPath(relative);
       const state = this.journal.path(relative);
       if (state?.blocked || state?.deleted) return null;
-      const snapshot = this.source.read(relative, 20 * 1024 * 1024);
+      const snapshot = await this.readNoteBytes(relative);
       if (!snapshot) return null;
       const indexed = store
         .getDb()
@@ -616,7 +792,8 @@ export class LocalMutationService {
         .get(id) as
         (Record<string, unknown> & { content_hash: string }) | undefined;
       const fresh =
-        indexed?.content_hash === this.indexHash(snapshot.bytes) &&
+        indexed?.content_hash ===
+          (this.remote ? snapshot.version : this.indexHash(snapshot.bytes)) &&
         (!state || state.version === snapshot.version);
       const content = this.decode(snapshot.bytes);
       const md = parseMarkdown(content.replace(/^\uFEFF/, ""));
@@ -651,6 +828,7 @@ export class LocalMutationService {
     }
   }
   getAttachment(relative: string, allowLarge = false) {
+    if (this.remote) throw new LocalMutationError("SOURCE_EXCLUDED");
     this.assertAllowed(relative);
     this.refreshPath(relative);
     if (/\.(md|markdown)$/i.test(relative))
@@ -681,6 +859,7 @@ export class LocalMutationService {
       : null;
   }
   getFileVersion(relative: string) {
+    if (this.remote) throw new LocalMutationError("SOURCE_EXCLUDED");
     this.assertAllowed(relative);
     this.refreshPath(relative);
     const state = this.journal.path(relative);
@@ -698,10 +877,10 @@ export class LocalMutationService {
       const relative = this.resolveNote(id, store);
       if (!relative) return null;
       this.assertAllowed(relative);
-      this.refreshPath(relative);
+      if (!this.remote) this.refreshPath(relative);
       const state = this.journal.path(relative);
       if (state?.blocked || state?.deleted) return null;
-      const current = this.source.read(relative, 20 * 1024 * 1024);
+      const current = await this.readNoteBytes(relative);
       if (!current) return null;
       const indexed = store
         .getDb()
@@ -709,7 +888,8 @@ export class LocalMutationService {
         .get(id) as
         (Record<string, unknown> & { content_hash: string }) | undefined;
       if (
-        indexed?.content_hash !== this.indexHash(current.bytes) ||
+        indexed?.content_hash !==
+          (this.remote ? current.version : this.indexHash(current.bytes)) ||
         (state && state.version !== current.version)
       )
         throw new LocalMutationError("REVISION_CHANGED");
@@ -733,8 +913,8 @@ export class LocalMutationService {
     }
   }
   async flushIndex() {
-    this.recover();
-    this.refreshSources();
+    await this.recover();
+    if (!this.remote) this.refreshSources();
     const pending = this.journal.db
       .prepare(
         "SELECT * FROM mutation_paths WHERE pending=1 AND blocked=0 ORDER BY sequence LIMIT 100",
@@ -762,11 +942,13 @@ export class LocalMutationService {
               .getDb()
               .prepare("SELECT content_hash FROM notes WHERE path=?")
               .get(item.path) as { content_hash: string } | undefined;
-            const snapshot = this.source.stat(item.path);
+            const snapshot = this.remote
+              ? undefined
+              : this.source.stat(item.path);
             if (
               item.deleted
-                ? snapshot !== null || row !== undefined
-                : snapshot?.version !== item.version ||
+                ? (!this.remote && snapshot !== null) || row !== undefined
+                : (!this.remote && snapshot?.version !== item.version) ||
                   (item.note_id && row?.content_hash !== item.index_hash)
             )
               continue;
@@ -853,6 +1035,7 @@ export class LocalMutationService {
       .immediate();
   }
   refreshSources(limit = 100) {
+    if (this.remote) return 0;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100)
       throw new LocalMutationError("INVALID_REQUEST");
     const rows = this.journal.db

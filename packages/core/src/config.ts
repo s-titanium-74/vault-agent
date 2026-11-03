@@ -127,13 +127,14 @@ export const configSchema = z
   .superRefine((config, ctx) => {
     if (
       config.write.enabled &&
-      (config.vault.pcloud || config.write.max_batch_bytes > 20 * 1024 * 1024)
+      (config.write.max_batch_bytes > 20 * 1024 * 1024 ||
+        (config.vault.pcloud && config.write.mode !== "review"))
     )
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["write"],
         message:
-          "Local writes require filesystem and a batch limit at most 20 MiB.",
+          "Local writes require a batch limit at most 20 MiB. pCloud writes require review mode.",
       });
     if (config.write.enabled && !config.vault.pcloud) {
       const root = path.resolve(config.vault.root);
@@ -645,11 +646,12 @@ export class ConfigManager {
       config.write = mutationSettingsSchema.parse(config.write);
       if (
         config.write.enabled &&
-        (config.vault.pcloud || config.write.max_batch_bytes > 20 * 1024 * 1024)
+        (config.write.max_batch_bytes > 20 * 1024 * 1024 ||
+          (config.vault.pcloud && config.write.mode !== "review"))
       )
         throw new ConfigError(
           "CONFIG_INVALID",
-          "Local writes require filesystem and a batch limit at most 20 MiB.",
+          "Local writes require a batch limit at most 20 MiB. pCloud writes require review mode.",
         );
     }
 

@@ -11,7 +11,7 @@ import { getIndexPath, IndexStore } from "../src/index-store.js";
 import { getConfiguredNote } from "../src/local/retrieval.js";
 import { noteIdFromPath } from "../src/identifiers.js";
 
-const make = () => {
+const make = (writesEnabled = false) => {
   const api = new SyntheticPCloud();
   api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard. [[Pear]]\n");
   const source = new PCloudSource({
@@ -21,6 +21,7 @@ const make = () => {
     accessToken: "synthetic-secret",
     includes: ["Notes"],
     fetch: api.fetch,
+    writesEnabled,
   });
   return { api, source };
 };
@@ -159,8 +160,12 @@ it("uses existing SQLite updates for additions, edits, link changes, rename and 
       "Synthetic orchard",
     );
     const before = store.getAllNotes();
+    api.requests.length = 0;
     expect((await indexVault(config)).notesIndexed).toBe(0);
     expect(store.getAllNotes()).toEqual(before);
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(0);
     api.set("Notes/Pear.md", "# Pear\n\nSynthetic fruit.\n");
     await indexVault(config);
     expect(JSON.parse(String(store.getNote(id)!.links_json))).toEqual(
@@ -168,8 +173,12 @@ it("uses existing SQLite updates for additions, edits, link changes, rename and 
         expect.objectContaining({ resolved: noteIdFromPath("Notes/Pear.md") }),
       ]),
     );
+    api.requests.length = 0;
     api.set("Notes/Pear.md", "# Pear\n\nSynthetic plant.\n");
     expect((await indexVault(config)).notesIndexed).toBe(1);
+    expect(
+      api.requests.filter((r) => r.host === api.downloadHost),
+    ).toHaveLength(1);
     api.set("Notes/Plum.md", api.files.get("Notes/Pear.md")!.text);
     api.files.delete("Notes/Pear.md");
     await indexVault(config);
@@ -180,6 +189,7 @@ it("uses existing SQLite updates for additions, edits, link changes, rename and 
     await expect(indexVault(config)).rejects.toBeDefined();
     expect(store.getAllNotes()).toEqual(preserved);
     api.partial = false;
+    api.set("Notes/Apple.md", "# Apple\n\nChanged orchard.\n");
     api.onDownload = () => api.set("Notes/New.md", "# New\n");
     await expect(indexVault(config)).rejects.toMatchObject({
       code: "SOURCE_REVISION_MISMATCH",
@@ -320,3 +330,92 @@ it("excludes guidance, hidden files and configured exclusions from observations"
     "Notes/Good.md",
   ]);
 });
+
+it("verifies scoped writes against exact revisions and reads back the result", async () => {
+  const { source, api } = make(true);
+  const original = (await source.stat("Notes/Apple.md"))!;
+  const bytes = new TextEncoder().encode("# Updated");
+  await expect(
+    source.writeNote("Notes/Apple.md", null, bytes),
+  ).rejects.toMatchObject({
+    code: "SOURCE_REVISION_MISMATCH",
+  });
+  await expect(
+    source.writeNote("Outside.md", null, bytes),
+  ).rejects.toMatchObject({
+    code: "SOURCE_EXCLUDED",
+  });
+  expect(api.requests.some((request) => request.method === "/uploadfile")).toBe(
+    false,
+  );
+  const updated = (await source.writeNote(
+    original.path,
+    original.revision,
+    bytes,
+  ))!;
+  expect(updated.revision).toBe(await contentRevision(bytes));
+  await expect(
+    source.writeNote(original.path, original.revision, null),
+  ).rejects.toMatchObject({
+    code: "SOURCE_REVISION_MISMATCH",
+  });
+  const created = (await source.writeNote("Notes/New/Pear.md", null, bytes))!;
+  await expect(
+    source.writeNote(created.path, created.revision, null),
+  ).resolves.toBeNull();
+  expect(api.files.has(created.path)).toBe(false);
+});
+
+it("requires explicit opt-in for pCloud writes", async () => {
+  const { source, api } = make();
+  await expect(
+    source.writeNote("Notes/Apple.md", null, null),
+  ).rejects.toMatchObject({
+    code: "SOURCE_UNAVAILABLE",
+  });
+  expect(api.requests).toHaveLength(0);
+});
+
+it("indexes more than 1,000 pCloud notes locally and downloads only the changed body", async () => {
+  const { api, source } = make();
+  const note = (i: number) => `Notes/Group-${Math.floor(i / 100)}/Note-${i}.md`;
+  api.files.clear();
+  for (let i = 0; i < 1001; i++)
+    api.set(note(i), `# Synthetic note ${i}\n\nSynthetic orchard.`);
+  await expect(source.observe()).rejects.toMatchObject({
+    code: "SOURCE_TOO_LARGE",
+  });
+  vi.stubGlobal("fetch", api.fetch);
+  const dir = await mkdtemp(path.join(os.tmpdir(), "pcloud-large-local-"));
+  const config = structuredClone(DEFAULT_CONFIG);
+  config.index.dir = dir;
+  config.vault.pcloud = {
+    region: "eu",
+    folder_id: "1",
+    access_token: "synthetic-secret",
+    includes: ["Notes"],
+    poll_seconds: 300,
+  };
+  const downloads = () =>
+    api.requests.filter((request) => request.host === api.downloadHost).length;
+  let store: IndexStore | undefined;
+  try {
+    api.requests.length = 0;
+    expect((await indexVault(config)).notesIndexed).toBe(1001);
+    expect(downloads()).toBe(1001);
+    api.requests.length = 0;
+    expect((await indexVault(config)).notesIndexed).toBe(0);
+    expect(downloads()).toBe(0);
+    api.set(note(999), "# Revised\n\nSynthetic garden.");
+    expect((await indexVault(config)).notesIndexed).toBe(1);
+    expect(downloads()).toBe(1);
+    store = await IndexStore.open(getIndexPath(config));
+    expect(
+      (await getConfiguredNote(store, noteIdFromPath(note(999)), config))
+        ?.content,
+    ).toContain("Synthetic garden");
+  } finally {
+    store?.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 30_000);
