@@ -5,8 +5,7 @@ Status: Portable preparation, [filesystem service](filesystem.md) and
 [upload baselines](upload-baseline.md) and an
 [internal mutation service](r2-service.md) with
 [runtime maintenance](r2-maintenance.md) and default-disabled
-[Workers MCP integration](workers-mcp.md). The R2 guarantee decision and hosted
-verification remain open.
+[Workers MCP integration](workers-mcp.md). The hosted lexical smoke test passed.
 Tool/field names below are an implementation
 proposal; the agreed behavior is in [requirements](../requirements.md).
 
@@ -95,8 +94,7 @@ journal recovery, source reads, access suppression and pending index work under
 the accepted final-check race boundary. Local transport enablement is documented
 in [local MCP](local-mcp.md). The [Workers MCP adapter](workers-mcp.md) exposes
 mutation tools only when explicitly enabled for admin callers; committed
-configurations keep them disabled. R2 guarantee confirmation and hosted
-verification remain open.
+configurations keep them disabled. The hosted lexical smoke test passed.
 External edits after the final filesystem check may be missed; this
 accepted limitation is explicit in setup and tools. These layers do not close #54.
 

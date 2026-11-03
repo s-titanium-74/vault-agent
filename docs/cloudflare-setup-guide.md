@@ -135,7 +135,7 @@ enabling them, review the [R2 guarantee boundary and remaining acceptance
 work](phases/mcp-vault-mutations/specifications/workers-mcp.md). The final
 generation check plus ETag condition cannot detect a same-byte generation
 change after that check or cancel an already-dispatched storage request.
-Hosted acceptance and the explicit guarantee decision are still open.
+The R2 boundary has been accepted for #54. The hosted lexical smoke test passed.
 
 For a dedicated synthetic trial, stop old writers, apply all D1 migrations
 through `0008_r2_mutation_maintenance.sql`, then deploy compatible code. In the

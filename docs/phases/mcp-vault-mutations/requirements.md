@@ -1,14 +1,14 @@
 # MCP Vault Mutations Requirements
 
 Status: Local filesystem steps 1–3 and default-disabled Workers integration
-implemented. R2 guarantee confirmation and hosted acceptance remain open.
+implemented. The R2 conditional-write boundary is accepted. The hosted lexical smoke test passed.
 
 Implementation tracking (#54): step 1 adds portable request validation,
 preparation and bounded previews. Step 2 adds an internal filesystem service;
 see [the accepted race boundary](specifications/filesystem.md). Step 3 exposes
 opt-in [local MCP tools](specifications/local-mcp.md), disabled by default.
 Workers integration is documented in [step 4d](specifications/workers-mcp.md).
-Hosted verification and the R2 guarantee decision remain open.
+The hosted lexical smoke test passed.
 
 Step 4 is staged: [4a, durable upload baselines](specifications/upload-baseline.md),
 then [4b, internal R2 mutation recovery/revocation](specifications/r2-service.md),

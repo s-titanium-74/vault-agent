@@ -407,6 +407,16 @@ it("supports note creation, sequential patching and deletion with bounded incomi
     "NOTE_NOT_FOUND",
   );
   const target = (await note("Notes/Original.md")).data;
+  const indexedObject = async (path: string) =>
+    (await db
+      .prepare(
+        "SELECT coalesce(o.object_key, ? || '/' || s.revision || '/' || s.path) AS key FROM sources s LEFT JOIN source_objects o ON o.revision=s.revision AND o.path=s.path WHERE s.revision=(SELECT revision FROM deployment WHERE id=1) AND s.path=?",
+      )
+      .bind(VAULT_ID, path)
+      .first<{ key: string }>())!.key;
+  const retiredKey = await indexedObject("Notes/Original.md");
+  const retainedKey = await indexedObject("Notes/Referrer.md");
+  expect(await bucket.head(retiredKey)).not.toBeNull();
   const deletion = await mutate([
     {
       type: "delete_file",
@@ -432,6 +442,33 @@ it("supports note creation, sequential patching and deletion with bounded incomi
     (await tool("search", { query: "orchard", mode: "lexical" }, read)).data
       .results,
   ).toEqual([]);
+  await publish();
+  const noteId = await core.noteIdFromPath("Notes/Original.md");
+  expect(
+    await db
+      .prepare(
+        "SELECT chunk_id FROM chunks WHERE revision=(SELECT revision FROM deployment WHERE id=1) AND note_id=?",
+      )
+      .bind(noteId)
+      .first(),
+  ).toBeNull();
+  expect(
+    await db
+      .prepare("SELECT object_key FROM retired_objects WHERE object_key=?")
+      .bind(retiredKey)
+      .first(),
+  ).not.toBeNull();
+  const worker = await mf.getWorker();
+  await worker.scheduled({ cron: "* * * * *" });
+  expect(await bucket.head(retiredKey)).not.toBeNull();
+  // Age the actual retirement record to exercise Cron without a wall-clock wait.
+  await db
+    .prepare("UPDATE retired_objects SET retired=0 WHERE object_key=?")
+    .bind(retiredKey)
+    .run();
+  await worker.scheduled({ cron: "* * * * *" });
+  expect(await bucket.head(retiredKey)).toBeNull();
+  expect(await bucket.head(retainedKey)).not.toBeNull();
 });
 it("supports explicit attachment replacement/download/deletion and reports detected references", async () => {
   const current = (
