@@ -1,7 +1,7 @@
 # Workers MCP mutations (#54, step 4d)
 
 Status: Implemented and locally verified; disabled by default. The R2 ETag/generation
-boundary was accepted for #54 on 2026-11-03. Hosted acceptance remains open.
+boundary was accepted for #54 on 2026-11-03. The hosted lexical smoke test passed.
 
 ## Configuration and transport
 
@@ -53,7 +53,7 @@ deletion regression verifies that incremental publication removes the active
 D1 chunks and schedules the immutable R2 copy for retirement. The Worker
 scheduled handler preserves that copy during retention, then removes it after
 the test ages the retirement record, preserving the active copy of another note.
-Hosted validation and hosted Vectorize cleanup evidence remain open. The R2 condition compares ETag;
+Hosted Vectorize cleanup remains unverified. The R2 condition compares ETag;
 the last generation check cannot turn it into a generation-ID CAS or cancel an
 already-dispatched storage request.
 
@@ -61,3 +61,21 @@ The production Worker entrypoint passes 16 synthetic HTTP/MCP cases, including
 an actual SDK client, within the 179-case Cloudflare workerd suite. The local
 suite passes 910 cases after extracting shared mutation tool definitions.
 These results cover local workerd only.
+
+## Hosted lexical smoke test (2026-11-03)
+
+Deployed the production Worker entrypoint with a disposable D1 database and
+private R2 bucket, applied all migrations, and enabled writes for this trial.
+The real HTTP MCP endpoint listed 21 tools for admin and 18 for read, and
+rejected read-key preview. A synthetic note passed create, immediate explicit
+retrieval, replacement, and deletion. Replaying each apply returned the same
+result. Advancing the index through its HTTP API made the note searchable,
+and deletion suppressed the old search result before the next publication.
+Both publications completed.
+
+The first attempt stopped at bundling because the generated Wrangler config
+used an absolute TypeScript config path. The retry used relative paths. Both
+attempts ended with the Worker, D1 database, and R2 bucket confirmed absent
+from the Cloudflare account inventory. The trial did not exercise hosted Cron
+timing or Vectorize. The scheduled R2 reclamation evidence above is from
+workerd with an aged retirement record.

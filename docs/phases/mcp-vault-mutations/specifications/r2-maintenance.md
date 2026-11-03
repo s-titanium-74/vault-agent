@@ -56,7 +56,7 @@ observation release stale-result suppression only for the matching saved version
 
 The following [Workers MCP integration](workers-mcp.md) supplies auth/settings
 and bounded deletion reference warnings. The R2 boundary is accepted and local
-lexical cleanup is verified. Isolated hosted validation remains open. Apply
+lexical cleanup is verified. The hosted lexical smoke test passed. Apply
 migration 0008 after 0007 with old
 writers quiescent; do not serve this data with readers that ignore suppression.
 

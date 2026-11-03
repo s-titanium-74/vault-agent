@@ -63,8 +63,7 @@ generation check and ETag or absence condition remain required. No force
 override is available.
 
 The subsequent [Workers MCP integration](workers-mcp.md) supplies the opt-in
-transport and records local cleanup evidence. Isolated hosted verification
-remains open.
+transport and records local cleanup evidence. The hosted lexical smoke test passed.
 
 Apply migration `0007_r2_mutations.sql` after the baseline migration while old
 readers/writers are quiescent. Once internal mutations exist, an old Worker
