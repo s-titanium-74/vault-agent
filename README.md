@@ -146,7 +146,7 @@ Most commands support `--json` for machine-readable output.
 
 ## Documentation
 
-- [Dogfooding guide](docs/dogfooding-guide.md): Docker (GHCR), pCloud notes,
+- [Dogfooding guide](docs/dogfooding-guide.md): Docker, pCloud Sync notes,
   CloudFront and Perplexity remote MCP.
 - [Setup guide](docs/setup-guide.md): detailed local, Docker, MCP, sync,
   configuration, and embedding setup.

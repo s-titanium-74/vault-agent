@@ -2,14 +2,14 @@
 # Copy .env.example to .env and set the values marked "required for compose".
 services:
   vault-agent:
-    image: ${VAULT_AGENT_IMAGE:-ghcr.io/s-titanium-74/vault-agent:latest}
+    image: ${VAULT_AGENT_IMAGE:-namka0703/vault-agent:0.2.0}
     restart: unless-stopped
     command: ["serve", "--host", "0.0.0.0"]
     ports:
       - "127.0.0.1:${VAULT_AGENT_PUBLISH_PORT:-8787}:8787"
     volumes:
-      # Writable bind mount of the notes directory (for example an rclone/pCloud Drive mount).
-      - ${VAULT_AGENT_HOST_VAULT_DIR:?set VAULT_AGENT_HOST_VAULT_DIR}:/data/vault
+      # Read-only by default. Set VAULT_AGENT_VAULT_MOUNT_MODE=rw to allow writes.
+      - ${VAULT_AGENT_HOST_VAULT_DIR:?set VAULT_AGENT_HOST_VAULT_DIR}:/data/vault:${VAULT_AGENT_VAULT_MOUNT_MODE:-ro}
       - vault-agent-index:/data/index
     environment:
       VAULT_AGENT_VAULT_ROOT: /data/vault
@@ -17,7 +17,7 @@ services:
       VAULT_AGENT_MCP_ENABLED: "true"
       VAULT_AGENT_READ_KEY: ${VAULT_AGENT_READ_KEY:?set VAULT_AGENT_READ_KEY}
       VAULT_AGENT_ADMIN_KEY: ${VAULT_AGENT_ADMIN_KEY:?set VAULT_AGENT_ADMIN_KEY}
-      VAULT_AGENT_WRITE_ENABLED: ${VAULT_AGENT_WRITE_ENABLED:-true}
+      VAULT_AGENT_WRITE_ENABLED: ${VAULT_AGENT_WRITE_ENABLED:-false}
       VAULT_AGENT_WRITE_MODE: ${VAULT_AGENT_WRITE_MODE:-review}
       # Network filesystems often miss inotify events; poll-friendly debounce.
       VAULT_AGENT_WATCH_DEBOUNCE_MS: ${VAULT_AGENT_WATCH_DEBOUNCE_MS:-1000}

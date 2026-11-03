@@ -6,96 +6,77 @@ Amazon CloudFront.
 
 ```
 Perplexity ──HTTPS──> CloudFront ──HTTPS──> Cloudflare Tunnel ──> vault-agent (Docker Desktop, Windows PC)
-                                                                     └─ /data/vault = pCloud Drive (P:/Notes)
+                                                                     └─ /data/vault = pCloud Sync folder (read-only)
 ```
 
-What the server already provides: Streamable HTTP MCP at `/mcp`,
-`Authorization: Bearer` keys with separate read and admin roles, and opt-in
-note writes (`preview_changes` / `apply_changes`). Writes require the admin key;
-the read key cannot see or call the write tools. The server refuses non-localhost
-binds without keys and never allows anonymous writes.
+Current scope (decided): **read-only** dogfooding. Search and note retrieval
+only; the notes mount is `:ro` and write tools are disabled. Writing back to
+pCloud via its API is out of scope (tracked separately). Switching on local
+writes later is a documented setting change (section 6).
+
+What the server provides: Streamable HTTP MCP at `/mcp` and
+`Authorization: Bearer` keys. The server refuses non-localhost binds without
+keys and never allows anonymous writes.
 
 ## 1. Pull the image
 
-```bash
-docker pull ghcr.io/s-titanium-74/vault-agent:latest   # published on v* tags
-# or: docker pull namka0703/vault-agent:0.2.0
+```powershell
+docker pull namka0703/vault-agent:0.2.0
 ```
 
-Tags `vX.Y.Z` trigger `.github/workflows/docker-publish.yml`, which pushes
-multi-arch (amd64/arm64) images to GHCR. Make the package public (or
-`docker login ghcr.io`) before pulling.
+(Docker Hub; use the tag you want.) `docker compose up` pulls it automatically.
 
-## 2. Make pCloud notes available (Windows PC, Docker Desktop)
+## 2. Notes access: pCloud Sync folder
 
-`vault-agent` needs a real directory inside the container. On a Windows PC the
-pragmatic default is the **pCloud Drive** letter (for example `P:\Notes`)
-bind-mounted into the container. Options, in order of preference:
+Use **pCloud Sync** to sync your notes pCloud folder to a normal local folder
+(for example `C:\Users\you\pCloud Sync\Notes`), and bind-mount that folder
+read-only. A real local folder is shareable with Docker Desktop, unlike the
+pCloud Drive virtual drive, which often cannot be bind-mounted.
 
-| Option                                                            | Writes         | Trade-offs                                                                                                     |
-| ----------------------------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------- |
-| **pCloud Drive** bind mount (`P:\Notes`) — default                | Yes            | Simple, but the drive is a virtual filesystem; Docker Desktop may not be able to share it (see below).         |
-| **pCloud Sync** (a real local folder synced with a pCloud folder) | Yes            | Always bind-mountable and fast; conflicts possible if edited elsewhere while syncing. Fallback if Drive fails. |
-| rclone mount on WSL2/Linux                                        | Yes            | More setup; works on headless Linux hosts.                                                                     |
-| Built-in pCloud source (Cloudflare deployment)                    | No (read-only) | Not used here.                                                                                                 |
+Caveats (not verified on a real Windows host from this repo's CI):
 
-Windows caveats (not verified on a real Windows host from this repo's CI):
+- Docker Desktop (WSL2) must be allowed to access the folder (Settings →
+  Resources → File sharing, if not under your user profile).
+- Keep pCloud Sync running so the folder stays current; changes made by sync
+  are not seen as file events across the Windows mount, so after large changes
+  run `docker compose restart vault-agent` to re-scan.
+- Pending sync conflict copies (`... (conflicted)`) are ordinary files and will
+  be indexed; clean them up if unwanted.
+- Use forward slashes or quote the path in `.env`. Paths with spaces are fine
+  in `.env`.
+- The index is stored in a Docker volume, not in the notes folder.
 
-- Docker Desktop (WSL2 backend) shares local drives lazily; virtual drives such
-  as pCloud Drive are often **not** shareable, and a bind mount may appear empty
-  or fail. Test with the command below; if the folder is empty, use pCloud Sync
-  instead.
-- pCloud Drive must be running and the drive letter mounted before the container
-  starts; start the container after login (or `restart: unless-stopped` will
-  retry once Docker Desktop is up).
-- Use forward slashes or quote the path in `.env`: `P:/Notes`.
-- File-change events (inotify) do not cross Windows bind mounts, so the server
-  watcher can miss edits made on the PC. Run `docker compose restart vault-agent`
-  (or `docker compose run --rm vault-agent reindex` with the stack stopped) if
-  search looks stale.
-- Windows file permissions are mapped by Docker; the container user `node`
-  needs write access. If writes fail, check the drive is not read-only.
-- Antivirus/Drive caching add latency; the index lives in a Docker volume (not on
-  pCloud), which keeps search fast.
-- Conflicts: if the same note is edited in Obsidian on another device, the
-  server rejects a detected version conflict, but pCloud propagation delay can
-  hide an in-flight edit. Prefer `VAULT_AGENT_WRITE_MODE=review`.
-- The index directory must stay outside the vault (compose does this).
-
-Quick check that the container can see the notes (PowerShell):
+Check the container can see the notes (PowerShell):
 
 ```powershell
-docker run --rm -v "P:/Notes:/data/vault" alpine sh -c "ls /data/vault | head"
+docker run --rm -v "C:/Users/you/pCloud Sync/Notes:/data/vault:ro" alpine sh -c "ls /data/vault | head"
 ```
 
 ## 3. Run vault-agent (PowerShell)
-
-Install Docker Desktop first, then:
 
 ```powershell
 git clone https://github.com/s-titanium-74/vault-agent.git
 cd vault-agent
 Copy-Item .env.example .env
-# Generate two distinct keys and paste them into .env
+# Generate two different keys (run twice) for VAULT_AGENT_READ_KEY and
+# VAULT_AGENT_ADMIN_KEY in .env. The server requires both; only the read key
+# goes to Perplexity.
 -join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
--join ((1..32) | ForEach-Object { '{0:x2}' -f (Get-Random -Max 256) })
-notepad .env   # set VAULT_AGENT_HOST_VAULT_DIR=P:/Notes, READ_KEY, ADMIN_KEY
+notepad .env   # set VAULT_AGENT_HOST_VAULT_DIR and both keys
 docker compose up -d
 $k = "<your read key>"
 curl.exe -s -H "Authorization: Bearer $k" http://127.0.0.1:8787/status
 ```
 
-(`Get-Random` is fine for personal keys; `openssl rand -hex 32` is better if
-available.) The port is published on `127.0.0.1` only; the public path goes
-through the tunnel. Clients that must read _and_ update notes need the
-**admin** key (write tools are hidden from the read key). Keep `.env` out of
-git. Make sure Docker Desktop starts at login and the PC does not sleep.
+The port is published on `127.0.0.1` only; the public path goes through the
+tunnel. Keep `.env` out of git. Make sure Docker Desktop starts at login and the
+PC does not sleep.
 
 ## 4. Public HTTPS origin (decision: Cloudflare Tunnel, default)
 
 CloudFront must reach the origin from AWS, so a home PC needs a public HTTPS
-hostname. Pragmatic default is a Cloudflare Tunnel (outbound-only, no router
-ports; requires a domain on Cloudflare, free plan is fine):
+hostname. The chosen approach is a Cloudflare Tunnel (outbound-only, no router
+ports) using your Cloudflare-managed domain:
 
 1. In Cloudflare Zero Trust, create a tunnel and a public hostname such as
    `origin.example.com` → service `http://vault-agent:8787`.
@@ -146,8 +127,7 @@ In Perplexity, open Settings → Connectors → add a custom/remote MCP connecto
 
 - URL: `https://dXXXX.cloudfront.net/mcp`
 - Transport: Streamable HTTP
-- Authentication: API key / bearer token — use the admin key to read and
-  update notes (read key for read-only). Perplexity availability and the exact
+- Authentication: API key / bearer token — use the read key. Perplexity availability and the exact
   UI differ by plan and platform; if it offers only OAuth or no-auth, this
   server cannot be used from it yet (OAuth is not implemented).
 
@@ -157,7 +137,21 @@ Other clients with header support use
 
 ## Operations notes
 
-- Rotate keys with `VAULT_AGENT_PREVIOUS_READ_KEY` / `VAULT_AGENT_PREVIOUS_ADMIN_KEY`.
+- Rotate keys with `VAULT_AGENT_PREVIOUS_READ_KEY`.
 - Cloud-hosted LLM clients receive whatever tools return; narrow with `search`
   and fetch only needed notes with `get`.
-- Store the admin key only in the client's secret field; it grants file changes.
+
+## 6. Enabling writes later (optional)
+
+Local file changes (not pCloud API writes) can be enabled by editing `.env`:
+
+```
+VAULT_AGENT_VAULT_MOUNT_MODE=rw
+VAULT_AGENT_WRITE_ENABLED=true
+VAULT_AGENT_WRITE_MODE=review
+```
+
+then `docker compose up -d`. The write tools are visible only to clients using
+the existing admin key; keep the Perplexity connector on the read key unless it needs to
+update notes. pCloud Sync then uploads changes; concurrent edits on another
+device can create conflict copies, so keep `review` mode.
