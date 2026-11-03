@@ -7,8 +7,24 @@ import {
   exitCodeFromStatus,
   fetchWithTimeout,
   formatError,
+  getHttpError,
   headersWithAuth,
 } from "../http.js";
+
+async function reportRetrievalError(
+  response: Response,
+  json: boolean | undefined,
+): Promise<void> {
+  const data = await response.json().catch(() => undefined);
+  if (json) {
+    console.log(
+      JSON.stringify({ error: getHttpError(response.status, data) }, null, 2),
+    );
+  } else {
+    console.error(formatError(response, data));
+  }
+  process.exitCode = exitCodeFromStatus(response.status);
+}
 
 export function registerRetrievalCommands(
   program: Command,
@@ -21,7 +37,8 @@ export function registerRetrievalCommands(
     .description("Retrieve a note by ID")
     .option("--allow-large", "Allow retrieval of large notes")
     .option("--json", "Output as JSON")
-    .action(async (noteId, opts) => {
+    .action(async (noteId, opts, command: Command) => {
+      const { json } = command.optsWithGlobals<{ json?: boolean }>();
       const config = loadConfig(context.resolveConfigPath());
       const endpoint = context.resolveEndpoint(config);
       const apiKey = context.resolveApiKey(config);
@@ -38,13 +55,13 @@ export function registerRetrievalCommands(
           DEFAULT_TIMEOUT_MS,
         );
 
-        const data = await response.json();
-
         if (response.status >= 400) {
-          process.exit(exitCodeFromStatus(response.status));
+          await reportRetrievalError(response, json);
+          return;
         }
 
-        if (opts.json) {
+        const data = await response.json();
+        if (json) {
           console.log(JSON.stringify(data, null, 2));
         } else {
           const result = data.data ?? data;
@@ -73,7 +90,8 @@ export function registerRetrievalCommands(
       "Pin a search or note version (required when server writes are enabled)",
     )
     .option("--json", "Output as JSON")
-    .action(async (noteId, chunkIndex, opts) => {
+    .action(async (noteId, chunkIndex, opts, command: Command) => {
+      const { json } = command.optsWithGlobals<{ json?: boolean }>();
       const config = loadConfig(context.resolveConfigPath());
       const endpoint = context.resolveEndpoint(config);
       const apiKey = context.resolveApiKey(config);
@@ -102,13 +120,13 @@ export function registerRetrievalCommands(
           DEFAULT_TIMEOUT_MS,
         );
 
-        const data = await response.json();
-
         if (response.status >= 400) {
-          process.exit(exitCodeFromStatus(response.status));
+          await reportRetrievalError(response, json);
+          return;
         }
 
-        if (opts.json) {
+        const data = await response.json();
+        if (json) {
           console.log(JSON.stringify(data, null, 2));
         } else {
           const result = data.data ?? data;

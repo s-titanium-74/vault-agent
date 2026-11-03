@@ -19,9 +19,9 @@
     "lint": "eslint packages/*/src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run --exclude packages/cli/test/mcp-stdio.test.ts --exclude packages/cli/test/serve-mcp-flags.test.ts --exclude packages/core/test/portable-package.test.ts",
-    "test:dist": "vitest run packages/cli/test/mcp-stdio.test.ts packages/cli/test/serve-mcp-flags.test.ts packages/core/test/portable-package.test.ts",
-    "test:watch": "vitest --exclude packages/cli/test/mcp-stdio.test.ts --exclude packages/cli/test/serve-mcp-flags.test.ts --exclude packages/core/test/portable-package.test.ts",
+    "test": "vitest run --exclude packages/cli/test/mcp-stdio.test.ts --exclude packages/cli/test/serve-mcp-flags.test.ts --exclude packages/cli/test/retrieval-errors.test.ts --exclude packages/core/test/portable-package.test.ts",
+    "test:dist": "vitest run packages/cli/test/retrieval-errors.test.ts packages/cli/test/mcp-stdio.test.ts packages/cli/test/serve-mcp-flags.test.ts packages/core/test/portable-package.test.ts",
+    "test:watch": "vitest --exclude packages/cli/test/mcp-stdio.test.ts --exclude packages/cli/test/serve-mcp-flags.test.ts --exclude packages/cli/test/retrieval-errors.test.ts --exclude packages/core/test/portable-package.test.ts",
     "dev:server": "tsx packages/server/src/main.ts",
     "build:cloudflare": "npm run build --prefix packages/cloudflare -- --config ../../wrangler.json",
     "deploy:cloudflare": "npm run deploy --prefix packages/cloudflare -- --config ../../wrangler.json"
