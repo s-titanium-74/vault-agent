@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFront in front of a vault-agent MCP origin (no caching, Authorization forwarded).
+Parameters:
+  OriginDomainName:
+    Type: String
+    Description: Public HTTPS hostname of the origin (for example a Cloudflare Tunnel hostname), without scheme.
+  OriginReadTimeout:
+    Type: Number
+    Default: 60
+    MinValue: 1
+    MaxValue: 180
+    Description: Seconds. Values above 60 require an AWS quota increase.
+  CustomDomain:
+    Type: String
+    Default: ""
+    Description: Optional alias. Requires CertificateArn (us-east-1).
+  CertificateArn:
+    Type: String
+    Default: ""
+Conditions:
+  HasAlias: !Not [!Equals [!Ref CustomDomain, ""]]
+Resources:
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        Comment: vault-agent MCP
+        Aliases: !If [HasAlias, [!Ref CustomDomain], !Ref "AWS::NoValue"]
+        ViewerCertificate: !If
+          - HasAlias
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        Origins:
+          - Id: vault-agent
+            DomainName: !Ref OriginDomainName
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              OriginReadTimeout: !Ref OriginReadTimeout
+              OriginKeepaliveTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: vault-agent
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          Compress: false
+          # Managed: CachingDisabled
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          # Managed: AllViewerExceptHostHeader (forwards Authorization and Mcp-Session-Id)
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+Outputs:
+  DistributionDomain:
+    Value: !GetAtt Distribution.DomainName

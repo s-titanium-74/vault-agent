@@ -1,0 +1,38 @@
+# Remote MCP deployment. See docs/dogfooding-guide.md.
+# Copy .env.example to .env and set the values marked "required for compose".
+services:
+  vault-agent:
+    image: ${VAULT_AGENT_IMAGE:-ghcr.io/s-titanium-74/vault-agent:latest}
+    restart: unless-stopped
+    command: ["serve", "--host", "0.0.0.0"]
+    ports:
+      - "127.0.0.1:${VAULT_AGENT_PUBLISH_PORT:-8787}:8787"
+    volumes:
+      # Writable bind mount of the notes directory (for example an rclone/pCloud Drive mount).
+      - ${VAULT_AGENT_HOST_VAULT_DIR:?set VAULT_AGENT_HOST_VAULT_DIR}:/data/vault
+      - vault-agent-index:/data/index
+    environment:
+      VAULT_AGENT_VAULT_ROOT: /data/vault
+      VAULT_AGENT_INDEX_DIR: /data/index
+      VAULT_AGENT_MCP_ENABLED: "true"
+      VAULT_AGENT_READ_KEY: ${VAULT_AGENT_READ_KEY:?set VAULT_AGENT_READ_KEY}
+      VAULT_AGENT_ADMIN_KEY: ${VAULT_AGENT_ADMIN_KEY:?set VAULT_AGENT_ADMIN_KEY}
+      VAULT_AGENT_WRITE_ENABLED: ${VAULT_AGENT_WRITE_ENABLED:-true}
+      VAULT_AGENT_WRITE_MODE: ${VAULT_AGENT_WRITE_MODE:-review}
+      # Network filesystems often miss inotify events; poll-friendly debounce.
+      VAULT_AGENT_WATCH_DEBOUNCE_MS: ${VAULT_AGENT_WATCH_DEBOUNCE_MS:-1000}
+
+  # Optional public HTTPS origin for CloudFront without opening router ports:
+  #   docker compose --profile tunnel up -d
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - vault-agent
+
+volumes:
+  vault-agent-index:
