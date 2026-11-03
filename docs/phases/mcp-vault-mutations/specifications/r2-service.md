@@ -58,13 +58,13 @@ them immediately before publication; conditional PUT additionally compares the
 captured ETag or absence. The binding's condition is on ETag, not generation ID.
 An authorized same-byte rewrite between the final check and PUT cannot be
 distinguished by that ETag. D1 fencing cannot cancel an already-dispatched R2
-request. These are explicit design gates before public enablement; the accepted
-filesystem race limitation must not silently weaken R2's requirements.
+request. On 2026-11-03 the user accepted this R2 boundary for #54. The final
+generation check and ETag or absence condition remain required. No force
+override is available.
 
-Do not add public write settings/tools in this step. Remaining work includes the
-public R2 consistency boundary, deletion reference warnings and physical-derived
-cleanup evidence, Workers transport/auth wiring and isolated hosted verification.
-This step alone does not close #54 or authorize a production deployment.
+The subsequent [Workers MCP integration](workers-mcp.md) supplies the opt-in
+transport and records local cleanup evidence. Isolated hosted verification
+remains open.
 
 Apply migration `0007_r2_mutations.sql` after the baseline migration while old
 readers/writers are quiescent. Once internal mutations exist, an old Worker

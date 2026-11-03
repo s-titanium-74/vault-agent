@@ -55,9 +55,9 @@ observation release stale-result suppression only for the matching saved version
 ## Remaining gates
 
 The following [Workers MCP integration](workers-mcp.md) supplies auth/settings
-and bounded deletion reference warnings. The R2 ETag/generation guarantee
-boundary, physical-derived cleanup evidence and isolated hosted validation remain
-separate #54 work. Apply migration 0008 after 0007 with old
+and bounded deletion reference warnings. The R2 boundary is accepted and local
+lexical cleanup is verified. Isolated hosted validation remains open. Apply
+migration 0008 after 0007 with old
 writers quiescent; do not serve this data with readers that ignore suppression.
 
 ## Verification

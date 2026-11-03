@@ -1,8 +1,7 @@
 # Workers MCP mutations (#54, step 4d)
 
-Status: Implemented and locally verified; disabled by default. R2's ETag/generation
-boundary is awaiting explicit confirmation. No existing deployment is enabled
-by this implementation work.
+Status: Implemented and locally verified; disabled by default. The R2 ETag/generation
+boundary was accepted for #54 on 2026-11-03. Hosted acceptance remains open.
 
 ## Configuration and transport
 
@@ -61,4 +60,4 @@ already-dispatched storage request.
 The production Worker entrypoint passes 16 synthetic HTTP/MCP cases, including
 an actual SDK client, within the 179-case Cloudflare workerd suite. The local
 suite passes 910 cases after extracting shared mutation tool definitions.
-These results do not close the outstanding guarantee decision or hosted gates.
+These results cover local workerd only.
