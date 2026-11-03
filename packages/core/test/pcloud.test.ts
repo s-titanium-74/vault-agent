@@ -376,11 +376,11 @@ it("requires explicit opt-in for pCloud writes", async () => {
   expect(api.requests).toHaveLength(0);
 });
 
-it("indexes 1,000 pCloud notes locally and retains the index when the scope grows past the limit", async () => {
+it("indexes more than 1,000 pCloud notes locally and downloads only the changed body", async () => {
   const { api, source } = make();
   const note = (i: number) => `Notes/Group-${Math.floor(i / 100)}/Note-${i}.md`;
   api.files.clear();
-  for (let i = 0; i < 1000; i++)
+  for (let i = 0; i < 1001; i++)
     api.set(note(i), `# Synthetic note ${i}\n\nSynthetic orchard.`);
   await expect(source.observe()).rejects.toMatchObject({
     code: "SOURCE_TOO_LARGE",
@@ -401,8 +401,8 @@ it("indexes 1,000 pCloud notes locally and retains the index when the scope grow
   let store: IndexStore | undefined;
   try {
     api.requests.length = 0;
-    expect((await indexVault(config)).notesIndexed).toBe(1000);
-    expect(downloads()).toBe(1000);
+    expect((await indexVault(config)).notesIndexed).toBe(1001);
+    expect(downloads()).toBe(1001);
     api.requests.length = 0;
     expect((await indexVault(config)).notesIndexed).toBe(0);
     expect(downloads()).toBe(0);
@@ -414,11 +414,6 @@ it("indexes 1,000 pCloud notes locally and retains the index when the scope grow
       (await getConfiguredNote(store, noteIdFromPath(note(999)), config))
         ?.content,
     ).toContain("Synthetic garden");
-    api.set(note(1000), "# Extra");
-    await expect(indexVault(config)).rejects.toMatchObject({
-      code: "SOURCE_TOO_LARGE",
-    });
-    expect(store.getAllNotes()).toHaveLength(1000);
   } finally {
     store?.close();
     await rm(dir, { recursive: true, force: true });

@@ -85,10 +85,12 @@ This avoids inheriting connection-level authentication/formatting state. The
 listing. No application token is forwarded to content download servers.
 
 Scope budgets are explicit and fail closed rather than publishing a truncated
-vault. The note limit is 1,000 locally and 500 on Workers. Other limits include
-2 MiB per note, bounded metadata
-responses and folder traversal. Large delta fallback follows existing Worker
-rebuild rules. Ordinary reconciliation trusts the complete provider observation (file ID,
+vault. The note-count ceiling is 1,000,000 locally and 500 on Workers.
+A recursive listing remains limited to 10,000 entries and a 4 MiB response,
+so those bounds constrain the usable scope before the local note-count ceiling.
+The per-note limit is 2 MiB. Large delta fallback follows existing Worker
+rebuild rules.
+Ordinary reconciliation trusts the complete provider observation (file ID,
 hash, size, timestamp and parent) to detect changes. Only new or changed notes
 need a body download during incremental reconciliation. A changed body with
 identical provider metadata is detected by an explicit revision-checked read
