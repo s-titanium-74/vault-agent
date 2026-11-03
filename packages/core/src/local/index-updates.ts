@@ -68,7 +68,7 @@ export async function updateLocalIndex(
     { entry: SourceEntry; text: string; mtimeMs: number }
   >();
   const warnings: IndexWarning[] = [];
-  const watched = options.paths !== undefined;
+  const watched = options.paths !== undefined && !config.vault.pcloud;
   const warn = (kind: string, p: string, size?: number) => {
     const names: Record<string, string> = {
       binary: watched ? "INDEX_FILE_BINARY" : "FILE_BINARY",

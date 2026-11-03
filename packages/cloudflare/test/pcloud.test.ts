@@ -24,6 +24,7 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
     tsconfig: "tsconfig.json",
   });
   const admin = "a".repeat(64);
+  let loseUploadResponse = false;
   const mf = new Miniflare(
     convertV4MiniflareOptions({
       modules: true,
@@ -31,11 +32,26 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
       compatibilityDate: "2026-10-29",
       d1Databases: { DB: "pcloud-synthetic" },
       // Deliberately no r2Buckets option.
-      outboundService: async (request) =>
-        api.fetch(request.url, {
+      outboundService: async (request) => {
+        const response = await api.fetch(request.url, {
           method: request.method,
-          body: request.method === "POST" ? await request.text() : undefined,
-        }),
+          body: request.headers
+            .get("Content-Type")
+            ?.startsWith("multipart/form-data")
+            ? await request.formData()
+            : request.method === "POST"
+              ? await request.text()
+              : undefined,
+        });
+        if (
+          loseUploadResponse &&
+          new URL(request.url).pathname === "/uploadfile"
+        ) {
+          loseUploadResponse = false;
+          return new Response(null, { status: 502 });
+        }
+        return response;
+      },
       ratelimits: {
         REQUEST_LIMITER: {
           namespace_id: "1051",
@@ -51,6 +67,7 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
         ALLOWED_ORIGINS: "[]",
         PROFILE_VALUE_ALLOWLIST: "[]",
         INGESTION_ENABLED: "true",
+        WRITE_ENABLED: "true",
         EXTERNAL_EMBEDDING_CONSENT: "false",
         EMBEDDING_MODEL_REVISION: "operator-v1",
         SOURCE_PROVIDER: "pcloud",
@@ -147,14 +164,16 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
     expect((await request(`/notes/${id}`)).data.content).toContain(
       "Synthetic orchard",
     );
-    expect((await request(`/chunks/${id}/0`)).status).toBe(200);
+    const note = (await request(`/notes/${id}`)).data;
+    expect(
+      (await request(`/chunks/${id}/0?expected_version=${note.version}`))
+        .status,
+    ).toBe(200);
     const before = await db
       .prepare("SELECT data FROM notes WHERE path='Notes/Pear.md'")
       .first();
     api.set("Notes/Apple.md", "# Apple\n\nSynthetic gardens. [[Pear]]\n");
-    expect((await request(`/notes/${id}`)).error.code).toBe(
-      "SOURCE_REVISION_MISMATCH",
-    );
+    expect((await request(`/notes/${id}`)).data.index_state).toBe("pending");
     const update = await run();
     expect(update.state).toBe("complete");
     expect(update.updatePath).toBe("incremental");
@@ -243,6 +262,133 @@ it("indexes the same pCloud corpus in SQLite and D1 without an R2 binding", asyn
         )
         .first<{ data: string }>())!.data,
     ).toContain("Synthetic bloom.");
+    await compare();
+    const tool = async (name: string, args: unknown) => {
+      const response = await mf.dispatchFetch(
+        "https://vault.example.invalid/mcp",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${admin}`,
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/call",
+            params: { name, arguments: args },
+          }),
+        },
+      );
+      const body = (await response.json()) as any;
+      expect(body.error, JSON.stringify(body)).toBeUndefined();
+      return JSON.parse(body.result.content[0].text);
+    };
+    const target = "Notes/Created/Synthetic.md";
+    const operations = [
+      {
+        type: "create_note",
+        path: target,
+        content: "# Synthetic\n\nUnique mutation marker.",
+      },
+    ];
+    const proposal = await tool("preview_changes", { operations });
+    const applied = await tool("apply_changes", {
+      operations,
+      operation_id: proposal.operation_id,
+      preview_binding: proposal.preview_binding,
+    });
+    expect(applied.results[0]).toMatchObject({
+      status: "applied",
+      index_state: "pending",
+    });
+    expect(await run()).toMatchObject({ state: "complete" });
+    expect(
+      (await tool("get_change_status", { operation_id: proposal.operation_id }))
+        .results[0],
+    ).toMatchObject({
+      status: "applied",
+      index_state: "fresh",
+    });
+    await compare();
+    const createdId = await core.noteIdFromPath(target);
+    const saved = (await request(`/notes/${createdId}`)).data;
+    const stale = [
+      {
+        type: "replace_note",
+        path: target,
+        expected_version: "0".repeat(64),
+        content: "# Stale",
+      },
+    ];
+    const stalePreview = await tool("preview_changes", { operations: stale });
+    const staleResult = await tool("apply_changes", {
+      operations: stale,
+      operation_id: stalePreview.operation_id,
+      preview_binding: stalePreview.preview_binding,
+    });
+    expect(staleResult.results[0]).toMatchObject({
+      status: "failed",
+      code: "SOURCE_REVISION_MISMATCH",
+    });
+    const deletion = [
+      { type: "delete_file", path: target, expected_version: saved.version },
+    ];
+    const deletePreview = await tool("preview_changes", {
+      operations: deletion,
+    });
+    const deleted = await tool("apply_changes", {
+      operations: deletion,
+      operation_id: deletePreview.operation_id,
+      preview_binding: deletePreview.preview_binding,
+    });
+    expect(deleted.results[0]).toMatchObject({ status: "applied" });
+    expect((await request(`/notes/${createdId}`)).status).toBe(404);
+    expect(await run()).toMatchObject({ state: "complete" });
+    expect(
+      (
+        await tool("get_change_status", {
+          operation_id: deletePreview.operation_id,
+        })
+      ).results[0],
+    ).toMatchObject({
+      status: "applied",
+      index_state: "fresh",
+    });
+    await compare();
+    const countUploads = () =>
+      api.requests.filter((r) => r.method === "/uploadfile").length;
+    const uploadedBefore = countUploads();
+    const interrupted = await tool("preview_changes", { operations });
+    loseUploadResponse = true;
+    const interruptedResult = await tool("apply_changes", {
+      operations,
+      operation_id: interrupted.operation_id,
+      preview_binding: interrupted.preview_binding,
+    });
+    expect(interruptedResult.results[0]).toMatchObject({
+      status: "reconciling",
+    });
+    expect(countUploads()).toBe(uploadedBefore + 1);
+    await db
+      .prepare(
+        "UPDATE r2_mutation_items SET retry_after=0 WHERE operation_id=?",
+      )
+      .bind(interrupted.operation_id)
+      .run();
+    expect((await request("/__tick")).status).toBe(200);
+    expect(
+      (
+        await tool("get_change_status", {
+          operation_id: interrupted.operation_id,
+        })
+      ).results[0],
+    ).toMatchObject({
+      status: "applied",
+    });
+    expect(countUploads()).toBe(uploadedBefore + 1);
+    expect(await run()).toMatchObject({ state: "complete" });
     await compare();
     expect((await request("/status")).data.deployment.capabilities.upload).toBe(
       false,

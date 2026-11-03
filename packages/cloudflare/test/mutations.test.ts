@@ -307,13 +307,10 @@ describe("internal R2 mutations and durable read suppression", () => {
       ).results[0].status,
     ).toBe("failed");
   });
-  it("keeps pCloud read-only and rejects another vault, rotated signing key and changed policy", async () => {
+  it("rejects another vault, rotated signing key and changed policy", async () => {
     const operations = [
       { type: "create_note", path: "Notes/Policy.md", content: "body" },
     ];
-    expect(await preview(operations, { provider: "pcloud" })).toMatchObject({
-      error: { code: "SOURCE_WRITE_UNSUPPORTED" },
-    });
     const op = (await preview(operations)).data;
     expect(
       await apply(op, operations, { vaultId: randomUUID() }),

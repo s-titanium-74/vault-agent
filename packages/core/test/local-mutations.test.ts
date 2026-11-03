@@ -1,3 +1,4 @@
+import { SyntheticPCloud } from "./helpers/pcloud.js";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
@@ -115,7 +116,7 @@ describe("coordinated filesystem mutations", () => {
       new LocalMutationService(config, { settings: { enabled: true } }),
     );
   });
-  it("does not create a journal for pCloud or a private state directory inside the source", () => {
+  it("rejects direct pCloud writes and a private state directory inside a filesystem source", () => {
     config.vault.pcloud = {
       region: "us",
       folder_id: "0",
@@ -123,9 +124,9 @@ describe("coordinated filesystem mutations", () => {
       includes: ["."],
       poll_seconds: 60,
     };
-    expect(() => service()).toThrowError(
-      expect.objectContaining({ code: "SOURCE_WRITE_UNSUPPORTED" }),
-    );
+    expect(() =>
+      service({ settings: { enabled: true, mode: "direct" } }),
+    ).toThrowError(expect.objectContaining({ code: "PREVIEW_REQUIRED" }));
     expect(fs.existsSync(config.index.dir)).toBe(false);
     delete config.vault.pcloud;
     config.index.dir = path.join(root, "generated");
@@ -134,6 +135,56 @@ describe("coordinated filesystem mutations", () => {
     );
     expect(fs.existsSync(config.index.dir)).toBe(false);
   });
+  it("reconciles pCloud mutations to SQLite and recovers a lost upload response", async () => {
+    const api = new SyntheticPCloud();
+    config.vault.pcloud = {
+      region: "us",
+      folder_id: "1",
+      access_token: "synthetic",
+      includes: ["Notes"],
+      poll_seconds: 60,
+    };
+    let loseResponse = true;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const response = await api.fetch(input, init);
+        if (loseResponse && String(input).endsWith("/uploadfile")) {
+          loseResponse = false;
+          throw new Error("synthetic lost response");
+        }
+        return response;
+      });
+    const svc = service();
+    const relative = "Notes/New/Apple.md";
+    const id = noteIdFromPath(relative);
+    const input = batch(create(relative, "# Apple\n\nSynthetic orchard."));
+    const plan = await svc.allocate(input);
+    const outcome = await svc.apply(
+      plan.operation_id,
+      input,
+      plan.preview_binding,
+    );
+    expect(outcome.results[0]).toMatchObject({ status: "reconciling" });
+    expect(await svc.getNote(id)).toBeNull();
+    clock += 61000;
+    expect(await svc.flushIndex()).toEqual({ processed: 1 });
+    expect(svc.getStatus(plan.operation_id).results[0]).toMatchObject({
+      status: "applied",
+      index_state: "fresh",
+    });
+    expect(
+      fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/uploadfile"),
+      ),
+    ).toHaveLength(1);
+    const version = (await svc.getNote(id))!.version;
+    const removed = await apply(svc, batch(remove(relative, version)));
+    expect(removed.results[0]).toMatchObject({ status: "applied" });
+    expect(await svc.flushIndex()).toEqual({ processed: 1 });
+    expect((await store()).getNote(id)).toBeFalsy();
+  });
+
   it("creates parent directories, exposes current notes before indexing and applies one atomic ordered patch", async () => {
     const svc = service();
     const content = "\ufeff---\r\ndate: unchanged\r\n---\r\nOld\r\n";

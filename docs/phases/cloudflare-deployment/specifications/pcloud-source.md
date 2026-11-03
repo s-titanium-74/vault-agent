@@ -1,10 +1,10 @@
-# pCloud original source (#51)
+# pCloud original source (#51, #67)
 
 ## Initial scope
 
 Explicit opt-in selects one normal pCloud folder per local configuration or
-Worker deployment. The adapter is read-only: it never uploads, reverts, renames,
-or deletes originals. Crypto folders, shortcuts, attachments and guidance are
+Worker deployment. The adapter defaults to read-only. An administrator can
+explicitly enable Markdown writes through MCP in review mode. Crypto folders, shortcuts, attachments and guidance are
 not supported initially; Markdown (.md/.markdown) notes only. Existing filesystem
 and R2 sources remain defaults. Switching source requires a separate index or
 fresh deployment; never reuse an existing deployment across source identities.
@@ -29,7 +29,8 @@ INGESTION_ENABLED controls scheduled reconciliation; authenticated /index and
 /reindex start jobs, existing advance/status calls resume them. Upload is
 unsupported in pCloud mode. Locally index/reindex and server startup ingest;
 periodic server polling runs only with watch.enabled, and manual /index remains
-available. Stopping the process or disabling ingestion pauses updates. A retry
+available. When writes are enabled, the local mutation runtime also reconciles
+committed changes independently of polling. Stopping the process or disabling ingestion pauses updates. A retry
 starts from a new complete observation or resumes a cloud checkpoint.
 
 pCloud authentication permissions may cover more than the chosen folder.
@@ -106,6 +107,37 @@ Official references checked 2026-11-02:
 - https://docs.pcloud.com/methods/intro/global_parameters.html
 - https://docs.pcloud.com/methods/oauth_2.0/authorize.html
 - https://docs.pcloud.com/protocols/http_json_protocol/
+
+## MCP writes (#67)
+
+Use the existing admin-only preview and apply workflow for scoped Markdown
+create, replace, patch and delete in the Node and Workers runtimes. Enable
+pCloud writes explicitly and use one vault-agent writer per configured root.
+The shared pCloud adapter resolves paths from the configured folder ID and
+checks the current exact-byte SHA-256 against the preview revision. A known
+mismatch before the provider request rejects the write. Creation uses
+`createfolderifnotexists` for missing parents and `uploadfile` with `nopartial`.
+A failed create can leave empty parent folders. Deletion uses the verified file
+ID. Rename and attachments remain outside the MCP mutation scope.
+
+The documented pCloud upload and delete APIs have no expected-revision
+parameter. The hash check and provider write are separate requests. External
+writes, including pCloud Sync and edits from the pCloud web UI, can intervene
+between them. Read-back verification confirms the resulting state and cannot
+prove that an intervening update was preserved. Deployment with this model
+requires exclusive write ownership of the configured scope.
+
+After a confirmed write, use source reconciliation to update SQLite or D1.
+An ambiguous provider outcome enters reconciliation. The runtime checks
+current state after a delay and compares it with the intended result, without
+replaying the write. Use the same operation ID to inspect the outcome. Keep tokens in the existing environment or Worker
+secret, sanitize provider failures, and keep originals in pCloud.
+
+Synthetic tests cover scope, stale revisions, read-back verification,
+ambiguous outcomes and index convergence. The [upload API](https://docs.pcloud.com/methods/file/uploadfile.html),
+[folder API](https://docs.pcloud.com/methods/folder/createfolderifnotexists.html) and
+[delete API](https://docs.pcloud.com/methods/file/deletefile.html) describe the
+provider operations used here.
 
 ## Setup examples
 

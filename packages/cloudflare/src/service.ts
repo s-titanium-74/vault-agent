@@ -133,7 +133,7 @@ export class RetrievalService {
       },
     });
     env = { ...env, DB };
-    const sourceEpoch = isPCloud(env) ? null : await mutationEpoch(env);
+    const sourceEpoch = await mutationEpoch(env);
     const incremental = !!(await env.DB.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='publications'",
     ).first());
@@ -317,7 +317,8 @@ export class RetrievalService {
           .first<{ object_version: string }>();
         const fresh =
           indexed?.content_hash === value.digest &&
-          observation?.object_version === value.object.version;
+          (isPCloud(this.env) ||
+            observation?.object_version === value.object?.version);
         if (operation === "get_chunk") {
           const chunk =
             p.chunkIndex === undefined
@@ -430,7 +431,7 @@ export class RetrievalService {
     ) {
       const p = parse(fileSchema, args);
       this.pin(p.snapshot);
-      if (this.mutationReadEpoch !== null) {
+      if (this.mutationReadEpoch !== null && !isPCloud(this.env)) {
         const state = await mutationPath(this.env, p.path);
         if (state?.state === "uncertain")
           throw new CloudError("SOURCE_UNAVAILABLE", 503);

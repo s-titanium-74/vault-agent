@@ -82,7 +82,7 @@ export class LocalMutationRuntime {
       );
     this.service = new LocalMutationService(config, { settings: config.write });
     try {
-      this.service.recover();
+      if (!config.vault.pcloud) this.service.recover();
       this.service.cleanup();
     } catch {
       this.service.close();

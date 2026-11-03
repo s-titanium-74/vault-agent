@@ -611,6 +611,7 @@ it.each([
   { INGESTION_ENABLED: "false" },
   {
     SOURCE_PROVIDER: "pcloud",
+    WRITE_MODE: "direct",
     PCLOUD_REGION: "us",
     PCLOUD_FOLDER_ID: "1",
     PCLOUD_ACCESS_TOKEN: "synthetic",

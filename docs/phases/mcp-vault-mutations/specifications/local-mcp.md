@@ -3,7 +3,7 @@
 The filesystem concurrency boundary is the accepted final-version-check model
 in [filesystem](filesystem.md). Detected conflicts fail; an external edit in the
 last check/write window may be missed. No exclusive-editor assertion is needed.
-R2/Workers remain step 4; pCloud stays read-only.
+The [pCloud source contract](../../cloudflare-deployment/specifications/pcloud-source.md#mcp-writes-67) covers opt-in Markdown writes with review and exclusive write ownership.
 
 ## Enablement and tools
 

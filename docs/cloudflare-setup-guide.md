@@ -141,7 +141,12 @@ For a dedicated synthetic trial, stop old writers, apply all D1 migrations
 through `0008_r2_mutation_maintenance.sql`, then deploy compatible code. In the
 ignored operator configuration, set `WRITE_ENABLED` to the string `"true"` and
 retain `INGESTION_ENABLED="true"` with its one-minute Cron. Writes require an
-R2 source; pCloud remains read-only. Keep `WRITE_MODE="review"` unless direct
+R2 source or an explicitly scoped pCloud folder. With pCloud, set
+`WRITE_ENABLED="true"`, `WRITE_MODE="review"`, and `INGESTION_ENABLED="true"`,
+and provide a write-capable `PCLOUD_ACCESS_TOKEN` as a Worker secret. Run a
+single writer for that folder and disable other writers, including pCloud Sync.
+MCP supports Markdown notes up to 2 MiB in this mode. The Worker uses D1 for
+operation status and indexing. For R2, keep `WRITE_MODE="review"` unless direct
 application is an intentional choice. The default limits are 5 MiB/file,
 20 MiB/batch, 20 operations and seven days of operation history; optional
 `WRITE_*` settings are listed in the linked contract.
@@ -338,6 +343,6 @@ live-resource deletion; no immediate backup-erasure promise is made.
 
 ## Optional pCloud source
 
-See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for read-only scope, explicit setup,
+See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for source scope, explicit setup,
 SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
 R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

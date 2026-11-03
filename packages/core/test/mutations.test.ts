@@ -96,8 +96,11 @@ describe("mutation admission and privacy", () => {
     await expectEnvelope([create()], "WRITE_DISABLED", ctx);
     expect(ctx.snapshot).not.toHaveBeenCalled();
   });
-  it("does not turn a read-only source into a writer", async () => {
-    const ctx = context("Old", { sourceKind: "pcloud" });
+  it("requires review mode for pCloud writes", async () => {
+    const ctx = context("Old", {
+      sourceKind: "pcloud",
+      settings: { enabled: true, mode: "direct" },
+    });
     await expectEnvelope([create()], "SOURCE_WRITE_UNSUPPORTED", ctx);
     expect(ctx.snapshot).not.toHaveBeenCalled();
   });

@@ -11,7 +11,7 @@ import { getIndexPath, IndexStore } from "../src/index-store.js";
 import { getConfiguredNote } from "../src/local/retrieval.js";
 import { noteIdFromPath } from "../src/identifiers.js";
 
-const make = () => {
+const make = (writesEnabled = false) => {
   const api = new SyntheticPCloud();
   api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard. [[Pear]]\n");
   const source = new PCloudSource({
@@ -21,6 +21,7 @@ const make = () => {
     accessToken: "synthetic-secret",
     includes: ["Notes"],
     fetch: api.fetch,
+    writesEnabled,
   });
   return { api, source };
 };
@@ -319,4 +320,49 @@ it("excludes guidance, hidden files and configured exclusions from observations"
   expect((await source.observe()).map((e) => e.path)).toEqual([
     "Notes/Good.md",
   ]);
+});
+
+it("verifies scoped writes against exact revisions and reads back the result", async () => {
+  const { source, api } = make(true);
+  const original = (await source.stat("Notes/Apple.md"))!;
+  const bytes = new TextEncoder().encode("# Updated");
+  await expect(
+    source.writeNote("Notes/Apple.md", null, bytes),
+  ).rejects.toMatchObject({
+    code: "SOURCE_REVISION_MISMATCH",
+  });
+  await expect(
+    source.writeNote("Outside.md", null, bytes),
+  ).rejects.toMatchObject({
+    code: "SOURCE_EXCLUDED",
+  });
+  expect(api.requests.some((request) => request.method === "/uploadfile")).toBe(
+    false,
+  );
+  const updated = (await source.writeNote(
+    original.path,
+    original.revision,
+    bytes,
+  ))!;
+  expect(updated.revision).toBe(await contentRevision(bytes));
+  await expect(
+    source.writeNote(original.path, original.revision, null),
+  ).rejects.toMatchObject({
+    code: "SOURCE_REVISION_MISMATCH",
+  });
+  const created = (await source.writeNote("Notes/New/Pear.md", null, bytes))!;
+  await expect(
+    source.writeNote(created.path, created.revision, null),
+  ).resolves.toBeNull();
+  expect(api.files.has(created.path)).toBe(false);
+});
+
+it("requires explicit opt-in for pCloud writes", async () => {
+  const { source, api } = make();
+  await expect(
+    source.writeNote("Notes/Apple.md", null, null),
+  ).rejects.toMatchObject({
+    code: "SOURCE_UNAVAILABLE",
+  });
+  expect(api.requests).toHaveLength(0);
 });

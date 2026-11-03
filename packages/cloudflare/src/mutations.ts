@@ -1,3 +1,4 @@
+import { isPCloud, pcloudSource } from "./source.js";
 import * as core from "@vault-agent/core/portable";
 import { config, type Env } from "./config.js";
 import { boundedBytes, CloudError } from "./errors.js";
@@ -73,7 +74,7 @@ const hex = (value: ArrayBuffer) =>
   ).join("");
 const MAX_SOURCE = 20 * 1024 * 1024;
 
-/** Internal capability only. Public Workers transports do not instantiate this class. */
+/** Durable mutation journal for the configured Workers source. */
 export class R2MutationService {
   private constructor(
     readonly env: Env,
@@ -87,7 +88,8 @@ export class R2MutationService {
     if (!parsed.success || parsed.data.max_batch_bytes > 20 * 1024 * 1024)
       fail("INVALID_REQUEST", 400);
     if (!parsed.data.enabled) fail("WRITE_DISABLED", 403);
-    if (env.SOURCE_PROVIDER === "pcloud") fail("SOURCE_WRITE_UNSUPPORTED", 501);
+    if (isPCloud(env) && parsed.data.mode !== "review")
+      fail("PREVIEW_REQUIRED");
     if (
       !(await env.DB.prepare(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='r2_mutation_maintenance'",
@@ -98,6 +100,9 @@ export class R2MutationService {
       JSON.stringify([
         "internal-r2-v1",
         env.VAULT_ID,
+        ...(isPCloud(env)
+          ? ["pcloud", env.PCLOUD_REGION, env.PCLOUD_FOLDER_ID]
+          : []),
         env.INCLUDE_PATHS,
         env.EXCLUDE_PATHS,
         parsed.data,
@@ -190,13 +195,14 @@ export class R2MutationService {
   private context(): core.MutationPreparationContext {
     return {
       vaultId: this.env.VAULT_ID,
-      sourceId: `r2:${this.env.VAULT_ID}`,
-      sourceKind: "r2",
+      sourceId: `${isPCloud(this.env) ? "pcloud" : "r2"}:${this.env.VAULT_ID}`,
+      sourceKind: isPCloud(this.env) ? "pcloud" : "r2",
       policyRevision: this.policy,
       includes: JSON.parse(this.env.INCLUDE_PATHS),
       excludes: JSON.parse(this.env.EXCLUDE_PATHS),
       settings: this.settings,
-      attachmentAllowed: (p) => core.uploadKind(p) === "attachment",
+      attachmentAllowed: (p) =>
+        !isPCloud(this.env) && core.uploadKind(p) === "attachment",
       snapshot: async (path, opts) => {
         const row = await mutationPath(this.env, path);
         if (row?.state === "uncertain") fail("SOURCE_UNAVAILABLE", 503);
@@ -299,7 +305,7 @@ export class R2MutationService {
               ? p.indexed_path === null
               : p.state === "saved" &&
                 p.digest === p.indexed_digest &&
-                p.object_version === p.indexed_version),
+                (isPCloud(this.env) || p.object_version === p.indexed_version)),
         )
         .map((p) => `${p.item_index}:${p.state}`),
     );
@@ -419,14 +425,16 @@ export class R2MutationService {
             ? "FILE_ALREADY_EXISTS"
             : "SOURCE_REVISION_MISMATCH",
         );
-      const physical =
-        current?.object ?? (await this.env.SOURCE!.head(this.key(item.path)));
+      const physical = isPCloud(this.env)
+        ? null
+        : (current?.object ??
+          (await this.env.SOURCE!.head(this.key(item.path))));
       const digest =
         item.action === "delete"
           ? null
           : await core.contentRevision(item.bytes!);
       const stage = `${this.env.VAULT_ID}/mutations/${op.nonce}/${item.index}`;
-      if (item.action !== "delete")
+      if (item.action !== "delete" && !isPCloud(this.env))
         await this.env.SOURCE!.put(stage, item.bytes!, { sha256: digest! });
       await this.options.checkpoint?.("staged", item.index);
       intent = {
@@ -438,6 +446,13 @@ export class R2MutationService {
       };
       await this.env.DB.batch([
         this.guard(op, token),
+        ...(isPCloud(this.env)
+          ? [
+              this.env.DB.prepare(
+                "UPDATE r2_mutation_operations SET lease_until=? WHERE id=?",
+              ).bind(this.now() + 120000, op.id),
+            ]
+          : []),
         this.env.DB.prepare(
           "INSERT INTO r2_mutation_paths(path,note_id,owner,item_index,state,updated) VALUES(?,?,?,?,'uncertain',?) ON CONFLICT(path) DO UPDATE SET note_id=excluded.note_id,owner=excluded.owner,item_index=excluded.item_index,state='uncertain',digest=NULL,object_version=NULL,version=NULL,updated=excluded.updated WHERE r2_mutation_paths.state<>'uncertain' AND r2_mutation_paths.owner IS ? AND r2_mutation_paths.item_index IS ?",
         ).bind(
@@ -464,6 +479,17 @@ export class R2MutationService {
       ]);
       committing = true;
       await this.options.checkpoint?.("committing", item.index);
+      if (isPCloud(this.env)) {
+        await pcloudSource(this.env, true).writeNote(
+          item.path,
+          intent.before,
+          item.bytes ?? null,
+        );
+        await this.options.checkpoint?.("published", item.index);
+        await this.acknowledge(op.id, result, intent, null);
+        await this.options.checkpoint?.("applied", item.index);
+        return;
+      }
       // Recheck generation after staging/intent, immediately before conditional PUT.
       const latest = await this.read(item.path);
       const latestPhysical =
@@ -499,18 +525,27 @@ export class R2MutationService {
       await this.options.checkpoint?.("applied", item.index);
     } catch (error) {
       if (error instanceof R2MutationInterruption) throw error;
-      if (committing) {
+      if (committing && intent && error instanceof core.PCloudWriteConflict) {
+        await this.restore(op.id, result, intent, error.code);
+      } else if (committing) {
         result.status = "reconciling";
         result.code = "SOURCE_UNAVAILABLE";
         await this.env.DB.prepare(
-          "UPDATE r2_mutation_items SET state='reconciling',result=? WHERE operation_id=? AND item_index=? AND state IN ('committing','reconciling')",
+          "UPDATE r2_mutation_items SET state='reconciling',result=?,retry_after=? WHERE operation_id=? AND item_index=? AND state IN ('committing','reconciling')",
         )
-          .bind(JSON.stringify(result), op.id, item.index)
+          .bind(
+            JSON.stringify(result),
+            isPCloud(this.env) ? this.now() + 60000 : 0,
+            op.id,
+            item.index,
+          )
           .run();
       } else {
         result.status = "failed";
         result.code =
-          error instanceof CloudError ? error.code : "SOURCE_UNAVAILABLE";
+          error instanceof CloudError || error instanceof core.SourceError
+            ? error.code
+            : "SOURCE_UNAVAILABLE";
         await this.env.DB.batch([
           this.guard(op, token),
           this.env.DB.prepare(
@@ -571,16 +606,17 @@ export class R2MutationService {
     id: string,
     result: Result,
     intent: Intent,
-    object: R2Object,
+    object: R2Object | null,
   ) {
-    const version = intent.digest
-      ? await r2SourceVersion(
-          this.env.VAULT_ID,
-          result.path,
-          object.version,
-          intent.digest,
-        )
-      : undefined;
+    const version =
+      intent.digest && object
+        ? await r2SourceVersion(
+            this.env.VAULT_ID,
+            result.path,
+            object.version,
+            intent.digest,
+          )
+        : (intent.digest ?? undefined);
     result.status = "applied";
     delete result.code;
     result.index_state = "pending";
@@ -592,7 +628,7 @@ export class R2MutationService {
       ).bind(
         intent.action === "delete" ? "deleted" : "saved",
         intent.digest,
-        object.version,
+        object?.version ?? null,
         version ?? null,
         this.now(),
         result.path,
@@ -692,6 +728,19 @@ export class R2MutationService {
         const op = await this.operation(row.operation_id);
         if (!op || !row.recovery) continue;
         const intent = JSON.parse(row.recovery) as Intent;
+        if (isPCloud(this.env)) {
+          const current = await this.read(row.path);
+          if ((current?.version ?? null) === intent.digest)
+            await this.acknowledge(row.operation_id, result, intent, null);
+          else
+            await this.restore(
+              row.operation_id,
+              result,
+              intent,
+              "OUTCOME_UNKNOWN",
+            );
+          continue;
+        }
         const object = await this.env.SOURCE!.head(this.key(row.path));
         if (
           !object ||
@@ -752,13 +801,15 @@ export class R2MutationService {
       if (!claim.meta.changes) continue;
       inspected++;
       try {
-        const page = await this.env.SOURCE!.list({
-          prefix: `${this.env.VAULT_ID}/mutations/${op.nonce}/`,
-          limit: 100,
-        });
-        if (page.objects.length)
+        const page = await (isPCloud(this.env)
+          ? undefined
+          : this.env.SOURCE?.list({
+              prefix: `${this.env.VAULT_ID}/mutations/${op.nonce}/`,
+              limit: 100,
+            }));
+        if (page?.objects.length)
           await this.env.SOURCE!.delete(page.objects.map((o) => o.key));
-        if (page.truncated) continue;
+        if (page?.truncated) continue;
         await this.env.DB.batch([
           this.env.DB.prepare(
             "DELETE FROM r2_mutation_items WHERE operation_id=?",
@@ -784,7 +835,6 @@ export async function readMutationSource(
 ) {
   core.canonicalSourcePath(path);
   if (
-    env.SOURCE_PROVIDER === "pcloud" ||
     !config(env).allowed(path) ||
     path.split("/").some((p) => p.startsWith(".")) ||
     !core.uploadKind(path)
@@ -801,6 +851,36 @@ async function readRawMutationSource(
   content = false,
   maxBytes = MAX_SOURCE,
 ) {
+  if (isPCloud(env)) {
+    const source = pcloudSource(env);
+    try {
+      const current = await source.readCurrent(path, maxBytes);
+      if (!current) return null;
+      const { entry, bytes } = current;
+      return {
+        version: entry.revision,
+        digest: entry.revision,
+        object: null,
+        bytes,
+        content: content
+          ? new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+              bytes,
+            )
+          : undefined,
+      };
+    } catch (error) {
+      if (error instanceof core.SourceError)
+        fail(
+          error.code,
+          error.code === "SOURCE_TOO_LARGE"
+            ? 413
+            : error.code === "SOURCE_REVISION_MISMATCH"
+              ? 409
+              : 503,
+        );
+      throw error;
+    }
+  }
   const object = await env.SOURCE!.get(`${env.VAULT_ID}/source/${path}`);
   if (!object) return null;
   if (object.customMetadata?.deleted === "true") {
@@ -831,5 +911,11 @@ async function readRawMutationSource(
       fail("INVALID_UTF8", 400);
     }
   }
-  return { version, digest, object, bytes, content: decoded };
+  return {
+    version,
+    digest,
+    object,
+    bytes,
+    content: decoded,
+  };
 }

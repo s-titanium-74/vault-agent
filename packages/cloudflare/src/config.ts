@@ -103,8 +103,8 @@ export function config(env: Env) {
     const write = writeSettings(env);
     if (
       write.enabled &&
-      (env.SOURCE_PROVIDER === "pcloud" ||
-        String(env.INGESTION_ENABLED) !== "true")
+      (String(env.INGESTION_ENABLED) !== "true" ||
+        (env.SOURCE_PROVIDER === "pcloud" && write.mode !== "review"))
     )
       throw new Error();
     if (

@@ -328,9 +328,7 @@ export class MutationJournal {
           .run(JSON.stringify({ pid: process.pid, nonce }));
       })
       .immediate();
-    try {
-      return run();
-    } finally {
+    const release = () => {
       this.db
         .transaction(() => {
           const row = this.db
@@ -342,7 +340,17 @@ export class MutationJournal {
               .run();
         })
         .immediate();
+    };
+    let result: T;
+    try {
+      result = run();
+    } catch (error) {
+      release();
+      throw error;
     }
+    if (result instanceof Promise) return result.finally(release) as T;
+    release();
+    return result;
   }
   close() {
     this.db.close();

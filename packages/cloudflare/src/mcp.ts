@@ -77,7 +77,9 @@ function toolsFor(env: Env, role: AccessRole) {
           ...tool,
           description: tool.description?.replace(
             "External edits in the last version-check/save window may be missed.",
-            "R2 compares generation immediately before an ETag-conditional save. Same-byte generation changes after that check may be missed; an in-flight storage request cannot be recalled.",
+            env.SOURCE_PROVIDER === "pcloud"
+              ? "pCloud requires exclusive write ownership. A write from another client between the hash check and save may be overwritten."
+              : "R2 compares generation immediately before an ETag-conditional save. Same-byte generation changes after that check may be missed; an in-flight storage request cannot be recalled.",
           ),
         })),
       ]

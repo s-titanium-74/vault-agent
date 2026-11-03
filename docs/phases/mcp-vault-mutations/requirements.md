@@ -75,7 +75,7 @@ MCPからMarkdownノートの追加・更新・削除と、添付ファイルの
 
 - 1プロセス/デプロイにつき1 vault。MCP stdio、ローカルMCP HTTP、Workers MCP HTTPを対象とする。
 - 「vault全体」は現在設定されている許可scope内を意味する。Cloudflareのincludeや外部保存の同意を拡張しない。
-- pCloudは既存契約どおりread-only。filesystem/R2以外は書き込み非対応として拒否する。
+- #67でpCloudのMarkdown書き込みを明示的に有効化できる。レビュー必須とし、対象フォルダへの書き込み元はvault-agentの1インスタンスに限定する。
 - Markdownの拡張子・添付の許可判定は既存の各sourceの取得ポリシーを再利用する。
   例外的なguidance取得許可を新たな編集権限へ自動転用しない。
 - ローカルへの変更を勝手にuploadせず、クラウドの変更を勝手にdownloadしない。
@@ -116,7 +116,7 @@ read-onlyな`VaultSource`へ汎用write/deleteを追加せず、別の書き込�
 ## Acceptance criteria
 
 - [ ] デフォルト無効で既存のread-only操作が動作し、無効時の変更呼び出しは副作用なしで拒否される。
-- [ ] filesystem/R2でノートと許可添付のcreate/update/replace/deleteが動作し、pCloudは変更しない。
+- [ ] filesystem/R2でノートと許可添付のcreate/update/replace/deleteが動作する。pCloudではレビュー付きのMarkdown操作を検証する。
 - [ ] 初回作成の衝突、版の不一致、除外・隠し/生成パス、symlink/親置換、境界外を拒否する。
 - [ ] 変更案と適用、直接適用の有効化、クライアント承認への依存を実クライアント相当で検証する。
 - [ ] リテラル/正規表現/キャプチャ、複数一致の明示、一致数不一致、順次置換の全取り消しを検証する。

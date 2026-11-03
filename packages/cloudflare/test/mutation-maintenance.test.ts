@@ -275,14 +275,8 @@ it("does not let unresolved early receipts starve later recovery, and never clea
       .first())!.n,
   ).toBe(5);
 });
-it("stops admitting maintenance work at the deadline and skips pCloud", async () => {
+it("stops admitting maintenance work at the deadline", async () => {
   expect((await action("maintain", { deadline: now })).data).toEqual({
-    recoveryInspected: 0,
-    cleanupInspected: 0,
-    pathsInspected: 0,
-    failed: false,
-  });
-  expect((await action("maintain", { provider: "pcloud" })).data).toEqual({
     recoveryInspected: 0,
     cleanupInspected: 0,
     pathsInspected: 0,
