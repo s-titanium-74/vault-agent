@@ -37,25 +37,29 @@ export function getCommandResultFromHttpResponse(
     return { ok: true, exitCode: 0, message: "" };
   }
 
-  if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    const error =
-      obj.error && typeof obj.error === "object"
-        ? (obj.error as Record<string, unknown>)
-        : obj;
-    const code = typeof error.code === "string" ? error.code : `HTTP_${status}`;
-    const message =
-      typeof error.message === "string" ? error.message : "Request failed";
-    return {
-      ok: false,
-      exitCode: exitCodeFromStatus(status),
-      message: `${code}: ${message}`,
-    };
-  }
+  const { code, message } = getHttpError(status, data);
   return {
     ok: false,
     exitCode: exitCodeFromStatus(status),
-    message: `HTTP_${status}: Request failed`,
+    message: `${code}: ${message}`,
+  };
+}
+
+export function getHttpError(
+  status: number,
+  data: unknown,
+): { code: string; message: string } {
+  const obj =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const error =
+    obj.error && typeof obj.error === "object"
+      ? (obj.error as Record<string, unknown>)
+      : obj;
+
+  return {
+    code: typeof error.code === "string" ? error.code : `HTTP_${status}`,
+    message:
+      typeof error.message === "string" ? error.message : "Request failed",
   };
 }
 

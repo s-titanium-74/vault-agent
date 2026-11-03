@@ -99,6 +99,8 @@ Human-readable `get note` outputs note content to stdout by default so it can be
 
 Human-readable `get chunk` outputs chunk content to stdout by default. Metadata is omitted or printed only as compact stderr context.
 
+For `get note` and `get chunk`, HTTP errors print the error code and message to stderr in normal mode. With `--json`, stdout contains an object with an `error` field holding `code` and `message`. If the response lacks those fields, the CLI uses `HTTP_<status>` and `Request failed` as fallbacks. Both modes exit with code 3 for HTTP 401 or 403, 4 for 404, 2 for other 4xx responses, and 1 for 5xx responses.
+
 Human-readable `get attachment` without `--download` prints path, content type, size, and download availability.
 
 Attachment downloads with `--output <path>` write bytes to the output file and print only a compact save summary. Attachment downloads with `--output -` write bytes to stdout.
