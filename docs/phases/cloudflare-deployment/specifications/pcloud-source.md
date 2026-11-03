@@ -85,7 +85,8 @@ This avoids inheriting connection-level authentication/formatting state. The
 listing. No application token is forwarded to content download servers.
 
 Scope budgets are explicit and fail closed rather than publishing a truncated
-vault. Initial limits: 500 admitted notes, 2 MiB per note, bounded metadata
+vault. The note limit is 1,000 locally and 500 on Workers. Other limits include
+2 MiB per note, bounded metadata
 responses and folder traversal. Large delta fallback follows existing Worker
 rebuild rules. Ordinary reconciliation trusts the complete provider observation (file ID,
 hash, size, timestamp and parent) to detect changes. Only new or changed notes

@@ -21,6 +21,7 @@ export interface PCloudOptions {
   includes: readonly string[];
   excludes?: readonly string[];
   timeoutMs?: number;
+  maxNotes?: number;
   writesEnabled?: boolean;
   fetch?: typeof fetch;
 }
@@ -106,6 +107,8 @@ export class PCloudSource implements VaultSource {
       !["us", "eu"].includes(options.region) ||
       !/^\d+$/.test(options.folderId) ||
       !options.accessToken ||
+      (options.maxNotes !== undefined &&
+        (!Number.isSafeInteger(options.maxNotes) || options.maxNotes < 1)) ||
       (options.timeoutMs !== undefined &&
         (!Number.isSafeInteger(options.timeoutMs) ||
           options.timeoutMs < 1 ||
@@ -288,7 +291,8 @@ export class PCloudSource implements VaultSource {
             if (seen.has(fileId)) throw unavailable();
             seen.add(fileId);
             items.push(this.observation(child, path, folderId));
-            if (items.length > 500) throw new SourceError("SOURCE_TOO_LARGE");
+            if (items.length > (this.options.maxNotes ?? 500))
+              throw new SourceError("SOURCE_TOO_LARGE");
           }
         }
       };
