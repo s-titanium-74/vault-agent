@@ -76,6 +76,22 @@ Both publications completed.
 The first attempt stopped at bundling because the generated Wrangler config
 used an absolute TypeScript config path. The retry used relative paths. Both
 attempts ended with the Worker, D1 database, and R2 bucket confirmed absent
-from the Cloudflare account inventory. The trial did not exercise hosted Cron
-timing or Vectorize. The scheduled R2 reclamation evidence above is from
-workerd with an aged retirement record.
+from the Cloudflare account inventory. The scheduled R2 reclamation evidence
+above is from workerd with an aged retirement record. Hosted Vectorize was
+outside the lexical trial.
+
+## Hosted Cron follow-up (2026-11-03)
+
+A separate isolated lexical deployment used the production entrypoint and a
+one-minute Cron schedule. The first attempt saw no ingestion jobs during a
+six-minute observation window. The retry allowed up to 18 minutes for the
+initial observation because [Cloudflare documents up to 15 minutes for Cron
+configuration propagation](https://developers.cloudflare.com/workers/configuration/cron-triggers/).
+This does not establish the cause of the first timeout.
+
+The retry used no HTTP index or job-advance calls. Read-only polling observed
+the created note in search after 525 seconds, its replacement after 62 seconds,
+and a new publication revision after deletion after 61 seconds. The deleted
+note was already unavailable to explicit retrieval and search before publication.
+These are observations from one trial. Both trials ended with the temporary
+Worker, D1 database, and R2 bucket absent from the account inventory.
