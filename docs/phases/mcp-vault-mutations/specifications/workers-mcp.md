@@ -49,9 +49,12 @@ are stored in audit rows or application logs.
 
 Use synthetic workerd/SDK clients for default-off behavior, role-separated tool
 lists/calls, mixed batches, credential rotation, body limits, request identity,
-lost responses, latest reads, patching and note/attachment deletion. Hosted
-validation and physical-derived cleanup evidence remain separate acceptance work;
-workerd success alone is not hosted certification. The R2 condition compares ETag;
+lost responses, latest reads, patching and note/attachment deletion. The lexical
+deletion regression verifies that incremental publication removes the active
+D1 chunks and schedules the immutable R2 copy for retirement. The Worker
+scheduled handler preserves that copy during retention, then removes it after
+the test ages the retirement record, preserving the active copy of another note.
+Hosted validation and hosted Vectorize cleanup evidence remain open. The R2 condition compares ETag;
 the last generation check cannot turn it into a generation-ID CAS or cancel an
 already-dispatched storage request.
 
