@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { localRetrievalContext } from "../src/local/sqlite.js";
+import { search as portableSearch } from "../src/portable/search.js";
+import {
+  emptyPath,
+  hybridFiles,
+  networkPath,
+  networkQuery,
+} from "./hybrid-fallback-fixture.js";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -248,6 +256,83 @@ describe("search", () => {
   afterEach(() => {
     fs.rmSync(vaultDir, { recursive: true, force: true });
     fs.rmSync(indexDir, { recursive: true, force: true });
+  });
+
+  it("keeps an incidental short match out of SQLite hybrid results", async () => {
+    fs.rmSync(path.join(vaultDir, "Alpha.md"));
+    fs.rmSync(path.join(vaultDir, "Beta.md"));
+    fs.mkdirSync(path.join(vaultDir, "Guide"));
+    for (const [file, content] of Object.entries(hybridFiles)) {
+      fs.writeFileSync(path.join(vaultDir, file), content);
+    }
+    const { indexVault } = await import("../src/indexer.js");
+    await indexVault(config);
+    const store = await IndexStore.open(
+      path.join(indexDir, vaultIdentity(vaultDir), "index.sqlite"),
+    );
+    try {
+      store.setManifest({
+        ...store.getManifest()!,
+        embeddingModel: "synthetic",
+      });
+      const context = localRetrievalContext(store, config);
+      context.compatibility = {
+        stale: false,
+        incompatible: false,
+        details: "",
+      };
+      context.embeddingEnabled = true;
+      context.embeddingProvider = {
+        embed: async () => ({
+          embeddings: [new Float32Array([1])],
+          model: "synthetic",
+          dimension: 1,
+        }),
+      };
+      vi.spyOn(context.vectors, "available").mockResolvedValue(true);
+      vi.spyOn(context.vectors, "query").mockResolvedValue([
+        { chunk_id: `${noteIdFromPath(networkPath)}:0`, distance: 0 },
+      ]);
+
+      const lexical = await portableSearch(context, networkQuery, "lexical", 3);
+      expect(lexical.results.map((item) => item.path)).not.toContain(emptyPath);
+      for (const limit of [1, 3]) {
+        const hybrid = await portableSearch(
+          context,
+          networkQuery,
+          "hybrid",
+          limit,
+        );
+        expect(hybrid.usedMode).toBe("hybrid");
+        expect(hybrid.results.map((item) => item.path)).toEqual([networkPath]);
+      }
+      for (const [query, expected] of [
+        ["orchard", networkPath],
+        ["Empty orchard", emptyPath],
+      ]) {
+        const hybrid = await portableSearch(context, query, "hybrid", 2);
+        expect(hybrid.results).toHaveLength(2);
+        expect(hybrid.results[0]?.path).toBe(expected);
+        expect(hybrid.results[0]?.score).toBe(hybrid.results[1]?.score);
+      }
+      for (const query of [
+        "Empty orchard",
+        "Guide/Empty.md",
+        "C++",
+        "東京",
+        "R",
+      ]) {
+        const lexical = await portableSearch(context, query, "lexical", 3, {
+          tags: ["R"],
+        });
+        expect(
+          lexical.results.find((item) => item.path === emptyPath)?.snippet,
+          query,
+        ).toBe("");
+      }
+    } finally {
+      store.close();
+    }
   });
 
   it("throws INDEX_NOT_FOUND when no manifest exists", async () => {

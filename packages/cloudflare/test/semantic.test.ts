@@ -1,3 +1,9 @@
+import {
+  emptyPath,
+  hybridFiles,
+  networkPath,
+  networkQuery,
+} from "../../core/test/hybrid-fallback-fixture.js";
 import { beforeAll, afterAll, beforeEach, it, expect, vi } from "vitest";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { readFile } from "node:fs/promises";
@@ -552,5 +558,55 @@ it("enforces operation deadlines without retrying an unresponsive provider", asy
     expect(cancelled).not.toHaveBeenCalled();
   } finally {
     vi.useRealTimers();
+  }
+});
+
+it("keeps an incidental short match out of D1 hybrid results", async () => {
+  const network = await fixture(hybridFiles);
+  for (const statement of network.statements) await db.prepare(statement).run();
+  network.manifest.embeddingModel = MODEL;
+  network.manifest.embeddingDimension = DIMENSION;
+  const metadata = new D1MetadataStore(
+    db,
+    VAULT_ID,
+    network.revision,
+    network.manifest,
+    core.sourcePolicy(["."]),
+  );
+  const chunk = network.chunks.find((item) =>
+    String(item.chunk_id).startsWith(
+      `${network.notes.find((note) => note.path === networkPath)?.note_id}:`,
+    ),
+  )!;
+  const retrieval = {
+    ...context(),
+    metadata,
+    vectors: {
+      vaultId: VAULT_ID,
+      available: async () => true,
+      query: async () => [{ chunk_id: String(chunk.chunk_id), distance: 0 }],
+      score: () => 1,
+      minimumScore: 0.5,
+      upsert: vectors.upsert.bind(vectors),
+      delete: vectors.delete.bind(vectors),
+      mutationStatus: vectors.mutationStatus.bind(vectors),
+    },
+  };
+
+  const lexical = await core.search(retrieval, networkQuery, "lexical", 3);
+  expect(lexical.results.map((item) => item.path)).not.toContain(emptyPath);
+  for (const limit of [1, 3]) {
+    const hybrid = await core.search(retrieval, networkQuery, "hybrid", limit);
+    expect(hybrid.usedMode).toBe("hybrid");
+    expect(hybrid.results.map((item) => item.path)).toEqual([networkPath]);
+  }
+  for (const query of ["Empty orchard", "Guide/Empty.md", "C++", "東京", "R"]) {
+    const lexical = await core.search(retrieval, query, "lexical", 3, {
+      tags: ["R"],
+    });
+    expect(
+      lexical.results.find((item) => item.path === emptyPath)?.snippet,
+      query,
+    ).toBe("");
   }
 });
