@@ -87,6 +87,8 @@ Additional fields in the setup screen:
 
 ## Wrangler fallback
 
+For a pCloud vault, follow [Optional pCloud source](#optional-pcloud-source).
+
 Clone the full repository, then run from its root:
 
 ```sh
@@ -343,6 +345,52 @@ live-resource deletion; no immediate backup-erasure promise is made.
 
 ## Optional pCloud source
 
-See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for source scope, explicit setup,
-SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
-R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.
+Use a dedicated pCloud folder and a synthetic Markdown note for the first
+deployment. Obtain a [pCloud OAuth access token](https://docs.pcloud.com/methods/oauth_2.0/authorize.html)
+and the numeric `folderid` using
+[pCloud listfolder](https://docs.pcloud.com/methods/folder/listfolder.html).
+This setup keeps originals in pCloud and stores the derived index in D1.
+It requires no R2 bucket or R2 binding.
+
+From the repository root, install dependencies, authenticate Wrangler and
+create a dedicated D1 database:
+
+```sh
+npm ci
+npm ci --prefix packages/cloudflare
+packages/cloudflare/node_modules/.bin/wrangler login
+packages/cloudflare/node_modules/.bin/wrangler d1 create my-pcloud-vault
+```
+
+Replace `D1_UUID` and `123456` with the database UUID and pCloud folder ID.
+Choose `us` or `eu` to match the pCloud account region:
+
+```sh
+npm run configure --prefix packages/cloudflare -- my-pcloud-vault D1_UUID lexical free pcloud eu 123456
+```
+
+Review `vars.INCLUDE_PATHS` in the generated `.cloudflare/wrangler.jsonc`.
+It defaults to the JSON array `["Notes"]` encoded as a string. Set it to the
+desired paths relative to the pCloud folder. The include list limits indexing
+scope. The OAuth token may have broader permissions.
+
+Set the pCloud credential and two independent vault access tokens as
+[Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
+Then build and deploy with the generated configuration:
+
+```sh
+packages/cloudflare/node_modules/.bin/wrangler secret put PCLOUD_ACCESS_TOKEN --config .cloudflare/wrangler.jsonc
+packages/cloudflare/node_modules/.bin/wrangler secret put READ_TOKEN --config .cloudflare/wrangler.jsonc
+packages/cloudflare/node_modules/.bin/wrangler secret put ADMIN_TOKEN --config .cloudflare/wrangler.jsonc
+npm run build --prefix packages/cloudflare -- --config ../../.cloudflare/wrangler.jsonc
+npm run deploy --prefix packages/cloudflare -- --config ../../.cloudflare/wrangler.jsonc
+```
+
+Put the sample note in an included pCloud path and wait for scheduled
+reconciliation. Set `VAULT_AGENT_SERVER_ENDPOINT` to the deployed HTTPS origin
+and supply `READ_TOKEN` as `VAULT_AGENT_API_KEY` in your private shell. Run
+`vault-agent status`, then search for a term from the sample note and retrieve
+the returned note ID with `vault-agent get note "<note-id>"`.
+
+For polling, data retention and revision behavior, see the
+[pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md).
