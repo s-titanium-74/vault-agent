@@ -35,10 +35,8 @@ export function matchFallbackNotes(
   query: string,
   limit: number,
 ) {
-  const tokens = query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((t) => t.length > 0);
+  const normalizedQuery = query.trim().toLowerCase();
+  const tokens = normalizedQuery.split(/\s+/).filter((t) => t.length > 0);
 
   const matched = rows.filter((row) => {
     const title = ((row.title as string) ?? "").toLowerCase();
@@ -48,14 +46,23 @@ export function matchFallbackNotes(
     ) as string[];
     const tags = JSON.parse((row.tags_json as string) ?? "[]") as string[];
 
-    const searchable = [
+    const fields = [
       title,
       path,
       ...aliases.map((a) => a.toLowerCase()),
       ...tags.map((t) => t.toLowerCase()),
-    ].join(" ");
+    ];
+    if (fields.includes(normalizedQuery)) return true;
 
-    return tokens.some((token) => searchable.includes(token));
+    const searchable = fields.join(" ");
+    const words = new Set(searchable.split(/[^\p{L}\p{M}\p{N}]+/u));
+
+    return tokens.some((token) =>
+      Array.from(token).length > 2 ||
+      /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+$/u.test(token)
+        ? searchable.includes(token)
+        : words.has(token) || fields.includes(token),
+    );
   });
 
   return matched.slice(0, limit);

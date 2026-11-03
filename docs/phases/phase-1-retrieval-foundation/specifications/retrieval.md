@@ -342,3 +342,22 @@ Successful attachment byte downloads return raw file bytes with the detected `Co
 Attachment byte downloads should include `Content-Disposition: attachment` with the attachment filename where practical.
 
 Attachment download errors still use the standard JSON error envelope.
+
+## Metadata Fallback and Hybrid Ties
+
+For empty or oversized notes, metadata fallback checks title, vault-relative
+path, aliases, and tags. A full field match is case-insensitive. One- and
+two-character query terms match whole metadata words, with substring matching
+retained for Han, Hiragana, and Katakana terms. Longer terms retain substring
+matching.
+
+Hybrid search resolves equal RRF scores by preferring a lexical candidate with
+an exact metadata field match, then a candidate present in the embedding
+results, then ascending result ID. These rules apply before truncation and
+leave the RRF score and its display normalization intact.
+
+The synthetic regression uses the Spanish router setup query, an empty
+orchard note, and a network setup note ranked first by a fixed vector
+response. With SQLite before the fix, top-1 returned the empty note and
+top-3 returned the empty note followed by the network note. After the fix,
+SQLite and D1 both return only the network note at limits 1 and 3.

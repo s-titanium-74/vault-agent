@@ -184,7 +184,12 @@ export async function search(
         requestedMode,
         usedMode: "hybrid",
         limit: effectiveLimit,
-        results: fuseResults(lexicalResults, embeddingResults, effectiveLimit),
+        results: fuseResults(
+          lexicalResults,
+          embeddingResults,
+          effectiveLimit,
+          query,
+        ),
         warnings,
       };
     }
@@ -380,6 +385,7 @@ export function fuseResults(
   lexical: SearchResultItem[],
   embedding: SearchResultItem[],
   limit: number,
+  query?: string,
 ): SearchResultItem[] {
   const allIds = new Map<string, { lexical?: number; embedding?: number }>();
 
@@ -401,8 +407,31 @@ export function fuseResults(
     scores.set(id, score);
   }
 
+  const normalizedQuery = query?.trim().toLowerCase();
+  const exactMatches = new Set(
+    lexical
+      .filter((item) =>
+        [
+          item.title,
+          item.path,
+          ...item.metadata.aliases,
+          ...item.metadata.tags,
+        ].some(
+          (field) => field !== null && field.toLowerCase() === normalizedQuery,
+        ),
+      )
+      .map((item) => item.id),
+  );
+
   const sorted = Array.from(scores.entries())
-    .sort((a, b) => b[1] - a[1])
+    .sort(
+      ([idA, scoreA], [idB, scoreB]) =>
+        scoreB - scoreA ||
+        Number(exactMatches.has(idB)) - Number(exactMatches.has(idA)) ||
+        Number(allIds.get(idB)?.embedding !== undefined) -
+          Number(allIds.get(idA)?.embedding !== undefined) ||
+        (idA < idB ? -1 : idA > idB ? 1 : 0),
+    )
     .slice(0, limit);
 
   const resultMap = new Map<string, SearchResultItem>();
