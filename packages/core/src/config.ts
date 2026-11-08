@@ -23,8 +23,10 @@ export const serverConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).default(8787),
   apiKey: z.string().default(""),
   readKey: z.string().optional(),
+  readwriteKey: z.string().optional(),
   adminKey: z.string().optional(),
   previousReadKey: z.string().optional(),
+  previousReadwriteKey: z.string().optional(),
   previousAdminKey: z.string().optional(),
 
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -260,8 +262,10 @@ export const DEFAULT_CONFIG: Config = {
 const SECRET_KEYS = new Set([
   "server.apiKey",
   "server.readKey",
+  "server.readwriteKey",
   "server.adminKey",
   "server.previousReadKey",
+  "server.previousReadwriteKey",
   "server.previousAdminKey",
 
   "sync.webhook_secret",
@@ -283,9 +287,17 @@ function applyEnvOverrides(config: Config): Config {
     VAULT_AGENT_SERVER_PORT: { path: ["server", "port"], type: "number" },
     VAULT_AGENT_API_KEY: { path: ["server", "apiKey"], type: "string" },
     VAULT_AGENT_READ_KEY: { path: ["server", "readKey"], type: "string" },
+    VAULT_AGENT_READWRITE_KEY: {
+      path: ["server", "readwriteKey"],
+      type: "string",
+    },
     VAULT_AGENT_ADMIN_KEY: { path: ["server", "adminKey"], type: "string" },
     VAULT_AGENT_PREVIOUS_READ_KEY: {
       path: ["server", "previousReadKey"],
+      type: "string",
+    },
+    VAULT_AGENT_PREVIOUS_READWRITE_KEY: {
+      path: ["server", "previousReadwriteKey"],
       type: "string",
     },
     VAULT_AGENT_PREVIOUS_ADMIN_KEY: {
@@ -395,8 +407,10 @@ function applyEnvOverrides(config: Config): Config {
       (value === "" &&
         ![
           "VAULT_AGENT_READ_KEY",
+          "VAULT_AGENT_READWRITE_KEY",
           "VAULT_AGENT_ADMIN_KEY",
           "VAULT_AGENT_PREVIOUS_READ_KEY",
+          "VAULT_AGENT_PREVIOUS_READWRITE_KEY",
           "VAULT_AGENT_PREVIOUS_ADMIN_KEY",
         ].includes(envVar))
     )
@@ -459,11 +473,15 @@ const KNOWN_SECTIONS: Record<string, Set<string>> = {
     "apiKey",
     "api_key",
     "readKey",
+    "readwriteKey",
     "read_key",
+    "readwrite_key",
     "adminKey",
     "admin_key",
     "previousReadKey",
+    "previousReadwriteKey",
     "previous_read_key",
+    "previous_readwrite_key",
     "previousAdminKey",
     "previous_admin_key",
 
@@ -541,8 +559,10 @@ function toTOMLObject(config: Config): Record<string, unknown> {
       port: config.server.port,
       api_key: config.server.apiKey,
       read_key: config.server.readKey ?? "",
+      readwrite_key: config.server.readwriteKey ?? "",
       admin_key: config.server.adminKey ?? "",
       previous_read_key: config.server.previousReadKey ?? "",
+      previous_readwrite_key: config.server.previousReadwriteKey ?? "",
       previous_admin_key: config.server.previousAdminKey ?? "",
 
       log_level: config.server.logLevel,
@@ -701,9 +721,12 @@ function configFromTOMLParsed(
         (s.apiKey as string) ??
         DEFAULT_CONFIG.server.apiKey,
       readKey: (s.read_key ?? s.readKey) as string | undefined,
+      readwriteKey: (s.readwrite_key ?? s.readwriteKey) as string | undefined,
       adminKey: (s.admin_key ?? s.adminKey) as string | undefined,
       previousReadKey: (s.previous_read_key ?? s.previousReadKey) as
         string | undefined,
+      previousReadwriteKey: (s.previous_readwrite_key ??
+        s.previousReadwriteKey) as string | undefined,
       previousAdminKey: (s.previous_admin_key ?? s.previousAdminKey) as
         string | undefined,
       logLevel: (s.log_level ??
@@ -838,8 +861,10 @@ function setDottedKey(config: Config, dottedKey: string, value: unknown): void {
     "server.port": ["server", "port"],
     "server.apiKey": ["server", "apiKey"],
     "server.readKey": ["server", "readKey"],
+    "server.readwriteKey": ["server", "readwriteKey"],
     "server.adminKey": ["server", "adminKey"],
     "server.previousReadKey": ["server", "previousReadKey"],
+    "server.previousReadwriteKey": ["server", "previousReadwriteKey"],
     "server.previousAdminKey": ["server", "previousAdminKey"],
 
     "server.logLevel": ["server", "logLevel"],

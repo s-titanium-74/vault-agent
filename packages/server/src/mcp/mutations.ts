@@ -23,6 +23,7 @@ export {
 const safeCodes = new Set([
   "WRITE_DISABLED",
   "ADMIN_REQUIRED",
+  "READWRITE_REQUIRED",
   "INVALID_REQUEST",
   "INVALID_PATH",
   "SOURCE_EXCLUDED",

@@ -7,6 +7,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import * as core from "../../core/src/portable/index.js";
 import { VAULT_ID } from "../scripts/fixture.js";
+const readwrite = randomBytes(32).toString("hex");
 const admin = randomBytes(32).toString("hex"),
   read = randomBytes(32).toString("hex");
 let script: string, mf: Miniflare;
@@ -31,6 +32,7 @@ function runtime(overrides: Record<string, string> = {}) {
       bindings: {
         VAULT_ID,
         READ_TOKEN: read,
+        READWRITE_TOKEN: readwrite,
         ADMIN_TOKEN: admin,
         INCLUDE_PATHS: '["."]',
         EXCLUDE_PATHS: '["**/secret.md"]',
@@ -188,7 +190,7 @@ it("lists mutations only for admin and refuses read-key preview/apply/status, in
   for (const name of ["preview_changes", "apply_changes", "get_change_status"])
     expect(await tool(name, { operation_id: "unknown" }, read)).toMatchObject({
       status: 403,
-      error: { code: "ADMIN_REQUIRED" },
+      error: { code: "READWRITE_REQUIRED" },
     });
   const batch = await request(
     "/mcp",
@@ -212,7 +214,7 @@ it("lists mutations only for admin and refuses read-key preview/apply/status, in
   );
   expect(batch).toMatchObject({
     status: 403,
-    error: { code: "ADMIN_REQUIRED" },
+    error: { code: "READWRITE_REQUIRED" },
   });
   expect(await bucket.head(prefix + "Notes/Forbidden.md")).toBeNull();
   expect(
@@ -521,7 +523,7 @@ it("uses current request credentials rather than a supplied session or client au
     await tool("preview_changes", { operations: [] }, read, mf, {
       "Mcp-Session-Id": "synthetic-admin-session",
     }),
-  ).toMatchObject({ status: 403, error: { code: "ADMIN_REQUIRED" } });
+  ).toMatchObject({ status: 403, error: { code: "READWRITE_REQUIRED" } });
   const result = await request(
     "/mcp",
     {
@@ -532,7 +534,7 @@ it("uses current request credentials rather than a supplied session or client au
   );
   expect(result).toMatchObject({
     status: 403,
-    error: { code: "ADMIN_REQUIRED" },
+    error: { code: "READWRITE_REQUIRED" },
   });
   const rotated = runtime({ ADMIN_TOKEN: randomBytes(32).toString("hex") });
   try {
@@ -567,7 +569,7 @@ it("uses current request credentials rather than a supplied session or client au
     }
     expect(
       await tool("preview_changes", { operations: [] }, read, overlap),
-    ).toMatchObject({ status: 403, error: { code: "ADMIN_REQUIRED" } });
+    ).toMatchObject({ status: 403, error: { code: "READWRITE_REQUIRED" } });
   } finally {
     await overlap.dispose();
   }
@@ -707,5 +709,120 @@ it("supports direct mode and an actual SDK client across stateless HTTP invocati
     }
   } finally {
     await direct.dispose();
+  }
+});
+
+it("lets READWRITE read/save/replay/status but denies every management family", async () => {
+  const list = await request(
+    "/mcp",
+    { jsonrpc: "2.0", id: 1, method: "tools/list" },
+    readwrite,
+  );
+  expect(list.result.tools).toHaveLength(21);
+  const operations = [
+    {
+      type: "create_note",
+      path: "Notes/Editing.md",
+      content: "# Synthetic editing",
+    },
+  ];
+  const plan = (await tool("preview_changes", { operations }, readwrite)).data;
+  const args = {
+    operations,
+    operation_id: plan.operation_id,
+    preview_binding: plan.preview_binding,
+  };
+  const saved = await tool("apply_changes", args, readwrite);
+  expect(saved.data.results[0].status).toBe("applied");
+  expect((await tool("apply_changes", args, readwrite)).data).toEqual(
+    saved.data,
+  );
+  expect(
+    (
+      await tool(
+        "get_change_status",
+        { operation_id: plan.operation_id },
+        readwrite,
+      )
+    ).data.operation_id,
+  ).toBe(plan.operation_id);
+  expect(
+    (
+      await tool(
+        "get_note",
+        { noteId: await core.noteIdFromPath("Notes/Editing.md") },
+        readwrite,
+      )
+    ).data.content,
+  ).toContain("Synthetic editing");
+  for (const path of [
+    "/index",
+    "/reindex",
+    "/uploads",
+    "/sync/pull",
+    "/watch",
+    "/jobs/synthetic/advance",
+  ])
+    expect(await request(path, {}, readwrite)).toMatchObject({
+      status: 403,
+      error: { code: "ADMIN_REQUIRED" },
+    });
+  const batch = await request(
+    "/mcp",
+    [
+      rpc("preview_changes", {
+        operations: [
+          {
+            type: "create_note",
+            path: "Notes/BatchEditing.md",
+            content: "# Synthetic batch",
+          },
+        ],
+      }),
+      rpc(
+        "get_note",
+        { noteId: await core.noteIdFromPath("Notes/Editing.md") },
+        2,
+      ),
+    ],
+    readwrite,
+  );
+  expect(batch.status).toBe(200);
+  expect(batch.error).toBeUndefined();
+});
+it("rotates/revokes READWRITE and rejects cross-role and partial configuration", async () => {
+  for (const [overrides, status, count] of [
+    [
+      {
+        READWRITE_TOKEN: randomBytes(32).toString("hex"),
+        PREVIOUS_READWRITE_TOKEN: readwrite,
+      },
+      200,
+      21,
+    ],
+    [{ READWRITE_TOKEN: randomBytes(32).toString("hex") }, 403, 0],
+    [{ READWRITE_TOKEN: read }, 503, 0],
+    [{ PREVIOUS_READWRITE_TOKEN: admin }, 503, 0],
+    [{ READWRITE_TOKEN: "short" }, 503, 0],
+    [{ WRITE_ENABLED: "false" }, 200, 18],
+  ] as const) {
+    const target = runtime(overrides);
+    try {
+      const result = await request(
+        "/mcp",
+        { jsonrpc: "2.0", id: 1, method: "tools/list" },
+        readwrite,
+        target,
+      );
+      expect(result.status).toBe(status);
+      if (status === 200) expect(result.result.tools).toHaveLength(count);
+      if (overrides.WRITE_ENABLED === "false")
+        expect(
+          (await tool("preview_changes", { operations: [] }, readwrite, target))
+            .error,
+        ).toBeDefined();
+    } finally {
+      await target.dispose();
+    }
   }
 });

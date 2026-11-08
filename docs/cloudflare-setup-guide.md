@@ -308,10 +308,22 @@ while coordinating an incompatible migration. Code rollback does not undo SQL
 or embedding descriptor changes; retain a known compatible version and source
 backup. Model/input-format changes require an explicit full embedding rebuild.
 
+For an editing agent, optionally add a distinct `READWRITE_TOKEN` Worker secret
+using `wrangler secret put READWRITE_TOKEN --config .cloudflare/wrangler.jsonc`.
+Use an independently generated 64-character lowercase hex secret. Give this
+credential to the agent as its HTTP/MCP Bearer token and retain `ADMIN_TOKEN` for
+operators. READWRITE includes all retrieval and, when `WRITE_ENABLED=true`,
+`preview_changes`, `apply_changes` and `get_change_status`. It cannot invoke
+index/reindex, uploads, sync or job advancement. Existing source scope,
+review mode and provider restrictions still apply. No key enables writes by
+itself. `PREVIOUS_READWRITE_TOKEN` provides optional rotation overlap and
+requires a current READWRITE token; all roles must use distinct secrets.
+
 Rotate without mixing privileges: install `PREVIOUS_READ_TOKEN` with the old
 read value and `PREVIOUS_ADMIN_TOKEN` with the old admin value, set new distinct
-current secrets, update clients, test new tokens, then delete both previous
-secrets. Use `wrangler secret put/delete NAME --config .cloudflare/wrangler.jsonc`;
+current secrets, update clients, test new tokens, then delete the previous
+secrets. When READWRITE is configured, rotate its current/previous secrets the
+same way and verify both read and mutation access is revoked. Use `wrangler secret put/delete NAME --config .cloudflare/wrangler.jsonc`;
 allow secret deployment changes to propagate and verify revoked tokens fail on
 HTTP and MCP. The hosted trial observed an old credential still accepted
 immediately after secret deletion, then confirmed both old credentials rejected

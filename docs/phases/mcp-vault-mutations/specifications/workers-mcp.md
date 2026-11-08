@@ -14,14 +14,14 @@ limits and direct mode on pCloud. Enabling requires ingestion/Cron enabled
 and migrations through 0008 so asynchronous indexing/recovery can progress.
 
 Expose the shared `preview_changes`, `apply_changes`, `get_change_status` schemas
-only to an authenticated admin when explicitly enabled. Every HTTP request
+only to an authenticated READWRITE or ADMIN caller when explicitly enabled. Every HTTP request
 authenticates current credentials before buffering its body; an ID, a session
 header or client-provided auth metadata is never permission. Worker MCP remains
 stateless. Authorize the entire batch before executing any message; a read caller
 cannot hide a mutation behind an allowed search. Recheck at tool dispatch.
 
 Read callers and disabled deployments retain a 64 KiB raw JSON limit. Enabled
-admin MCP requests have a 32 MiB received-byte limit applied while streaming,
+READWRITE/ADMIN MCP requests have a 32 MiB received-byte limit applied while streaming,
 before JSON/Base64/patch preparation. Other routes keep their existing limits.
 Return only fixed sanitized errors. Review mode requires a real preview binding;
 direct mode still allocates an issued ID before application. A client execution
@@ -118,3 +118,6 @@ that initial vectors were stored in the incremental vector-work table. The
 successful driver resolved both initial and incremental vector IDs and used a
 longer visibility window. Every attempt ended with the temporary Worker, D1,
 R2, and Vectorize resources confirmed absent from the account inventory.
+
+READWRITE configuration, rotation and exact route/tool permissions are defined in
+[shared access control](../../phase-1-retrieval-foundation/specifications/access-control.md#readwrite-credential-setup-73).

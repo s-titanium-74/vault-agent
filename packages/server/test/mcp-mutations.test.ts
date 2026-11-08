@@ -46,6 +46,7 @@ const remove = (file: string, version: string) => ({
 });
 const readKey = "r".repeat(64),
   adminKey = "a".repeat(64);
+const readwriteKey = "w".repeat(64);
 function unpack(result: unknown): any {
   return JSON.parse(
     (result as { content: { text: string }[] }).content[0]!.text,
@@ -122,11 +123,12 @@ describe("local MCP file changes", () => {
       preview_binding: plan.preview_binding,
     });
   }
-  async function http() {
-    config.write.enabled = true;
+  async function http(enabled = true) {
+    config.write.enabled = enabled;
     config.mcp.enabled = true;
     config.server.readKey = readKey;
     config.server.adminKey = adminKey;
+    config.server.readwriteKey = readwriteKey;
     initApp(store, config);
     app = await createServer(config, {
       store,
@@ -568,7 +570,7 @@ describe("local MCP file changes", () => {
         readSession,
       );
       expect(denied.statusCode).toBe(403);
-      expect(rpc(denied).error.data.errorCode).toBe("ADMIN_REQUIRED");
+      expect(rpc(denied).error.data.errorCode).toBe("READWRITE_REQUIRED");
     }
     expect(fs.existsSync(path.join(config.vault.root, "Denied.png"))).toBe(
       false,
@@ -594,75 +596,161 @@ describe("local MCP file changes", () => {
     ).toBe(200);
     config.server.readKey = undefined;
     config.server.adminKey = undefined;
+    config.server.readwriteKey = undefined;
     expect(
       (await request("tools/list", {}, readKey, readSession)).statusCode,
     ).toBe(401);
   });
-  it("runs HTTP review/apply and exposes current versions through REST", async () => {
+  it("binds all three HTTP session roles and rotates/revokes editing keys", async () => {
     await http();
-    const id = await session();
-    const operations = [create()];
-    const preview = rpc(
-      await request(
-        "tools/call",
-        { name: "preview_changes", arguments: { operations } },
-        adminKey,
-        id,
-      ),
-    );
-    const plan = unpack(preview.result);
-    const response = rpc(
-      await request(
-        "tools/call",
-        {
-          name: "apply_changes",
-          arguments: {
-            operations,
-            operation_id: plan.operation_id,
-            preview_binding: plan.preview_binding,
-          },
-        },
-        adminKey,
-        id,
-      ),
-    );
-    expect(unpack(response.result).results[0].status).toBe("applied");
-    const note = await app!.inject({
-      method: "GET",
-      url: `/notes/${noteIdFromPath("Notes/New.md")}`,
-      headers: { authorization: `Bearer ${readKey}` },
-    });
-    expect(note.statusCode).toBe(200);
-    expect(note.json().data.version).toMatch(/^fs1:/);
-    expect(note.json().data.content).toContain("Markerbody");
-    await app!.vaultMutations!.flush();
-    const noPin = await app!.inject({
-      method: "GET",
-      url: `/chunks/${noteIdFromPath("Notes/New.md")}/0`,
-      headers: { authorization: `Bearer ${readKey}` },
-    });
-    expect(noPin.statusCode).toBe(400);
-    const chunk = await app!.inject({
-      method: "GET",
-      url: `/chunks/${noteIdFromPath("Notes/New.md")}/0?expected_version=${encodeURIComponent(note.json().data.version)}`,
-      headers: { authorization: `Bearer ${readKey}` },
-    });
-    expect(chunk.statusCode).toBe(200);
-    const search = await app!.inject({
-      method: "POST",
-      url: "/search",
-      headers: { authorization: `Bearer ${readKey}` },
-      payload: { query: "Markerbody", mode: "lexical" },
-    });
-    const candidate = search.json().data.results[0];
-    expect(candidate.version).toMatch(/^chunk1:/);
-    const pinned = await app!.inject({
-      method: "GET",
-      url: `/chunks/${candidate.noteId}/${candidate.chunkIndex}?expected_version=${encodeURIComponent(candidate.version)}`,
-      headers: { authorization: `Bearer ${readKey}` },
-    });
-    expect(pinned.statusCode).toBe(200);
+    const tokens = [readKey, readwriteKey, adminKey];
+    const ids = await Promise.all(tokens.map((token) => session(token)));
+    for (let i = 0; i < tokens.length; i++)
+      for (let j = 0; j < tokens.length; j++) {
+        const response = await request("tools/list", {}, tokens[j], ids[i]);
+        expect(response.statusCode).toBe(i === j ? 200 : 403);
+        if (i === j)
+          expect(rpc(response).result.tools).toHaveLength(i === 0 ? 18 : 21);
+        if (i !== j)
+          for (const method of ["GET", "DELETE"] as const) {
+            const other = await app!.inject({
+              method,
+              url: "/mcp",
+              headers: {
+                authorization: `Bearer ${tokens[j]}`,
+                "mcp-session-id": ids[i],
+                accept: "text/event-stream",
+              },
+            });
+            expect(other.statusCode).toBe(403);
+          }
+      }
+    config.server.previousReadwriteKey = readwriteKey;
+    config.server.readwriteKey = "n".repeat(64);
+    for (const token of [readwriteKey, config.server.readwriteKey])
+      expect((await request("tools/list", {}, token, ids[1])).statusCode).toBe(
+        200,
+      );
+    config.server.previousReadwriteKey = undefined;
+    const revoked = await request("tools/list", {}, readwriteKey, ids[1]);
+    expect(revoked.statusCode).toBe(403);
+    expect(rpc(revoked).error.data.errorCode).toBe("AUTH_FAILED");
   });
+  it("keeps READWRITE HTTP mutations disabled until writes are enabled", async () => {
+    await http(false);
+    const id = await session(readwriteKey);
+    expect(
+      rpc(await request("tools/list", {}, readwriteKey, id)).result.tools,
+    ).toHaveLength(18);
+    const result = rpc(
+      await request(
+        "tools/call",
+        { name: "preview_changes", arguments: { operations: [create()] } },
+        readwriteKey,
+        id,
+      ),
+    );
+    expect(result.error.data.errorCode).toBe("WRITE_DISABLED");
+    expect(fs.existsSync(path.join(config.vault.root, "Notes/New.md"))).toBe(
+      false,
+    );
+  });
+  it.each([adminKey, readwriteKey])(
+    "runs HTTP review/apply and exposes current versions through REST (%s)",
+    async (editingKey) => {
+      await http();
+      const id = await session(editingKey);
+      const operations = [create()];
+      const preview = rpc(
+        await request(
+          "tools/call",
+          { name: "preview_changes", arguments: { operations } },
+          editingKey,
+          id,
+        ),
+      );
+      const plan = unpack(preview.result);
+      const response = rpc(
+        await request(
+          "tools/call",
+          {
+            name: "apply_changes",
+            arguments: {
+              operations,
+              operation_id: plan.operation_id,
+              preview_binding: plan.preview_binding,
+            },
+          },
+          editingKey,
+          id,
+        ),
+      );
+      expect(unpack(response.result).results[0].status).toBe("applied");
+      const status = rpc(
+        await request(
+          "tools/call",
+          {
+            name: "get_change_status",
+            arguments: { operation_id: plan.operation_id },
+          },
+          editingKey,
+          id,
+        ),
+      );
+      expect(unpack(status.result).operation_id).toBe(plan.operation_id);
+      const replay = rpc(
+        await request(
+          "tools/call",
+          {
+            name: "apply_changes",
+            arguments: {
+              operations,
+              operation_id: plan.operation_id,
+              preview_binding: plan.preview_binding,
+            },
+          },
+          editingKey,
+          id,
+        ),
+      );
+      expect(unpack(replay.result)).toEqual(unpack(response.result));
+      const note = await app!.inject({
+        method: "GET",
+        url: `/notes/${noteIdFromPath("Notes/New.md")}`,
+        headers: { authorization: `Bearer ${editingKey}` },
+      });
+      expect(note.statusCode).toBe(200);
+      expect(note.json().data.version).toMatch(/^fs1:/);
+      expect(note.json().data.content).toContain("Markerbody");
+      await app!.vaultMutations!.flush();
+      const noPin = await app!.inject({
+        method: "GET",
+        url: `/chunks/${noteIdFromPath("Notes/New.md")}/0`,
+        headers: { authorization: `Bearer ${editingKey}` },
+      });
+      expect(noPin.statusCode).toBe(400);
+      const chunk = await app!.inject({
+        method: "GET",
+        url: `/chunks/${noteIdFromPath("Notes/New.md")}/0?expected_version=${encodeURIComponent(note.json().data.version)}`,
+        headers: { authorization: `Bearer ${editingKey}` },
+      });
+      expect(chunk.statusCode).toBe(200);
+      const search = await app!.inject({
+        method: "POST",
+        url: "/search",
+        headers: { authorization: `Bearer ${editingKey}` },
+        payload: { query: "Markerbody", mode: "lexical" },
+      });
+      const candidate = search.json().data.results[0];
+      expect(candidate.version).toMatch(/^chunk1:/);
+      const pinned = await app!.inject({
+        method: "GET",
+        url: `/chunks/${candidate.noteId}/${candidate.chunkIndex}?expected_version=${encodeURIComponent(candidate.version)}`,
+        headers: { authorization: `Bearer ${editingKey}` },
+      });
+      expect(pinned.statusCode).toBe(200);
+    },
+  );
   it("rejects read-key mutation batches and bounds raw requests before preparing content", async () => {
     await http();
     const id = await session(readKey);

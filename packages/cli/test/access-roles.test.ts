@@ -23,6 +23,8 @@ it("round-trips role keys, applies environment overrides and redacts config outp
     manager.set("vault.root", "synthetic-vault");
     for (const [name, value] of Object.entries({
       readKey: keys.read,
+      readwriteKey: keys.readwrite,
+      previousReadwriteKey: keys.oldReadwrite,
       adminKey: keys.admin,
       previousReadKey: keys.oldRead,
       previousAdminKey: keys.oldAdmin,
@@ -34,6 +36,10 @@ it("round-trips role keys, applies environment overrides and redacts config outp
       });
     }
     expect(manager.load().server.previousAdminKey).toBe(keys.oldAdmin);
+    vi.stubEnv("VAULT_AGENT_READWRITE_KEY", keys.readwrite);
+    vi.stubEnv("VAULT_AGENT_PREVIOUS_READWRITE_KEY", "");
+    expect(manager.load().server.readwriteKey).toBe(keys.readwrite);
+    expect(manager.load().server.previousReadwriteKey).toBe("");
     vi.stubEnv("VAULT_AGENT_READ_KEY", keys.revoked);
     vi.stubEnv("VAULT_AGENT_PREVIOUS_READ_KEY", "");
     expect(manager.load().server.readKey).toBe(keys.revoked);
@@ -118,4 +124,19 @@ it("never falls back to an admin credential for a read-only client or mixed conf
   expect(context.resolveApiKey(c, "admin")).toBe("");
   c.server.apiKey = keys.admin;
   expect(() => context.resolveApiKey(c)).toThrow("CONFIG_INVALID");
+});
+
+it("uses an editing client's key for reads and edits without admin fallback", () => {
+  const context = createCliContext(new Command());
+  const c = structuredClone(DEFAULT_CONFIG);
+  c.server.readwriteKey = keys.readwrite;
+  expect(context.resolveApiKey(c)).toBe(keys.readwrite);
+  expect(context.resolveApiKey(c, "readwrite")).toBe(keys.readwrite);
+  expect(context.resolveApiKey(c, "admin")).toBe("");
+  c.server.readwriteKey = undefined;
+  c.server.adminKey = keys.admin;
+  expect(context.resolveApiKey(c, "readwrite")).toBe("");
+  c.server.adminKey = undefined;
+  c.server.apiKey = keys.admin;
+  expect(context.resolveApiKey(c, "readwrite")).toBe("");
 });

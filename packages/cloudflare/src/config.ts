@@ -30,6 +30,8 @@ export type Env = Omit<
   PCLOUD_ACCESS_TOKEN?: string;
   READ_TOKEN: string;
   ADMIN_TOKEN: string;
+  READWRITE_TOKEN?: string;
+  PREVIOUS_READWRITE_TOKEN?: string;
   PREVIOUS_READ_TOKEN?: string;
   PREVIOUS_ADMIN_TOKEN?: string;
   WRITE_ENABLED?: string;
@@ -65,12 +67,25 @@ export function config(env: Env) {
       env.READ_TOKEN === env.ADMIN_TOKEN
     )
       throw new Error();
-    for (const previous of [env.PREVIOUS_READ_TOKEN, env.PREVIOUS_ADMIN_TOKEN])
+    for (const previous of [
+      env.PREVIOUS_READ_TOKEN,
+      env.PREVIOUS_ADMIN_TOKEN,
+      env.READWRITE_TOKEN,
+      env.PREVIOUS_READWRITE_TOKEN,
+    ])
       if (previous !== undefined && !/^[a-f0-9]{64}$/.test(previous))
         throw new Error();
     if (
+      env.PREVIOUS_READWRITE_TOKEN !== undefined &&
+      env.READWRITE_TOKEN === undefined
+    )
+      throw new Error();
+    if (
       !validRoleCredentials({
         read: [env.READ_TOKEN, env.PREVIOUS_READ_TOKEN].filter(
+          (v): v is string => v !== undefined,
+        ),
+        readwrite: [env.READWRITE_TOKEN, env.PREVIOUS_READWRITE_TOKEN].filter(
           (v): v is string => v !== undefined,
         ),
         admin: [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].filter(
@@ -156,6 +171,7 @@ export function writeSettings(env: Env) {
 }
 export async function authenticate(request: Request, env: Env, admin: boolean) {
   let matchedAdmin = false;
+  let matchedReadwrite = false;
   const adminKeys = [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].filter(
     (v): v is string => v !== undefined,
   );
@@ -168,6 +184,9 @@ export async function authenticate(request: Request, env: Env, admin: boolean) {
       read: [env.READ_TOKEN, env.PREVIOUS_READ_TOKEN].filter(
         (v): v is string => v !== undefined,
       ),
+      readwrite: [env.READWRITE_TOKEN, env.PREVIOUS_READWRITE_TOKEN].filter(
+        (v): v is string => v !== undefined,
+      ),
       admin: [env.ADMIN_TOKEN, env.PREVIOUS_ADMIN_TOKEN].filter(
         (v): v is string => v !== undefined,
       ),
@@ -177,10 +196,19 @@ export async function authenticate(request: Request, env: Env, admin: boolean) {
       const [a, b] = await Promise.all([digest(incoming), digest(expected)]);
       const matches = subtle.timingSafeEqual(a, b);
       if (matches && adminKeys.includes(expected)) matchedAdmin = true;
+      if (
+        matches &&
+        [env.READWRITE_TOKEN, env.PREVIOUS_READWRITE_TOKEN].includes(expected)
+      )
+        matchedReadwrite = true;
       return matches;
     },
   );
   if (failure)
     throw new CloudError(failure, failure === "AUTH_REQUIRED" ? 401 : 403);
-  return matchedAdmin ? ("admin" as const) : ("read" as const);
+  return matchedAdmin
+    ? ("admin" as const)
+    : matchedReadwrite
+      ? ("readwrite" as const)
+      : ("read" as const);
 }

@@ -18,6 +18,8 @@ import {
 import { accessCases, keys } from "../../core/test/access-cases.js";
 const roleKeys = {
   readKey: keys.read,
+  readwriteKey: keys.readwrite,
+  previousReadwriteKey: keys.oldReadwrite,
   adminKey: keys.admin,
   previousReadKey: keys.oldRead,
   previousAdminKey: keys.oldAdmin,
@@ -66,6 +68,11 @@ it("fails closed for partial, legacy-mixed and cross-role rotation settings on a
       { previousReadKey: keys.admin },
       { previousAdminKey: keys.read },
       { readKey: "short" },
+      { readwriteKey: "short" },
+      { readwriteKey: "" },
+      { previousReadwriteKey: keys.admin },
+      { previousAdminKey: keys.readwrite },
+      { previousReadKey: keys.oldReadwrite },
     ]) {
       const c = config();
       Object.assign(c.server, { host }, override);
@@ -123,26 +130,27 @@ it("rejects management before changing files, index, sync jobs or webhook state"
   const app = await createServer(c);
   const before = fs.readFileSync(getIndexPath(c));
   try {
-    for (const url of [
-      "/index",
-      "/reindex",
-      "/sync/pull",
-      "/uploads",
-      "/jobs/id/advance",
-      "/watch",
-    ]) {
-      const response = await app.inject({
-        method: "POST",
-        url,
-        headers: {
-          authorization: `Bearer ${keys.read}`,
-          "content-type": "application/json",
-        },
-        payload: "invalid JSON",
-      });
-      expect(response.statusCode).toBe(403);
-      expect(response.json().error.code).toBe("ADMIN_REQUIRED");
-    }
+    for (const token of [keys.read, keys.readwrite, keys.oldReadwrite])
+      for (const url of [
+        "/index",
+        "/reindex",
+        "/sync/pull",
+        "/uploads",
+        "/jobs/id/advance",
+        "/watch",
+      ]) {
+        const response = await app.inject({
+          method: "POST",
+          url,
+          headers: {
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json",
+          },
+          payload: "invalid JSON",
+        });
+        expect(response.statusCode).toBe(403);
+        expect(response.json().error.code).toBe("ADMIN_REQUIRED");
+      }
     for (const method of ["GET", "PUT", "DELETE"] as const) {
       const r = await app.inject({
         method,
@@ -171,7 +179,12 @@ it("rejects management before changing files, index, sync jobs or webhook state"
     });
     expect(adminIndex.statusCode).toBe(200);
     expect(adminIndex.json().data.mode).toBeDefined();
-    for (const key of [keys.read, keys.admin]) {
+    for (const key of [
+      keys.read,
+      keys.readwrite,
+      keys.oldReadwrite,
+      keys.admin,
+    ]) {
       const r = await app.inject({
         method: "POST",
         url: "/search",

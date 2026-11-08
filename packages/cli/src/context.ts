@@ -3,7 +3,7 @@ import { Config } from "@vault-agent/core";
 
 export interface CliContext {
   resolveEndpoint(config: Config): string;
-  resolveApiKey(config: Config, role?: "read" | "admin"): string;
+  resolveApiKey(config: Config, role?: "read" | "readwrite" | "admin"): string;
   resolveConfigPath(): string | undefined;
 }
 
@@ -23,12 +23,17 @@ export function createCliContext(program: Command): CliContext {
       return globals.endpoint || config.server.endpoint;
     },
 
-    resolveApiKey(config: Config, role: "read" | "admin" = "read"): string {
+    resolveApiKey(
+      config: Config,
+      role: "read" | "readwrite" | "admin" = "read",
+    ): string {
       const globals = getGlobalOpts();
       if (globals.apiKey) return globals.apiKey;
       const server = config.server;
       const split = [
         server.readKey,
+        server.readwriteKey,
+        server.previousReadwriteKey,
         server.adminKey,
         server.previousReadKey,
         server.previousAdminKey,
@@ -38,8 +43,14 @@ export function createCliContext(program: Command): CliContext {
           "CONFIG_INVALID: Do not mix role keys with a legacy API key.",
         );
       return split
-        ? ((role === "admin" ? server.adminKey : server.readKey) ?? "")
-        : server.apiKey;
+        ? ((role === "admin"
+            ? server.adminKey
+            : role === "readwrite"
+              ? server.readwriteKey
+              : server.readKey || server.readwriteKey) ?? "")
+        : role === "readwrite"
+          ? ""
+          : server.apiKey;
     },
 
     resolveConfigPath(): string | undefined {

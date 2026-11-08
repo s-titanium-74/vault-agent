@@ -1,3 +1,4 @@
+import { canWrite } from "@vault-agent/core/access";
 import { requiredHttpRole } from "@vault-agent/core/access";
 import {
   SearchError,
@@ -143,7 +144,7 @@ async function dispatch(request: Request, env: Env) {
         env,
         await body(
           request,
-          settings.write.enabled && role === "admin"
+          settings.write.enabled && canWrite(role)
             ? MCP_WRITE_REQUEST_BYTES
             : 65536,
         ),

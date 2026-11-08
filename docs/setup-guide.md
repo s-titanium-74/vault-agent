@@ -28,11 +28,17 @@ on localhost. For example, generate independent temporary environment keys:
 ```bash
 export VAULT_AGENT_READ_KEY="$(openssl rand -hex 32)"
 export VAULT_AGENT_ADMIN_KEY="$(openssl rand -hex 32)"
+export VAULT_AGENT_READWRITE_KEY="$(openssl rand -hex 32)"
 vault-agent serve --mcp-enabled
 ```
 
 Store long-lived keys in a private environment or user-local configuration and
-give mutation clients only the admin credential they need. Read clients cannot
+give editing clients only the READWRITE credential. READWRITE permits all
+retrieval tools plus the three change tools when writes are enabled. Keep ADMIN
+for operators performing indexing, upload or sync. Setting a READWRITE key alone
+does not enable writes. User-local TOML supports `readwrite_key` and optional
+`previous_readwrite_key` under `[server]`; environment overlap uses
+`VAULT_AGENT_PREVIOUS_READWRITE_KEY`. READ clients cannot
 list/call the change tools or read their previews/status. Legacy single apiKey
 cannot enable HTTP writes; start a new MCP session when switching roles.
 

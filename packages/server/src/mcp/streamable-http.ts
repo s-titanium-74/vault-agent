@@ -1,5 +1,7 @@
 import {
   authorizeBearer,
+  canWrite,
+  validRoleCredentials,
   type AccessCredentials,
   type AccessRole,
 } from "@vault-agent/core/access";
@@ -117,7 +119,7 @@ export function registerMcpStreamableHttpRoute(
     if (
       !credentials?.read.length ||
       !credentials.admin.length ||
-      credentials.read.some((key) => credentials.admin.includes(key))
+      !validRoleCredentials(credentials)
     )
       throw new Error(
         "CONFIG_INVALID: HTTP writes require separate read/admin credentials.",
@@ -203,7 +205,15 @@ export function registerMcpStreamableHttpRoute(
           constantTimeEqual,
         ))
           ? "admin"
-          : "read";
+          : credentials &&
+              !(await authorizeBearer(
+                request.headers.authorization,
+                credentials,
+                "readwrite",
+                constantTimeEqual,
+              ))
+            ? "readwrite"
+            : "read";
       (request.raw as typeof request.raw & { auth: AuthInfo }).auth = {
         token: "",
         clientId: "vault-agent-local-http",
@@ -251,7 +261,7 @@ export function registerMcpStreamableHttpRoute(
       const calls = Array.isArray(parsed) ? parsed : [parsed];
       if (
         options.writesEnabled &&
-        request.mcpRole !== "admin" &&
+        !canWrite(request.mcpRole) &&
         calls.some(
           (call) =>
             call?.method === "tools/call" &&
@@ -270,7 +280,7 @@ export function registerMcpStreamableHttpRoute(
                 "id" in parsed
                 ? (parsed.id as string | number | null)
                 : null,
-              { errorCode: "ADMIN_REQUIRED" },
+              { errorCode: "READWRITE_REQUIRED" },
             ),
           );
         return;

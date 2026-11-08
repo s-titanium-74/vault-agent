@@ -1,3 +1,4 @@
+import { canWrite } from "@vault-agent/core/access";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CfWorkerJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/cfworker-provider.js";
@@ -70,7 +71,7 @@ function toolsFor(env: Env, role: AccessRole) {
         }
       : tool,
   );
-  return enabled && role === "admin"
+  return enabled && canWrite(role)
     ? [
         ...readTools,
         ...mutationTools.map((tool) => ({
@@ -94,7 +95,7 @@ async function change(
   try {
     const settings = config(env).write;
     if (!settings.enabled) throw new CloudError("WRITE_DISABLED", 403);
-    if (role !== "admin") throw new CloudError("ADMIN_REQUIRED", 403);
+    if (!canWrite(role)) throw new CloudError("READWRITE_REQUIRED", 403);
     const service = await R2MutationService.open(env, { settings });
     if (name === "preview_changes") {
       const p = previewChangesSchema.safeParse(args);
@@ -336,7 +337,7 @@ async function single(
   const transport = new WebStandardStreamableHTTPServerTransport({
     enableJsonResponse: true,
     maxRequestBodySize:
-      config(env).write.enabled && role === "admin"
+      config(env).write.enabled && canWrite(role)
         ? MCP_WRITE_REQUEST_BYTES
         : 65536,
   });
@@ -405,7 +406,7 @@ export async function mcp(
     )
   ) {
     if (!config(env).write.enabled) throw new CloudError("WRITE_DISABLED", 403);
-    if (role !== "admin") throw new CloudError("ADMIN_REQUIRED", 403);
+    if (!canWrite(role)) throw new CloudError("READWRITE_REQUIRED", 403);
   }
   if (!Array.isArray(body)) return single(request, env, body, role);
   if (!body.length || body.length > 10)

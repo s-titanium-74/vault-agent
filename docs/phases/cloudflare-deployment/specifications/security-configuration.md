@@ -50,7 +50,8 @@ client cannot expand it. Scope expansion requires explicit setup changes.
 
 - Require HTTPS and an independently generated random bearer credential with
   at least 256 bits of entropy. Use separate read and admin credentials;
-  admin includes read access and ingestion/index privileges. Never accept a
+  optional READWRITE grants reads and explicitly enabled MCP content changes;
+  admin includes these plus ingestion/index privileges. Never accept a
   read token for mutation. Validate before reading/parsing vault request bodies
   or accessing storage. Compare secrets without content-dependent timing.
 - Store credentials in Worker secrets, never source, public vars, URL query
@@ -60,7 +61,7 @@ client cannot expand it. Scope expansion requires explicit setup changes.
   Use resource-scoped deployment permissions. Workers use service bindings;
   clients need no direct D1/R2/AI/Vectorize account token.
 - Fail closed if required secrets/bindings are absent. Missing bearer returns
-  `401 AUTH_REQUIRED`; invalid bearer returns `403 AUTH_FAILED`; read token on
+  `401 AUTH_REQUIRED`; invalid bearer returns `403 AUTH_FAILED`; READ or READWRITE token on
   admin surface returns `403 ADMIN_REQUIRED`. Authenticate even unsupported
   data/admin routes before reporting capability details.
 - R2 has no public bucket endpoint/custom domain; no signed public downloads.
