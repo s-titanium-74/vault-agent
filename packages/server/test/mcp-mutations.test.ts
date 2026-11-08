@@ -172,42 +172,79 @@ describe("local MCP file changes", () => {
     return String(result.headers["mcp-session-id"]);
   }
 
-  it("updates a pCloud note through the MCP client and publishes it to search", async () => {
-    const api = new SyntheticPCloud();
-    api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard.");
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(api.fetch);
-    try {
-      config.index.dir = path.join(directory, "pcloud-index");
-      config.vault.pcloud = {
-        region: "us",
-        folder_id: "1",
-        access_token: "synthetic",
-        includes: ["Notes"],
-        poll_seconds: 60,
-      };
-      await indexVault(config);
-      store.close();
-      store = await IndexStore.open(getIndexPath(config));
-      await connect();
-      const relative = "Notes/Apple.md";
-      const note = await call("get_note", { noteId: noteIdFromPath(relative) });
-      const result = await apply([update(relative, note.version)]);
-      expect(result.results[0]).toMatchObject({ status: "applied" });
-      await runtime!.flush();
-      const status = await call("get_change_status", {
-        operation_id: result.operation_id,
-      });
-      expect(status.results[0]).toMatchObject({ index_state: "fresh" });
-      expect(
-        (await call("get_note", { noteId: noteIdFromPath(relative) })).content,
-      ).toContain("Changedbody");
-    } finally {
-      await runtime?.close();
-      fetchMock.mockRestore();
-    }
-  });
+  it.each(["review", "direct"] as const)(
+    "updates a pCloud note through the MCP client in %s mode and publishes it to search",
+    async (mode) => {
+      const api = new SyntheticPCloud();
+      api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard.");
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(api.fetch);
+      try {
+        config.index.dir = path.join(directory, "pcloud-index");
+        config.vault.pcloud = {
+          region: "us",
+          folder_id: "1",
+          access_token: "synthetic",
+          includes: ["Notes"],
+          poll_seconds: 60,
+        };
+        await indexVault(config);
+        store.close();
+        store = await IndexStore.open(getIndexPath(config));
+        await connect(true, mode);
+        const relative = "Notes/Apple.md";
+        const note = await call("get_note", {
+          noteId: noteIdFromPath(relative),
+        });
+        const operations = [update(relative, note.version)];
+        const plan = await call("preview_changes", {
+          operations,
+          preview: mode === "review",
+        });
+        if (mode === "direct") {
+          expect(plan.preview).toBeUndefined();
+          expect(plan.preview_binding).toBeUndefined();
+        }
+        const result = await call("apply_changes", {
+          operations,
+          operation_id: plan.operation_id,
+          ...(plan.preview_binding
+            ? { preview_binding: plan.preview_binding }
+            : {}),
+        });
+        expect(
+          await call("apply_changes", {
+            operations,
+            operation_id: plan.operation_id,
+            ...(plan.preview_binding
+              ? { preview_binding: plan.preview_binding }
+              : {}),
+          }),
+        ).toEqual(result);
+        expect(result.results[0]).toMatchObject({ status: "applied" });
+        await expect(
+          call("get_chunk", {
+            noteId: noteIdFromPath(relative),
+            chunkIndex: 0,
+            expected_version: note.version,
+          }),
+        ).rejects.toMatchObject({ data: { errorCode: "REVISION_CHANGED" } });
+        await runtime!.flush();
+        const status = await call("get_change_status", {
+          operation_id: result.operation_id,
+        });
+        expect(status.results[0]).toMatchObject({ index_state: "fresh" });
+        expect(
+          (await call("get_note", { noteId: noteIdFromPath(relative) }))
+            .content,
+        ).toContain("Changedbody");
+      } finally {
+        await runtime?.close();
+        fetchMock.mockRestore();
+      }
+    },
+  );
 
   it("keeps mutations absent/default-off and refuses direct calls with no journal", async () => {
     await connect(false);

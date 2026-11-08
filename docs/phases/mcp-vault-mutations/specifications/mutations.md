@@ -109,6 +109,11 @@ accepted limitation is explicit in setup and tools. These layers do not close #5
 Use the existing MCP result/error conventions. Preserve existing read tools.
 In the default `review` mode require a preview binding before `apply_changes`;
 `direct` mode permits application without preview. Both require writes enabled.
+This applies to filesystem, R2 and opt-in pCloud Markdown writes (#72).
+Direct callers still allocate an issued operation ID through `preview_changes`
+with `preview:false`, then resupply the identical operations to `apply_changes`.
+It changes neither provider concurrency guarantees nor exclusive write ownership
+for pCloud; ambiguous provider results are reconciled without replaying writes.
 A preview is not proof of human approval: the same agent can call both tools.
 The MCP client's confirmation settings control human review, including in direct mode.
 

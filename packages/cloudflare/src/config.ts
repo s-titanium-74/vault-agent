@@ -116,11 +116,7 @@ export function config(env: Env) {
       throw new Error();
     const semantic = String(env.EXTERNAL_EMBEDDING_CONSENT) === "true";
     const write = writeSettings(env);
-    if (
-      write.enabled &&
-      (String(env.INGESTION_ENABLED) !== "true" ||
-        (env.SOURCE_PROVIDER === "pcloud" && write.mode !== "review"))
-    )
+    if (write.enabled && String(env.INGESTION_ENABLED) !== "true")
       throw new Error();
     if (
       semantic &&

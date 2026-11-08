@@ -86,8 +86,6 @@ export class LocalMutationService {
       this.settings = parsed.data;
       if (!this.settings.enabled)
         throw new LocalMutationError("WRITE_DISABLED");
-      if (config.vault.pcloud && this.settings.mode !== "review")
-        throw new LocalMutationError("PREVIEW_REQUIRED");
       this.config = structuredClone(config);
       this.now = options.now ?? Date.now;
       if (config.vault.pcloud) this.remote = pcloudSource(this.config, true);

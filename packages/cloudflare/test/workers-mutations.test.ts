@@ -611,13 +611,6 @@ it.each([
   { WRITE_MAX_BATCH_BYTES: "999999999" },
   { WRITE_MODE: "unsafe" },
   { INGESTION_ENABLED: "false" },
-  {
-    SOURCE_PROVIDER: "pcloud",
-    WRITE_MODE: "direct",
-    PCLOUD_REGION: "us",
-    PCLOUD_FOLDER_ID: "1",
-    PCLOUD_ACCESS_TOKEN: "synthetic",
-  },
 ])("rejects invalid/unsupported enabled settings: %j", async (overrides) => {
   const target = runtime(overrides);
   try {
