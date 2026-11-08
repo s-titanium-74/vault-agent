@@ -4,11 +4,14 @@ export const keys = {
   admin: "b".repeat(64),
   oldRead: "c".repeat(64),
   oldAdmin: "d".repeat(64),
+  readwrite: "f".repeat(64),
+  oldReadwrite: "1".repeat(64),
   revoked: "e".repeat(64),
 };
 export const credentials = {
   read: [keys.read, keys.oldRead],
   admin: [keys.admin, keys.oldAdmin],
+  readwrite: [keys.readwrite, keys.oldReadwrite],
 };
 export const accessCases: {
   name: string;
@@ -42,6 +45,12 @@ export const accessCases: {
     failure: "AUTH_FAILED",
   },
   ...(["read", "admin"] as const).flatMap((role) => [
+    ...[keys.readwrite, keys.oldReadwrite].map((key) => ({
+      name: `readwrite ${key.slice(0, 1)} to ${role}`,
+      header: `Bearer ${key}`,
+      role,
+      failure: role === "admin" ? ("ADMIN_REQUIRED" as const) : null,
+    })),
     {
       name: `read to ${role}`,
       header: `Bearer ${keys.read}`,

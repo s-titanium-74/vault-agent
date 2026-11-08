@@ -20,7 +20,7 @@ Local transports accept up to 20 MiB decoded batch payload and 32 MiB raw JSON
 per request/frame; escaping/Base64 may require smaller batches. Reject higher
 batch settings rather than silently lowering them.
 
-Enabled admin/local stdio callers see three additional tools:
+Enabled READWRITE/ADMIN/local stdio callers see three additional tools:
 
 - `preview_changes({operations, preview?: true})` validates and allocates an ID,
   bounded diffs and a binding. `preview:false` allocates metadata without diffs
@@ -42,10 +42,10 @@ Enabled local HTTP requires distinct read/admin keys under #44 even on localhost
 Legacy single apiKey and anonymous localhost cannot enable HTTP writes.
 stdio uses the process trust boundary without HTTP keys. Authenticate each HTTP
 request using current credentials before buffering it. After bounded JSON
-parsing identify all mutation calls, including batch messages, and require admin
+parsing identify all mutation calls, including batch messages, and require READWRITE or ADMIN
 before decoding Base64 or preparing operations. The SDK receives request-scoped
 roles, never a role captured at initialization. Enabled sessions are role-bound;
-switching read/admin requires a new initialize. IDs/sessions are not credentials.
+switching READ/READWRITE/ADMIN requires a new initialize. IDs/sessions are not credentials.
 Rotation and revocation apply on every call.
 
 ## Reads and lifecycle
@@ -95,3 +95,6 @@ Build, typecheck (including DOM-only portable declarations), lint and formatting
 pass. A controlled filesystem test explicitly demonstrates the accepted missed
 external write after the last version check; successful tests do not establish
 a fully atomic conditional write against external editors.
+
+READWRITE configuration, rotation and exact route/tool permissions are defined in
+[shared access control](../../phase-1-retrieval-foundation/specifications/access-control.md#readwrite-credential-setup-73).

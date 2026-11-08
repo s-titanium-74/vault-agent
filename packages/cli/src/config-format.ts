@@ -33,6 +33,8 @@ export function maskSecrets(config: Config): Record<string, unknown> {
       ...config.server,
       apiKey: config.server.apiKey ? "***" : "",
       readKey: config.server.readKey ? "***" : "",
+      readwriteKey: config.server.readwriteKey ? "***" : "",
+      previousReadwriteKey: config.server.previousReadwriteKey ? "***" : "",
       adminKey: config.server.adminKey ? "***" : "",
       previousReadKey: config.server.previousReadKey ? "***" : "",
       previousAdminKey: config.server.previousAdminKey ? "***" : "",
@@ -58,6 +60,12 @@ export function printConfig(config: Config): void {
   console.log(`  host = ${config.server.host}`);
   console.log(`  port = ${config.server.port}`);
   console.log(`  apiKey = ${config.server.apiKey ? "set" : "unset"}`);
+  console.log(
+    `  readwriteKey = ${config.server.readwriteKey ? "set" : "unset"}`,
+  );
+  console.log(
+    `  previousReadwriteKey = ${config.server.previousReadwriteKey ? "set" : "unset"}`,
+  );
   console.log(`  readKey = ${config.server.readKey ? "set" : "unset"}`);
   console.log(`  adminKey = ${config.server.adminKey ? "set" : "unset"}`);
   console.log(

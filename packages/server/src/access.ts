@@ -139,11 +139,18 @@ function isLocalhostHost(host: string): boolean {
 function hasRoleKeys(
   server: Pick<
     Config["server"],
-    "readKey" | "adminKey" | "previousReadKey" | "previousAdminKey"
+    | "readKey"
+    | "adminKey"
+    | "previousReadKey"
+    | "previousAdminKey"
+    | "readwriteKey"
+    | "previousReadwriteKey"
   >,
 ): boolean {
   return [
     server.readKey,
+    server.readwriteKey,
+    server.previousReadwriteKey,
     server.adminKey,
     server.previousReadKey,
     server.previousAdminKey,
@@ -152,7 +159,13 @@ function hasRoleKeys(
 export function localAccessCredentials(
   server: Pick<
     Config["server"],
-    "apiKey" | "readKey" | "adminKey" | "previousReadKey" | "previousAdminKey"
+    | "apiKey"
+    | "readKey"
+    | "adminKey"
+    | "previousReadKey"
+    | "previousAdminKey"
+    | "readwriteKey"
+    | "previousReadwriteKey"
   >,
 ): AccessCredentials | null {
   if (!hasRoleKeys(server)) {
@@ -160,6 +173,9 @@ export function localAccessCredentials(
   }
   const credentials = {
     read: [server.readKey, server.previousReadKey].filter(
+      (v): v is string => !!v,
+    ),
+    readwrite: [server.readwriteKey, server.previousReadwriteKey].filter(
       (v): v is string => !!v,
     ),
     admin: [server.adminKey, server.previousAdminKey].filter(
@@ -170,8 +186,9 @@ export function localAccessCredentials(
     server.apiKey ||
     !server.readKey ||
     !server.adminKey ||
+    (!!server.previousReadwriteKey && !server.readwriteKey) ||
     !validRoleCredentials(credentials) ||
-    [...credentials.read, ...credentials.admin].some(
+    [...credentials.read, ...credentials.readwrite, ...credentials.admin].some(
       (key) => !/^[A-Za-z0-9_-]{32,}$/.test(key),
     )
   ) {

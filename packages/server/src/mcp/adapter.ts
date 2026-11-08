@@ -1,3 +1,4 @@
+import { canWrite, type AccessRole } from "@vault-agent/core/access";
 import { tools } from "./tool-definitions.js";
 import {
   LocalMutationRuntime,
@@ -119,7 +120,7 @@ export function createMcpServer(context: McpAdapterContext): Server {
   });
 
   const mayWrite = (auth?: { scopes: string[] }) =>
-    !auth || auth.scopes.includes("admin");
+    !auth || auth.scopes.some((role) => canWrite(role as AccessRole));
   server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
     const readTools = context.config.write?.enabled
       ? tools.map((tool) =>
@@ -150,7 +151,7 @@ export function createMcpServer(context: McpAdapterContext): Server {
       if (!context.config.write?.enabled || !context.mutations)
         throw mutationMcpError({ code: "WRITE_DISABLED" });
       if (!mayWrite(extra.authInfo))
-        throw mutationMcpError({ code: "ADMIN_REQUIRED" });
+        throw mutationMcpError({ code: "READWRITE_REQUIRED" });
     }
     const result = await withTimeout(
       dispatchTool(context, request.params.name, request.params.arguments),
