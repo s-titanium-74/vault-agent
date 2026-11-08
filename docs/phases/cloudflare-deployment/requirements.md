@@ -99,6 +99,8 @@ Implementation milestone #35: [self-deployment and measurement](specifications/s
 
 ## pCloud source extension
 
-See [pCloud source contract](specifications/pcloud-source.md) for read-only scope, explicit setup,
+See [pCloud source contract](specifications/pcloud-source.md) for default read-only scope, explicit setup,
 SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
 R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.
+Opt-in Markdown MCP writes support review (default) and explicit direct mode
+in Node and Workers (#72), retaining the exclusive-writer concurrency boundary.

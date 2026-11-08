@@ -4,7 +4,8 @@
 
 Explicit opt-in selects one normal pCloud folder per local configuration or
 Worker deployment. The adapter defaults to read-only. An administrator can
-explicitly enable Markdown writes through MCP in review mode. Crypto folders, shortcuts, attachments and guidance are
+explicitly enable Markdown writes through MCP in review mode (default) or
+explicitly opt into direct mode (#72). Crypto folders, shortcuts, attachments and guidance are
 not supported initially; Markdown (.md/.markdown) notes only. Existing filesystem
 and R2 sources remain defaults. Switching source requires a separate index or
 fresh deployment; never reuse an existing deployment across source identities.
@@ -118,15 +119,24 @@ Official references checked 2026-11-02:
 
 ## MCP writes (#67)
 
-Use the existing admin-only preview and apply workflow for scoped Markdown
+Use the existing READWRITE/ADMIN (or trusted local stdio) preview and apply workflow for scoped Markdown
 create, replace, patch and delete in the Node and Workers runtimes. Enable
 pCloud writes explicitly and use one vault-agent writer per configured root.
 The shared pCloud adapter resolves paths from the configured folder ID and
-checks the current exact-byte SHA-256 against the preview revision. A known
+checks the current exact-byte SHA-256 against the requested expected version. A known
 mismatch before the provider request rejects the write. Creation uses
 `createfolderifnotexists` for missing parents and `uploadfile` with `nopartial`.
 A failed create can leave empty parent folders. Deletion uses the verified file
 ID. Rename and attachments remain outside the MCP mutation scope.
+
+Writes remain disabled by default. When enabled, `write.mode=review` (Node)
+or `WRITE_MODE=review` (Workers) remains the default and requires a diff preview
+and its binding. Explicit `direct` mode uses `preview_changes` with
+`preview:false` to allocate an operation ID without a diff or preview binding,
+then `apply_changes` with that ID and the exact same operations. It adds no
+single-call mutation API and does not bypass MCP client execution confirmation.
+Authorization, issued IDs, request binding, replay protection, scope/size limits,
+expected versions, asynchronous indexing and stale-chunk rejection still apply.
 
 The documented pCloud upload and delete APIs have no expected-revision
 parameter. The hash check and provider write are separate requests. External
@@ -134,6 +144,7 @@ writes, including pCloud Sync and edits from the pCloud web UI, can intervene
 between them. Read-back verification confirms the resulting state and cannot
 prove that an intervening update was preserved. Deployment with this model
 requires exclusive write ownership of the configured scope.
+Direct mode changes only the preview requirement, not this concurrency boundary.
 
 After a confirmed write, use source reconciliation to update SQLite or D1.
 An ambiguous provider outcome enters reconciliation. The runtime checks

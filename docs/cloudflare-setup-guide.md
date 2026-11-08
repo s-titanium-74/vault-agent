@@ -148,8 +148,12 @@ R2 source or an explicitly scoped pCloud folder. With pCloud, set
 and provide a write-capable `PCLOUD_ACCESS_TOKEN` as a Worker secret. Run a
 single writer for that folder and disable other writers, including pCloud Sync.
 MCP supports Markdown notes up to 2 MiB in this mode. The Worker uses D1 for
-operation status and indexing. For R2, keep `WRITE_MODE="review"` unless direct
-application is an intentional choice. The default limits are 5 MiB/file,
+operation status and indexing. For either source, keep `WRITE_MODE="review"`
+unless direct application is an intentional choice. Explicit `WRITE_MODE="direct"`
+uses `preview_changes` with `preview:false` to allocate an ID, then
+`apply_changes` with that ID and identical operations, without a diff or binding.
+Client execution confirmation and pCloud's non-atomic version check/write and
+exclusive-writer requirement still apply. The default limits are 5 MiB/file,
 20 MiB/batch, 20 operations and seven days of operation history; optional
 `WRITE_*` settings are listed in the linked contract.
 

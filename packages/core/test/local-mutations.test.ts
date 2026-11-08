@@ -116,74 +116,119 @@ describe("coordinated filesystem mutations", () => {
       new LocalMutationService(config, { settings: { enabled: true } }),
     );
   });
-  it("rejects direct pCloud writes and a private state directory inside a filesystem source", () => {
-    config.vault.pcloud = {
-      region: "us",
-      folder_id: "0",
-      access_token: "synthetic",
-      includes: ["."],
-      poll_seconds: 60,
-    };
-    expect(() =>
-      service({ settings: { enabled: true, mode: "direct" } }),
-    ).toThrowError(expect.objectContaining({ code: "PREVIEW_REQUIRED" }));
-    expect(fs.existsSync(config.index.dir)).toBe(false);
-    delete config.vault.pcloud;
+  it("rejects a private state directory inside a filesystem source", () => {
     config.index.dir = path.join(root, "generated");
     expect(() => service()).toThrowError(
       expect.objectContaining({ code: "SOURCE_EXCLUDED" }),
     );
     expect(fs.existsSync(config.index.dir)).toBe(false);
   });
-  it("reconciles pCloud mutations to SQLite and recovers a lost upload response", async () => {
-    const api = new SyntheticPCloud();
-    config.vault.pcloud = {
-      region: "us",
-      folder_id: "1",
-      access_token: "synthetic",
-      includes: ["Notes"],
-      poll_seconds: 60,
-    };
-    let loseResponse = true;
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockImplementation(async (input, init) => {
-        const response = await api.fetch(input, init);
-        if (loseResponse && String(input).endsWith("/uploadfile")) {
-          loseResponse = false;
-          throw new Error("synthetic lost response");
-        }
-        return response;
+  it.each(["review", "direct"] as const)(
+    "reconciles pCloud %s mutations to SQLite and recovers a lost upload response",
+    async (mode) => {
+      const api = new SyntheticPCloud();
+      config.vault.pcloud = {
+        region: "us",
+        folder_id: "1",
+        access_token: "synthetic",
+        includes: ["Notes"],
+        poll_seconds: 60,
+      };
+      let loseResponse = true;
+      const fetchMock = vi
+        .spyOn(globalThis, "fetch")
+        .mockImplementation(async (input, init) => {
+          const response = await api.fetch(input, init);
+          if (loseResponse && String(input).endsWith("/uploadfile")) {
+            loseResponse = false;
+            throw new Error("synthetic lost response");
+          }
+          return response;
+        });
+      const svc = service({ settings: { enabled: true, mode } });
+      const relative = "Notes/New/Apple.md";
+      const id = noteIdFromPath(relative);
+      const input = batch(create(relative, "# Apple\n\nSynthetic orchard."));
+      if (mode === "review")
+        await expect(
+          svc.allocate(input, { preview: false }),
+        ).rejects.toMatchObject({ code: "PREVIEW_REQUIRED" });
+      const plan = await svc.allocate(input, { preview: mode === "review" });
+      if (mode === "direct") {
+        expect(plan).not.toHaveProperty("preview");
+        expect(plan).not.toHaveProperty("preview_binding");
+      }
+      await expect(
+        svc.apply(
+          plan.operation_id,
+          batch(create(relative, "# Different request")),
+          plan.preview_binding,
+        ),
+      ).rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+      const outcome = await svc.apply(
+        plan.operation_id,
+        input,
+        plan.preview_binding,
+      );
+      expect(outcome.results[0]).toMatchObject({ status: "reconciling" });
+      expect(
+        await svc.apply(plan.operation_id, input, plan.preview_binding),
+      ).toEqual(outcome);
+      expect(await svc.getNote(id)).toBeNull();
+      clock += 61000;
+      expect(await svc.flushIndex()).toEqual({ processed: 1 });
+      expect(svc.getStatus(plan.operation_id).results[0]).toMatchObject({
+        status: "applied",
+        index_state: "fresh",
       });
-    const svc = service();
-    const relative = "Notes/New/Apple.md";
-    const id = noteIdFromPath(relative);
-    const input = batch(create(relative, "# Apple\n\nSynthetic orchard."));
-    const plan = await svc.allocate(input);
-    const outcome = await svc.apply(
-      plan.operation_id,
-      input,
-      plan.preview_binding,
-    );
-    expect(outcome.results[0]).toMatchObject({ status: "reconciling" });
-    expect(await svc.getNote(id)).toBeNull();
-    clock += 61000;
-    expect(await svc.flushIndex()).toEqual({ processed: 1 });
-    expect(svc.getStatus(plan.operation_id).results[0]).toMatchObject({
-      status: "applied",
-      index_state: "fresh",
-    });
-    expect(
-      fetchMock.mock.calls.filter(([input]) =>
-        String(input).endsWith("/uploadfile"),
-      ),
-    ).toHaveLength(1);
-    const version = (await svc.getNote(id))!.version;
-    const removed = await apply(svc, batch(remove(relative, version)));
-    expect(removed.results[0]).toMatchObject({ status: "applied" });
-    expect(await svc.flushIndex()).toEqual({ processed: 1 });
-    expect((await store()).getNote(id)).toBeFalsy();
-  });
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).endsWith("/uploadfile"),
+        ),
+      ).toHaveLength(1);
+      for (const denied of [
+        create("Outside/Forbidden.md"),
+        {
+          type: "upload_attachment",
+          path: "Notes/Pixel.png",
+          content_base64: "AA==",
+        },
+      ]) {
+        const input = batch(denied);
+        const plan = await svc.allocate(input, { preview: mode === "review" });
+        expect(
+          (await svc.apply(plan.operation_id, input, plan.preview_binding))
+            .results[0],
+        ).toMatchObject({ status: "failed", code: "SOURCE_EXCLUDED" });
+      }
+      await expect(
+        svc.allocate(
+          batch(create("Notes/Large.md", "x".repeat(2 * 1024 * 1024 + 1))),
+          { preview: mode === "review" },
+        ),
+      ).rejects.toMatchObject({ code: "SIZE_LIMIT_EXCEEDED" });
+      const version = (await svc.getNote(id))!.version;
+      const stale = batch(replace(relative, version));
+      const stalePlan = await svc.allocate(stale, {
+        preview: mode === "review",
+      });
+      api.set(relative, "# External synthetic change");
+      expect(
+        (
+          await svc.apply(
+            stalePlan.operation_id,
+            stale,
+            stalePlan.preview_binding,
+          )
+        ).results[0],
+      ).toMatchObject({ status: "failed", code: "SOURCE_REVISION_MISMATCH" });
+      const latest = (await svc.getNote(id))!.version;
+      const removed = await apply(svc, batch(remove(relative, latest)));
+      expect(removed.results[0]).toMatchObject({ status: "applied" });
+      expect(await svc.flushIndex()).toEqual({ processed: 1 });
+      expect((await store()).getNote(id)).toBeFalsy();
+    },
+  );
 
   it("creates parent directories, exposes current notes before indexing and applies one atomic ordered patch", async () => {
     const svc = service();

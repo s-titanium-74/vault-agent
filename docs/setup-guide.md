@@ -49,8 +49,11 @@ restore or automatic link repair. Save success and pending index state are
 separate; retry lost responses with the same issued ID/request. Defaults are
 5 MiB/file, 20 files and 20 MiB final bytes per batch, plus 32 MiB raw MCP JSON.
 The index directory must be outside a filesystem source vault. For pCloud,
-set `[write] enabled = true` and `mode = "review"` to enable Markdown-only MCP
-writes. Supply `VAULT_AGENT_PCLOUD_ACCESS_TOKEN` through the process environment
+set `[write] enabled = true` to enable Markdown-only MCP writes. The default
+`mode = "review"` requires a preview binding; explicitly setting `mode = "direct"`
+allows `preview_changes` with `preview:false`, followed by `apply_changes` with
+the issued ID and identical operations, without a diff or binding. Client
+execution confirmation still applies. Supply `VAULT_AGENT_PCLOUD_ACCESS_TOKEN` through the process environment
 with write access. Use one vault-agent writer and disable other writers
 (including pCloud Sync) for that scope. pCloud allows up to 2 MiB per note.
 

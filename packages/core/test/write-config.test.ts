@@ -58,9 +58,11 @@ describe("opt-in write configuration", () => {
     vi.stubEnv("VAULT_AGENT_WRITE_MAX_BATCH_BYTES", "5abc");
     expect(() => new ConfigManager(file).load()).toThrow();
   });
-  it("rejects unknown TOML safety fields and direct pCloud writes", () => {
+  it("rejects unknown TOML safety fields", () => {
     fs.appendFileSync(file, "[write]\nforce = true\n");
     expect(() => new ConfigManager(file).load()).toThrow();
+  });
+  it("accepts explicit direct pCloud writes through schema, user config and environment", () => {
     expect(
       configSchema.safeParse({
         ...DEFAULT_CONFIG,
@@ -75,7 +77,33 @@ describe("opt-in write configuration", () => {
         },
         write: { ...DEFAULT_CONFIG.write, enabled: true, mode: "direct" },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
+    fs.writeFileSync(
+      file,
+      `[vault.pcloud]
+region = "us"
+folder_id = "1"
+access_token = "synthetic"
+includes = ["Notes"]
+`,
+    );
+    const manager = new ConfigManager(file);
+    expect(manager.load().write).toMatchObject({
+      enabled: false,
+      mode: "review",
+    });
+    manager.set("write.enabled", "true");
+    expect(manager.load().write.mode).toBe("review");
+    manager.set("write.mode", "direct");
+    expect(manager.load().write).toMatchObject({
+      enabled: true,
+      mode: "direct",
+    });
+    manager.set("write.mode", "review");
+    vi.stubEnv("VAULT_AGENT_WRITE_MODE", "direct");
+    expect(manager.load().write.mode).toBe("direct");
+    vi.stubEnv("VAULT_AGENT_WRITE_MAX_BATCH_BYTES", "20971521");
+    expect(() => manager.load()).toThrow();
   });
   it("rejects write-enabled index storage inside the source before runtime I/O", () => {
     const config = {

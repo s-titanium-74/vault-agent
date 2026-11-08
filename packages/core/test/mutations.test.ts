@@ -96,12 +96,15 @@ describe("mutation admission and privacy", () => {
     await expectEnvelope([create()], "WRITE_DISABLED", ctx);
     expect(ctx.snapshot).not.toHaveBeenCalled();
   });
-  it("requires review mode for pCloud writes", async () => {
+  it("admits explicit direct pCloud preparation while preserving default-off", async () => {
     const ctx = context("Old", {
       sourceKind: "pcloud",
       settings: { enabled: true, mode: "direct" },
     });
-    await expectEnvelope([create()], "SOURCE_WRITE_UNSUPPORTED", ctx);
+    expect((await prepare([create()], ctx)).items[0]?.status).toBe("prepared");
+    ctx.settings = { mode: "direct" };
+    vi.mocked(ctx.snapshot).mockClear();
+    await expectEnvelope([create()], "WRITE_DISABLED", ctx);
     expect(ctx.snapshot).not.toHaveBeenCalled();
   });
   it.each([

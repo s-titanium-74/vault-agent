@@ -88,8 +88,6 @@ export class R2MutationService {
     if (!parsed.success || parsed.data.max_batch_bytes > 20 * 1024 * 1024)
       fail("INVALID_REQUEST", 400);
     if (!parsed.data.enabled) fail("WRITE_DISABLED", 403);
-    if (isPCloud(env) && parsed.data.mode !== "review")
-      fail("PREVIEW_REQUIRED");
     if (
       !(await env.DB.prepare(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name='r2_mutation_maintenance'",
