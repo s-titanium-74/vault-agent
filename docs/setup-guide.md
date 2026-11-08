@@ -211,17 +211,17 @@ served from a container.
 Pull the published image:
 
 ```bash
-docker pull namka0703/vault-agent:0.2.0
+docker pull namka0703/vault-agent:0.2.1
 ```
 
 Or build it locally from a source checkout:
 
 ```bash
-docker build -t vault-agent:0.2.0 .
+docker build -t vault-agent:0.2.1 .
 ```
 
-The examples below use `namka0703/vault-agent:0.2.0`. If you build locally,
-replace it with `vault-agent:0.2.0`.
+The examples below use `namka0703/vault-agent:0.2.1`. If you build locally,
+replace it with `vault-agent:0.2.1`.
 
 ### 2. Create Persistent Volumes
 
@@ -258,7 +258,7 @@ docker run --rm \
   -e VAULT_AGENT_INDEX_DIR=/data/index \
   -e VAULT_AGENT_GIT_SSH_PRIVATE_KEY \
   -e VAULT_AGENT_GIT_SSH_KNOWN_HOSTS \
-  namka0703/vault-agent:0.2.0 \
+  namka0703/vault-agent:0.2.1 \
   sync clone "git@github.com:owner/private-vault.git" \
     --target /data/vault \
     --enable-sync \
@@ -285,7 +285,7 @@ docker run --rm \
   -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
   -e VAULT_AGENT_GIT_SSH_PRIVATE_KEY \
   -e VAULT_AGENT_GIT_SSH_KNOWN_HOSTS \
-  namka0703/vault-agent:0.2.0 \
+  namka0703/vault-agent:0.2.1 \
   serve --host 0.0.0.0
 ```
 
@@ -391,13 +391,13 @@ user-local config or environment variables, not in repository files.
 Pull the published image:
 
 ```bash
-docker pull namka0703/vault-agent:0.2.0
+docker pull namka0703/vault-agent:0.2.1
 ```
 
 Or build it locally from a source checkout:
 
 ```bash
-docker build -t vault-agent:0.2.0 .
+docker build -t vault-agent:0.2.1 .
 ```
 
 Run against a mounted vault:
@@ -409,7 +409,7 @@ docker run --rm \
   -v vault-agent-index:/data/index \
   -e VAULT_AGENT_VAULT_ROOT=/data/vault \
   -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
-  namka0703/vault-agent:0.2.0 serve --host 0.0.0.0
+  namka0703/vault-agent:0.2.1 serve --host 0.0.0.0
 ```
 
 On first startup, `serve` creates the index automatically if no usable index
@@ -428,7 +428,7 @@ docker run --rm \
   -e VAULT_AGENT_VAULT_ROOT=/data/vault \
   -e VAULT_AGENT_API_KEY=change-this-development-key-32bytes \
   -e VAULT_AGENT_MCP_ENABLED=true \
-  namka0703/vault-agent:0.2.0 serve --host 0.0.0.0
+  namka0703/vault-agent:0.2.1 serve --host 0.0.0.0
 ```
 
 ## Embedding Setup
@@ -474,7 +474,7 @@ docker run --rm \
   -e VAULT_AGENT_EMBEDDING_ENDPOINT=http://host.docker.internal:11434/v1/embeddings \
   -e VAULT_AGENT_EMBEDDING_MODEL=nomic-embed-text \
   --add-host host.docker.internal:host-gateway \
-  namka0703/vault-agent:0.2.0 reindex --require-embeddings
+  namka0703/vault-agent:0.2.1 reindex --require-embeddings
 ```
 
 On Docker Desktop, `host.docker.internal` is provided automatically; the
@@ -489,7 +489,7 @@ services:
   ollama:
     image: ollama/ollama
   vault-agent:
-    image: namka0703/vault-agent:0.2.0
+    image: namka0703/vault-agent:0.2.1
     environment:
       VAULT_AGENT_VAULT_ROOT: /data/vault
       VAULT_AGENT_EMBEDDING_ENABLED: "true"
