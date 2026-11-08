@@ -180,7 +180,7 @@ describe("Server Routes", () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body.data.status).toBe("ok");
-      expect(body.data.version).toBe("0.2.0");
+      expect(body.data.version).toBe("0.2.1");
       expect(body.data.index.available).toBe(true);
       expect(body.data.index.embeddingAvailable).toBe(false);
       expect(body.warnings).toEqual([]);

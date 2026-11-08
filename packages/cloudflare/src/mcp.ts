@@ -315,7 +315,7 @@ async function single(
 ) {
   const validator = new CfWorkerJsonSchemaValidator();
   const server = new Server(
-    { name: "vault-agent", version: "0.2.0" },
+    { name: "vault-agent", version: "0.2.1" },
     { capabilities: { tools: {} }, jsonSchemaValidator: validator },
   );
   server.setRequestHandler(InitializeRequestSchema, async (request) => {
@@ -324,7 +324,7 @@ async function single(
     return {
       protocolVersion: "2025-03-26",
       capabilities: { tools: {} },
-      serverInfo: { name: "vault-agent", version: "0.2.0" },
+      serverInfo: { name: "vault-agent", version: "0.2.1" },
     };
   });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
