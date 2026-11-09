@@ -236,7 +236,7 @@ describe("MCP Streamable HTTP Route", () => {
     expect(body.id).toBe(1);
     expect(body.result.protocolVersion).toBe("2025-03-26");
     expect(body.result.serverInfo.name).toBe("vault-agent");
-    expect(body.result.serverInfo.version).toBe("0.2.1");
+    expect(body.result.serverInfo.version).toBe("0.2.2");
   });
 
   it("returns JSON-RPC auth error when API key is missing", async () => {
