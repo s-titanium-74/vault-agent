@@ -106,7 +106,7 @@ export function mutationSequence(indexPath: string): number {
 export function withMutationPublication<T>(
   indexPath: string,
   expected: number,
-  publish: () => T,
+  publish: (journal?: Database.Database) => T,
 ): T {
   const file = mutationStatePath(indexPath);
   if (!fs.existsSync(file)) {
@@ -134,7 +134,7 @@ export function withMutationPublication<T>(
         "SOURCE_REVISION_MISMATCH",
         "Source changed during indexing.",
       );
-    const result = publish();
+    const result = publish(db);
     db.exec("COMMIT");
     return result;
   } catch (error) {
@@ -147,4 +147,36 @@ export function withMutationPublication<T>(
   } finally {
     db?.close();
   }
+}
+
+/** Called under the publication fence with revisions verified for this index. */
+export function reconcilePCloudVisibility(
+  journal: Database.Database,
+  verified: ReadonlyMap<string, { noteId: string; digest: string }>,
+  sequence: number,
+): void {
+  const settled = journal
+    .prepare(
+      "SELECT path,note_id,index_hash FROM mutation_paths WHERE blocked=0 AND deleted=0 AND pending=0 AND version=index_hash",
+    )
+    .all() as Pick<MutationPathState, "path" | "note_id" | "index_hash">[];
+  const update = journal.prepare(
+    "UPDATE mutation_paths SET version=?,index_hash=?,sequence=?,index_error=NULL WHERE path=?",
+  );
+  let changed = false;
+  for (const row of settled) {
+    const revision = verified.get(row.path);
+    if (
+      !revision ||
+      revision.noteId !== row.note_id ||
+      revision.digest === row.index_hash
+    )
+      continue;
+    update.run(revision.digest, revision.digest, sequence + 1, row.path);
+    changed = true;
+  }
+  if (changed)
+    journal
+      .prepare("UPDATE mutation_meta SET value=? WHERE key='sequence'")
+      .run(String(sequence + 1));
 }
