@@ -157,8 +157,8 @@ exclusive-writer requirement still apply. The default limits are 5 MiB/file,
 20 MiB/batch, 20 operations and seven days of operation history; optional
 `WRITE_*` settings are listed in the linked contract.
 
-Only the current admin credentials expose `preview_changes`, `apply_changes`
-and `get_change_status`; read credentials cannot invoke them. Obtain current
+ADMIN and READWRITE credentials can use `preview_changes`, `apply_changes`
+and `get_change_status` when writes are enabled. Obtain current
 versions with explicit `get_note`/`get_attachment`, preview the exact request,
 then apply its returned operation ID and preview binding. With writes enabled,
 `get_chunk` also requires `expected_version` from its search/related reference.

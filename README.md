@@ -15,7 +15,7 @@ It is local-first and private-by-default:
 - Keep indexing, search, related lookup, file watching, and optional Git sync on
   your machine.
 - Use lexical search by default, with optional local embeddings when configured.
-- Explicitly enable reviewed MCP changes for local, R2, or pCloud notes. See the
+- Opt in to MCP changes for local, R2, or pCloud notes. See the
   [setup guide](docs/setup-guide.md) for source-specific limits and concurrency
   requirements.
 
@@ -37,8 +37,8 @@ npm install -g @vault-agent/cli
 vault-agent --help
 ```
 
-The 0.2.1 npm packages are pending maintainer account recovery. Use a source
-checkout or the versioned Docker image below for the 0.2.1 features.
+The 0.2.2 npm packages are pending npm registry authentication. Use a source
+checkout or the versioned Docker image below for the 0.2.2 features.
 
 For local development from a source checkout:
 
@@ -51,7 +51,7 @@ npx --no-install vault-agent --help
 Docker image:
 
 ```bash
-docker pull namka0703/vault-agent:0.2.1
+docker pull namka0703/vault-agent:0.2.2
 ```
 
 Docker usage is covered in the [setup guide](docs/setup-guide.md).
