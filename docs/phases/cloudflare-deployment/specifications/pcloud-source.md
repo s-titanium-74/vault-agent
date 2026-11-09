@@ -100,6 +100,14 @@ the provider version alongside the index transaction. Existing SQLite indexes
 without those observations download the scoped corpus once to establish them.
 Workers reuse the observations already stored in D1.
 
+On local SQLite, index publication also reconciles the version and content
+hash of settled pCloud mutation paths with the verified, published revision.
+This uses the same mutation fence as index publication. Deleted, pending and
+unresolved paths keep their existing visibility guards. If the index commits
+before the mutation journal update is durable, reads still require a matching
+hash. The next successful scan retries reconciliation, including for revisions
+whose stored observation still matches the provider metadata.
+
 ## Evidence
 
 Contract and runtime tests use synthetic data and mocked pCloud HTTP responses.

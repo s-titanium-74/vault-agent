@@ -24,6 +24,7 @@ import { SqliteMetadataStore } from "../src/local/sqlite.js";
 import { updateLocalIndex } from "../src/local/index-updates.js";
 import { configuredVaultIdentity } from "../src/local/source.js";
 import { EmbeddingProvider } from "../src/embedding.js";
+import { search } from "../src/search.js";
 
 const create = (
   relative: string,
@@ -175,6 +176,8 @@ describe("coordinated filesystem mutations", () => {
         await svc.apply(plan.operation_id, input, plan.preview_binding),
       ).toEqual(outcome);
       expect(await svc.getNote(id)).toBeNull();
+      await indexVault(config);
+      expect((await store()).getNote(id)).toBeNull();
       clock += 61000;
       expect(await svc.flushIndex()).toEqual({ processed: 1 });
       expect(svc.getStatus(plan.operation_id).results[0]).toMatchObject({
@@ -226,7 +229,85 @@ describe("coordinated filesystem mutations", () => {
       const removed = await apply(svc, batch(remove(relative, latest)));
       expect(removed.results[0]).toMatchObject({ status: "applied" });
       expect(await svc.flushIndex()).toEqual({ processed: 1 });
+      api.set(relative, "# Recreated outside MCP");
+      await indexVault(config);
       expect((await store()).getNote(id)).toBeFalsy();
+    },
+  );
+
+  it.each(["poll", "rebuild", "previously published"] as const)(
+    "makes a later pCloud source edit searchable after %s reconciliation",
+    async (publication) => {
+      const api = new SyntheticPCloud();
+      config.vault.pcloud = {
+        region: "us",
+        folder_id: "1",
+        access_token: "synthetic",
+        includes: ["Notes"],
+        poll_seconds: 60,
+      };
+      vi.spyOn(globalThis, "fetch").mockImplementation(api.fetch);
+      const relative = "Notes/Orchard.md";
+      const id = noteIdFromPath(relative);
+      api.set(relative, "# Orchard\n\nInitial synthetic content.");
+      await indexVault(config);
+      const svc = service();
+      const initial = (await svc.getNote(id))!;
+      const applied = await apply(
+        svc,
+        batch(
+          replace(relative, initial.version, "# Orchard\n\nMCP edit marker."),
+        ),
+      );
+      expect(applied.results[0]).toMatchObject({ status: "applied" });
+      const mutationVersion = applied.results[0]!.version!;
+      expect(await svc.flushIndex()).toEqual({ processed: 1 });
+      expect(await svc.getNote(id)).toMatchObject({ index_state: "fresh" });
+
+      api.set(relative, "# Orchard\n\nSourceplum marker.");
+      expect(await svc.getNote(id)).toMatchObject({ index_state: "pending" });
+      if (publication === "rebuild") {
+        await reindexVault(config);
+      } else {
+        await indexVault(config);
+        if (publication === "previously published") {
+          // Simulate the stale journal left by an older release after publishing.
+          const journal = new Database(mutationStatePath(getIndexPath(config)));
+          try {
+            journal
+              .prepare(
+                "UPDATE mutation_paths SET version=?,index_hash=?,pending=1 WHERE path=?",
+              )
+              .run(mutationVersion, mutationVersion, relative);
+            await indexVault(config);
+            expect((await store()).getNote(id)).toBeNull();
+            journal
+              .prepare("UPDATE mutation_paths SET pending=0 WHERE path=?")
+              .run(relative);
+          } finally {
+            journal.close();
+          }
+          expect((await store()).getNote(id)).toBeNull();
+          api.requests.length = 0;
+          await indexVault(config);
+          expect(api.requests.some((r) => r.host === api.downloadHost)).toBe(
+            false,
+          );
+        } else {
+          await indexVault(config);
+        }
+      }
+
+      const index = await store();
+      for (const query of ["Orchard", "Sourceplum"]) {
+        const result = await search(index, query, "lexical", 10, config);
+        expect(result.results.map((hit) => hit.path)).toContain(relative);
+      }
+      expect(await svc.getNote(id)).toMatchObject({ index_state: "fresh" });
+      expect(await svc.getChunk(id, 0)).toMatchObject({
+        content: expect.stringContaining("Sourceplum"),
+      });
+      expect(await svc.flushIndex()).toEqual({ processed: 0 });
     },
   );
 

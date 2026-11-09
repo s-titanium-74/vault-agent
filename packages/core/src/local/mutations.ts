@@ -305,21 +305,22 @@ export class LocalMutationService {
           ? this.backlinkWarnings(item.note_id)
           : [],
     };
-    const prior = this.journal.path(item.path);
-    if (prior?.blocked) {
-      result.status = "failed";
-      result.code = "SOURCE_UNAVAILABLE";
-      this.journal.putItem(id, result, "failed");
-      return;
-    }
-    const intent: RecoveryIntent = {
-      action: item.action!,
-      expected: item.expected_version,
-      prior,
-      remoteDigest: item.bytes ? await contentRevision(item.bytes) : null,
-    };
-    this.journal.db
+    const remoteDigest = item.bytes ? await contentRevision(item.bytes) : null;
+    const intent = this.journal.db
       .transaction(() => {
+        const prior = this.journal.path(item.path);
+        if (prior?.blocked) {
+          result.status = "failed";
+          result.code = "SOURCE_UNAVAILABLE";
+          this.journal.putItem(id, result, "failed");
+          return;
+        }
+        const intent: RecoveryIntent = {
+          action: item.action!,
+          expected: item.expected_version,
+          prior,
+          remoteDigest,
+        };
         this.journal.putItem(id, result, "committing", intent);
         this.journal.putPath({
           path: item.path,
@@ -330,8 +331,10 @@ export class LocalMutationService {
           deleted: 0,
           pending: 1,
         });
+        return intent;
       })
       .immediate();
+    if (!intent) return;
     try {
       await this.remote!.writeNote(
         item.path,

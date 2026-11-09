@@ -1,5 +1,9 @@
 import { pcloudSource } from "./source.js";
-import { mutationSequence, withMutationPublication } from "./mutation-state.js";
+import {
+  mutationSequence,
+  reconcilePCloudVisibility,
+  withMutationPublication,
+} from "./mutation-state.js";
 import { indexRowsEqual as rowsEqual } from "../portable/index-updates.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,6 +42,7 @@ export interface LocalIndexUpdateOptions {
   vaultIdentity: string;
   requireEmbeddings?: boolean;
   cacheSource?: IndexStore;
+  publishStagedIndex?: () => void;
 }
 /** Runtime adapter: asynchronous preparation, then one synchronous SQLite publication. */
 export async function updateLocalIndex(
@@ -405,7 +410,7 @@ export async function updateLocalIndex(
       "SOURCE_REVISION_MISMATCH",
       "Source changed while preparing the index.",
     );
-  withMutationPublication(store.getDbPath(), sourceSequence, () => {
+  withMutationPublication(store.getDbPath(), sourceSequence, (journal) => {
     store.beginTransaction();
     try {
       if (JSON.stringify(store.getManifest()) !== priorSignature)
@@ -434,6 +439,7 @@ export async function updateLocalIndex(
       }
       if (remoteObserved) {
         const db = store.getDb();
+        const verified = new Map<string, { noteId: string; digest: string }>();
         const forget = db.prepare(
           "DELETE FROM pcloud_observations WHERE path=?",
         );
@@ -442,11 +448,20 @@ export async function updateLocalIndex(
         );
         for (const path of removed) forget.run(path);
         for (const observed of remoteObserved) {
+          const note = target.get(observed.path);
+          if (!note) continue;
           const read = reads.get(observed.path);
-          if (!read) continue;
-          if (target.get(observed.path)?.content_hash === read.entry.revision)
+          if (read && note.content_hash === read.entry.revision)
             save.run(observed.path, observed.version);
+          else if (!unchanged.has(observed.path)) continue;
+          if (journal)
+            verified.set(observed.path, {
+              noteId: String(note.note_id),
+              digest: String(note.content_hash),
+            });
         }
+        if (journal)
+          reconcilePCloudVisibility(journal, verified, sourceSequence);
       }
       store.setManifest(manifest);
       store.commit();
@@ -454,6 +469,7 @@ export async function updateLocalIndex(
       store.rollback();
       throw error;
     }
+    options.publishStagedIndex?.();
   });
   return {
     mode: options.full ? "full" : "incremental",

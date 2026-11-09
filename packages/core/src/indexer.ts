@@ -9,10 +9,6 @@ import { resolveIndexDir } from "./paths.js";
 import { IndexError } from "./errors.js";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  mutationSequence,
-  withMutationPublication,
-} from "./local/mutation-state.js";
 
 export interface IndexOptions {
   requireEmbeddings?: boolean;
@@ -41,14 +37,10 @@ export async function indexVault(
         ? configuredVaultIdentity(config)
         : vaultIdentity(vaultRoot);
 
-      return await performIndex(
-        store,
-        config,
-        vaultRoot,
-        vid,
-        false,
-        options?.requireEmbeddings,
-      );
+      return await updateLocalIndex(store, config, {
+        vaultIdentity: vid,
+        requireEmbeddings: options?.requireEmbeddings,
+      });
     } finally {
       store.close();
     }
@@ -69,7 +61,6 @@ export async function reindexVault(
       : validateVaultPath(config.vault.root);
     const dbPath = getIndexPath(config);
     const { indexPath, tmpPath } = getReindexPaths(dbPath);
-    const sourceSequence = mutationSequence(dbPath);
 
     const dir = path.dirname(indexPath);
     if (!fs.existsSync(dir)) {
@@ -94,17 +85,27 @@ export async function reindexVault(
       const vid = config.vault.pcloud
         ? configuredVaultIdentity(config)
         : vaultIdentity(vaultRoot);
-      result = await performIndex(
-        tmpStore,
-        config,
-        vaultRoot,
-        vid,
-        true,
-        options?.requireEmbeddings,
+      result = await updateLocalIndex(tmpStore, config, {
+        full: true,
+        vaultIdentity: vid,
+        requireEmbeddings: options?.requireEmbeddings,
         cacheSource,
-      );
+        publishStagedIndex: () => {
+          cacheSource?.close();
+          cacheSource = undefined;
+          tmpStore.close();
+
+          for (const suffix of ["-wal", "-shm"])
+            if (fs.existsSync(indexPath + suffix))
+              fs.unlinkSync(indexPath + suffix);
+          fs.renameSync(tmpPath, indexPath);
+          for (const suffix of ["-wal", "-shm"])
+            if (fs.existsSync(tmpPath + suffix))
+              fs.unlinkSync(tmpPath + suffix);
+        },
+      });
     } catch (error) {
-      tmpStore.close();
+      if (tmpStore.getDb().open) tmpStore.close();
       if (fs.existsSync(tmpPath)) {
         fs.unlinkSync(tmpPath);
       }
@@ -118,26 +119,6 @@ export async function reindexVault(
     } finally {
       cacheSource?.close();
     }
-
-    tmpStore.close();
-
-    withMutationPublication(dbPath, sourceSequence, () => {
-      if (fs.existsSync(indexPath + "-wal")) {
-        fs.unlinkSync(indexPath + "-wal");
-      }
-      if (fs.existsSync(indexPath + "-shm")) {
-        fs.unlinkSync(indexPath + "-shm");
-      }
-
-      fs.renameSync(tmpPath, indexPath);
-
-      if (fs.existsSync(tmpPath + "-wal")) {
-        fs.unlinkSync(tmpPath + "-wal");
-      }
-      if (fs.existsSync(tmpPath + "-shm")) {
-        fs.unlinkSync(tmpPath + "-shm");
-      }
-    });
 
     return result;
   } finally {
@@ -153,23 +134,6 @@ function getReindexPaths(dbPath: string): {
     indexPath: dbPath,
     tmpPath: dbPath.replace("index.sqlite", "index.tmp.sqlite"),
   };
-}
-
-async function performIndex(
-  store: IndexStore,
-  config: Config,
-  _vaultRoot: string,
-  vid: string,
-  isFull: boolean,
-  requireEmbeddingsOverride?: boolean,
-  cacheSource?: IndexStore,
-): Promise<IndexResult> {
-  return updateLocalIndex(store, config, {
-    full: isFull,
-    vaultIdentity: vid,
-    requireEmbeddings: requireEmbeddingsOverride,
-    cacheSource,
-  });
 }
 
 function getLockFilePath(config: Config): string {
