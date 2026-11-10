@@ -795,7 +795,8 @@ describe("local MCP file changes", () => {
           id,
         ),
       );
-      expect(unpack(response.result).results[0].status).toBe("applied");
+      const applied = unpack(response.result);
+      expect(applied.results[0].status).toBe("applied");
       const status = rpc(
         await request(
           "tools/call",
@@ -808,6 +809,7 @@ describe("local MCP file changes", () => {
         ),
       );
       expect(unpack(status.result).operation_id).toBe(plan.operation_id);
+      await app!.vaultMutations!.flush();
       const replay = rpc(
         await request(
           "tools/call",
@@ -823,7 +825,10 @@ describe("local MCP file changes", () => {
           id,
         ),
       );
-      expect(unpack(replay.result)).toEqual(unpack(response.result));
+      expect(unpack(replay.result)).toEqual({
+        ...applied,
+        results: [{ ...applied.results[0], index_state: "fresh" }],
+      });
       const note = await app!.inject({
         method: "GET",
         url: `/notes/${noteIdFromPath("Notes/New.md")}`,
@@ -832,7 +837,6 @@ describe("local MCP file changes", () => {
       expect(note.statusCode).toBe(200);
       expect(note.json().data.version).toMatch(/^fs1:/);
       expect(note.json().data.content).toContain("Markerbody");
-      await app!.vaultMutations!.flush();
       const noPin = await app!.inject({
         method: "GET",
         url: `/chunks/${noteIdFromPath("Notes/New.md")}/0`,
