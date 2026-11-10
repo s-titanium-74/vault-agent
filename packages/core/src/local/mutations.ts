@@ -23,6 +23,7 @@ import {
 } from "../portable/mutations.js";
 import { previewMutationBatch } from "../portable/mutation-preview.js";
 import {
+  MUTATION_CLOCK_SKEW_MS,
   mutationSettingsSchema,
   MutationError,
   type MutationSettings,
@@ -213,54 +214,55 @@ export class LocalMutationService {
     const preview = options.preview ?? true;
     if (!preview && this.settings.mode !== "direct")
       throw new LocalMutationError("PREVIEW_REQUIRED");
-    await this.recover();
     const prepared = await prepareMutationBatch(this.context, input, {
       preview,
     });
-    return this.journal.exclusive(() => {
-      this.cleanupLocked(100);
-      const operation = this.journal.allocate(
-        prepared.request_digest,
-        this.policy,
-        this.now(),
-        this.settings.history_retention_days,
-        preview,
-      );
-      return {
-        operation_id: operation.id,
-        expires_at: operation.expires,
-        ...(preview
-          ? {
-              preview_binding: this.journal.binding(operation.id),
-              preview: previewMutationBatch(prepared),
-            }
-          : {}),
-      };
-    });
+    const operation = this.journal.issue(
+      prepared.request_digest,
+      this.policy,
+      this.now(),
+      this.settings.history_retention_days,
+      preview,
+    );
+    return {
+      operation_id: operation.id,
+      expires_at: operation.expires,
+      ...(preview
+        ? {
+            preview_binding: this.journal.binding(operation.id),
+            preview: previewMutationBatch(prepared),
+          }
+        : {}),
+    };
   }
   async apply(id: string, input: unknown, previewBinding?: string) {
     const verified = this.journal.verify(id, this.now());
     const operation = this.journal.operation(id);
-    if (!operation) throw new LocalMutationError("OPERATION_UNKNOWN");
-    if (operation.policy !== this.policy)
+    const admission = operation ?? verified.claim;
+    if (!admission) throw new LocalMutationError("OPERATION_UNKNOWN");
+    if (admission.policy !== this.policy)
       throw new LocalMutationError("PREVIEW_CHANGED");
     if ((await mutationRequestDigest(this.context, input)) !== verified.digest)
       throw new LocalMutationError("IDEMPOTENCY_CONFLICT");
     if (
       this.settings.mode === "review" &&
-      (!operation.preview || !this.journal.checkBinding(id, previewBinding))
+      (!admission.preview || !this.journal.checkBinding(id, previewBinding))
     )
       throw new LocalMutationError("PREVIEW_REQUIRED");
     await this.recover();
-    if (this.journal.operation(id)?.state !== "issued")
-      return this.getStatus(id);
+    const current = this.journal.operation(id);
+    if (current && current.state !== "issued") return this.getStatus(id);
     const prepared = await prepareMutationBatch(this.context, input);
     return this.journal.exclusive(async () => {
-      this.journal.verify(id, this.now());
-      if (this.journal.operation(id)?.state !== "issued")
-        return this.getStatus(id);
+      const { claim } = this.journal.verify(id, this.now());
+      const current = this.journal.operation(id);
+      if (current && current.state !== "issued") return this.getStatus(id);
       this.journal.db
         .transaction(() => {
+          if (!current) {
+            if (!claim) throw new LocalMutationError("OPERATION_UNKNOWN");
+            this.journal.record(id, claim);
+          }
           this.journal.db
             .prepare(
               "UPDATE mutation_operations SET state='applying' WHERE id=?",
@@ -655,12 +657,19 @@ export class LocalMutationService {
   getStatus(id: string) {
     const verified = this.journal.verify(id, this.now(), true);
     const row = this.journal.operation(id);
-    if (!row)
-      throw new LocalMutationError(
-        this.now() >= verified.expires
-          ? "OPERATION_EXPIRED"
-          : "OPERATION_UNKNOWN",
-      );
+    if (!row) {
+      if (this.now() >= verified.expires)
+        throw new LocalMutationError("OPERATION_EXPIRED");
+      if (!verified.claim) throw new LocalMutationError("OPERATION_UNKNOWN");
+      if (verified.claim.policy !== this.policy)
+        throw new LocalMutationError("PREVIEW_CHANGED");
+      return {
+        operation_id: id,
+        expires_at: verified.expires,
+        state: "issued" as const,
+        results: [],
+      };
+    }
     if (row.policy !== this.policy)
       throw new LocalMutationError("PREVIEW_CHANGED");
     return {
@@ -734,11 +743,12 @@ export class LocalMutationService {
     }
   }
   private cleanupLocked(limit: number) {
+    const now = this.now();
     const rows = this.journal.db
       .prepare(
-        "SELECT id FROM mutation_operations WHERE COALESCE(cleanup_after,expires)<=? AND state IN ('issued','completed') LIMIT ?",
+        "SELECT id FROM mutation_operations WHERE COALESCE(cleanup_after,expires)<=? AND expires<=? AND state IN ('issued','completed') LIMIT ?",
       )
-      .all(this.now(), limit) as { id: string }[];
+      .all(now, now - MUTATION_CLOCK_SKEW_MS, limit) as { id: string }[];
     let removed = 0;
     for (const row of rows) {
       try {

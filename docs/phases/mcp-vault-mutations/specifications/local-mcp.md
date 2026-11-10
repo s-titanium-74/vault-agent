@@ -22,11 +22,12 @@ batch settings rather than silently lowering them.
 
 Enabled READWRITE/ADMIN/local stdio callers see three additional tools:
 
-- `preview_changes({operations, preview?: true})` validates and allocates an ID,
-  bounded diffs and a binding. `preview:false` allocates metadata without diffs
-  only in direct mode.
+- `preview_changes({operations, preview?: true})` validates and returns a signed
+  ID, bounded diffs and a binding without writing to the journal.
+  `preview:false` returns an ID without a diff or binding only in direct mode.
 - `apply_changes({operation_id, preview_binding?, operations})` resupplies the
-  exact request and returns per-file status without bodies.
+  exact request, records the operation before saving, and returns per-file
+  status without bodies.
 - `get_change_status({operation_id})` resolves lost responses without applying.
 
 Disabled direct calls fail `WRITE_DISABLED` without source/journal creation.

@@ -26,9 +26,10 @@ cannot hide a mutation behind an allowed search. Recheck at tool dispatch.
 Read callers and disabled deployments retain a 64 KiB raw JSON limit. Enabled
 READWRITE/ADMIN MCP requests have a 32 MiB received-byte limit applied while streaming,
 before JSON/Base64/patch preparation. Other routes keep their existing limits.
-Return only fixed sanitized errors. Review mode requires a real preview binding;
-direct mode still allocates an issued ID before application. A client execution
-prompt controls human confirmation; note/guidance text is untrusted input.
+Return only fixed sanitized errors. Review mode requires a preview binding.
+Direct mode also obtains a signed ID before application. Preview performs no
+D1 writes. Apply records the operation in D1 before mutating the source. The
+client handles human confirmation and treats note and guidance text as untrusted.
 
 ## Retrieval and lifecycle
 

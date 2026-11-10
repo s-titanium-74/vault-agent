@@ -140,7 +140,7 @@ ID. Rename and attachments remain outside the MCP mutation scope.
 Writes remain disabled by default. When enabled, `write.mode=review` (Node)
 or `WRITE_MODE=review` (Workers) remains the default and requires a diff preview
 and its binding. Explicit `direct` mode uses `preview_changes` with
-`preview:false` to allocate an operation ID without a diff or preview binding,
+`preview:false` to obtain a signed operation ID without a diff or preview binding,
 then `apply_changes` with that ID and the exact same operations. It adds no
 single-call mutation API and does not bypass MCP client execution confirmation.
 Authorization, issued IDs, request binding, replay protection, scope/size limits,

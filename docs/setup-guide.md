@@ -18,9 +18,10 @@ vault-agent config set write.mode review
 
 `vault-agent mcp` then exposes `preview_changes`, `apply_changes` and
 `get_change_status` over stdio without HTTP keys. Review mode requires the
-preview's ID and binding with the same operations at apply; client execution
-confirmation is what provides human review. `write.mode direct` permits apply
-without a diff/binding, but an operation ID must still be allocated first.
+preview's ID and binding with the same operations at apply. The MCP client
+handles human confirmation. `write.mode direct` permits apply
+without a diff or binding. In both modes preview returns a signed operation
+ID and apply records it before saving.
 
 For HTTP, enable `mcp.enabled` and configure distinct read/admin keys, including
 on localhost. For example, generate independent temporary environment keys:

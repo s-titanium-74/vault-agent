@@ -6,6 +6,7 @@ import {
   randomUUID,
 } from "node:crypto";
 import Database from "better-sqlite3";
+import { MUTATION_CLOCK_SKEW_MS } from "../portable/mutation-schemas.js";
 import {
   MUTATION_STATE_SQL,
   type MutationPathState,
@@ -44,6 +45,11 @@ export interface OperationRow {
   completed: number | null;
   cleanup_after: number | null;
 }
+type OperationClaim = Pick<
+  OperationRow,
+  "digest" | "policy" | "issued" | "expires" | "preview"
+>;
+
 export interface ItemRow {
   operation_id: string;
   item_index: number;
@@ -144,56 +150,97 @@ export class MutationJournal {
       .update(this.identity + "\0" + value)
       .digest("hex");
   }
-  allocate(
+  issue(
     digest: string,
     policy: string,
     now: number,
     days: number,
     preview: boolean,
-  ): OperationRow {
+  ) {
     const expires = now + days * 86400000;
-    const base = ["m1", now, expires, randomUUID(), digest].join(".");
-    const id = base + "." + this.sign(base);
+    const base = [
+      "m2",
+      now,
+      expires,
+      randomUUID(),
+      digest,
+      policy,
+      Number(preview),
+    ].join(".");
+    return { id: base + "." + this.sign(base), expires };
+  }
+  record(id: string, claim: OperationClaim) {
     this.db
       .prepare(
         "INSERT INTO mutation_operations(id,digest,policy,issued,expires,state,preview) VALUES (?,?,?,?,?,'issued',?)",
       )
-      .run(id, digest, policy, now, expires, Number(preview));
-    return this.operation(id)!;
+      .run(
+        id,
+        claim.digest,
+        claim.policy,
+        claim.issued,
+        claim.expires,
+        claim.preview,
+      );
   }
   verify(
     id: string,
     now: number,
     allowExpired = false,
-  ): { digest: string; expires: number } {
+  ): { digest: string; expires: number; claim?: OperationClaim } {
     if (typeof id !== "string" || id.length > 300)
       throw new LocalMutationError("OPERATION_INVALID");
     const parts = id.split(".");
+    const deferred = parts[0] === "m2";
+    const signature = parts.at(-1)!;
+    const digest = parts[4]!;
+    const policy = parts[5]!;
+    const preview = parts[6];
     if (
-      parts.length !== 6 ||
-      parts[0] !== "m1" ||
+      (deferred
+        ? parts.length !== 8 ||
+          !/^[0-9a-f]{64}$/.test(policy) ||
+          (preview !== "0" && preview !== "1")
+        : parts.length !== 6 || parts[0] !== "m1") ||
       !/^\d{1,16}$/.test(parts[1]!) ||
       !/^\d{1,16}$/.test(parts[2]!) ||
       !/^[0-9a-f-]{36}$/.test(parts[3]!) ||
-      !/^[0-9a-f]{64}$/.test(parts[4]!) ||
-      !/^[0-9a-f]{64}$/.test(parts[5]!)
+      !/^[0-9a-f]{64}$/.test(digest) ||
+      !/^[0-9a-f]{64}$/.test(signature)
     )
       throw new LocalMutationError("OPERATION_INVALID");
-    const expected = Buffer.from(this.sign(parts.slice(0, 5).join(".")), "hex");
-    if (!timingSafeEqual(expected, Buffer.from(parts[5]!, "hex")))
+    const expected = Buffer.from(
+      this.sign(parts.slice(0, -1).join(".")),
+      "hex",
+    );
+    if (!timingSafeEqual(expected, Buffer.from(signature, "hex")))
       throw new LocalMutationError("OPERATION_INVALID");
     const issued = Number(parts[1]),
       expires = Number(parts[2]);
     if (
       !Number.isSafeInteger(issued) ||
       !Number.isSafeInteger(expires) ||
-      issued > now + 30000 ||
+      issued > now + MUTATION_CLOCK_SKEW_MS ||
       expires <= issued
     )
       throw new LocalMutationError("OPERATION_INVALID");
     if (!allowExpired && now >= expires)
       throw new LocalMutationError("OPERATION_EXPIRED");
-    return { digest: parts[4]!, expires };
+    return {
+      digest,
+      expires,
+      ...(deferred
+        ? {
+            claim: {
+              digest,
+              policy,
+              issued,
+              expires,
+              preview: Number(preview),
+            },
+          }
+        : {}),
+    };
   }
   binding(id: string): string {
     return this.sign("preview\0" + id);

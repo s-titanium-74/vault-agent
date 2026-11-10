@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
+import { createHmac, randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { DEFAULT_CONFIG, type Config } from "../src/config.js";
 import { indexVault, reindexVault } from "../src/indexer.js";
@@ -593,7 +594,7 @@ describe("coordinated filesystem mutations", () => {
       "External changed after success",
     );
   });
-  it("rejects tampered, unknown, expired and future IDs and cannot resurrect them by increasing retention", async () => {
+  it("rejects tampered, expired and future IDs and cannot resurrect them by increasing retention", async () => {
     const svc = service();
     const input = batch(create("A.md"));
     const plan = await svc.allocate(input);
@@ -619,7 +620,7 @@ describe("coordinated filesystem mutations", () => {
     await expect(
       longer.apply(plan.operation_id, input, plan.preview_binding),
     ).rejects.toMatchObject({ code: "OPERATION_EXPIRED" });
-    expect(svc.cleanup()).toBe(1);
+    expect(svc.cleanup()).toBe(0);
     await expect(
       svc.apply(plan.operation_id, input, plan.preview_binding),
     ).rejects.toMatchObject({ code: "OPERATION_EXPIRED" });
@@ -647,22 +648,64 @@ describe("coordinated filesystem mutations", () => {
     expect(() => svc.getFileVersion("A.md")).toThrowError(
       expect.objectContaining({ code: "SOURCE_REVISION_MISMATCH" }),
     );
-    expect(plan.operation_id).toMatch(/^m1\./);
+    expect(plan.operation_id).toMatch(/^m2\./);
     expect(fs.readdirSync(root)).toEqual([]);
   });
-  it("never allocates an unknown signed ID and checks the current signing key on every call", async () => {
+  it("previews and reports issued status without writing to the journal", async () => {
     const svc = service();
     const input = batch(create("A.md"));
-    const unknown = await svc.allocate(input);
+    const db = new Database(mutationStatePath(getIndexPath(config)), {
+      readonly: true,
+    });
+    try {
+      const before = db.pragma("data_version", { simple: true });
+      const plan = await svc.allocate(input);
+      expect(plan.preview?.results[0]?.status).toBe("prepared");
+      expect(svc.getStatus(plan.operation_id)).toMatchObject({
+        state: "issued",
+        results: [],
+      });
+      expect(db.pragma("data_version", { simple: true })).toBe(before);
+      const operation = db.prepare(
+        "SELECT state FROM mutation_operations WHERE id=?",
+      );
+      expect(operation.get(plan.operation_id)).toBeUndefined();
+      await svc.apply(plan.operation_id, input, plan.preview_binding);
+      expect(operation.get(plan.operation_id)).toEqual({ state: "completed" });
+    } finally {
+      db.close();
+    }
+  });
+  it("requires a journal row for legacy IDs and checks the current signing key", async () => {
+    const svc = service();
+    const input = batch(create("A.md"));
+    const plan = await svc.allocate(input);
     const db = new Database(mutationStatePath(getIndexPath(config)));
     try {
-      db.prepare("DELETE FROM mutation_operations WHERE id=?").run(
-        unknown.operation_id,
-      );
-      await expect(
-        svc.apply(unknown.operation_id, input, unknown.preview_binding),
-      ).rejects.toMatchObject({ code: "OPERATION_UNKNOWN" });
-      const plan = await svc.allocate(input);
+      const meta = (key: string) =>
+        (
+          db
+            .prepare("SELECT value FROM mutation_meta WHERE key=?")
+            .get(key) as { value: string }
+        ).value;
+      const sign = (value: string) =>
+        createHmac("sha256", Buffer.from(meta("secret"), "hex"))
+          .update(meta("identity") + "\0" + value)
+          .digest("hex");
+      const [, issued, expires, , digest, policy] =
+        plan.operation_id.split(".");
+      const base = ["m1", issued, expires, randomUUID(), digest].join(".");
+      const legacy = base + "." + sign(base);
+      const binding = sign("preview\0" + legacy);
+      await expect(svc.apply(legacy, input, binding)).rejects.toMatchObject({
+        code: "OPERATION_UNKNOWN",
+      });
+      db.prepare(
+        "INSERT INTO mutation_operations(id,digest,policy,issued,expires,state,preview) VALUES (?,?,?,?,?,'issued',1)",
+      ).run(legacy, digest, policy, Number(issued), Number(expires));
+      const result = await svc.apply(legacy, input, binding);
+      expect(result.results[0]?.status).toBe("applied");
+      expect(await svc.apply(legacy, input, binding)).toEqual(result);
       db.prepare("UPDATE mutation_meta SET value=? WHERE key='secret'").run(
         "0".repeat(64),
       );
@@ -672,7 +715,9 @@ describe("coordinated filesystem mutations", () => {
       expect(() => svc.getStatus(plan.operation_id)).toThrowError(
         expect.objectContaining({ code: "OPERATION_INVALID" }),
       );
-      expect(fs.existsSync(path.join(root, "A.md"))).toBe(false);
+      expect(fs.readFileSync(path.join(root, "A.md"), "utf8")).toContain(
+        "Searchmarker",
+      );
     } finally {
       db.close();
     }
@@ -1081,6 +1126,22 @@ describe("coordinated filesystem mutations", () => {
     expect(
       (await restarted.getNote(noteIdFromPath("A.md")))?.content,
     ).toContain("Searchmarker");
+  });
+  it("retains a completed ID across expiry and a small backwards clock adjustment", async () => {
+    const svc = service();
+    const input = batch(create("A.md"));
+    const plan = await svc.allocate(input);
+    const result = await svc.apply(
+      plan.operation_id,
+      input,
+      plan.preview_binding,
+    );
+    clock = plan.expires_at + 1;
+    expect(svc.cleanup()).toBe(0);
+    clock -= 1000;
+    expect(
+      await svc.apply(plan.operation_id, input, plan.preview_binding),
+    ).toEqual(result);
   });
   it("retains completed audit metadata after apply expiry for the original retention period", async () => {
     const svc = service();
