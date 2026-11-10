@@ -22,7 +22,7 @@ const context = createCliContext(program);
 
 program
   .name("vault-agent")
-  .version("0.2.2")
+  .version("0.2.3")
   .option("--config <path>", "Path to config file")
   .option("--endpoint <url>", "Server endpoint URL")
   .option("--api-key <key>", "API key for authentication")
