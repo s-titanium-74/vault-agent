@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { build } from "esbuild";
 import { readdir, readFile } from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import * as core from "../../core/src/portable/index.js";
@@ -187,6 +187,10 @@ it("lists mutations only for admin and refuses read-key preview/apply/status, in
     destructiveHint: true,
     idempotentHint: true,
   });
+  for (const name of ["preview_changes", "get_change_status"])
+    expect(tools.find((t: any) => t.name === name).annotations).toMatchObject({
+      readOnlyHint: true,
+    });
   for (const name of ["preview_changes", "apply_changes", "get_change_status"])
     expect(await tool(name, { operation_id: "unknown" }, read)).toMatchObject({
       status: 403,
@@ -281,6 +285,15 @@ it("enforces strict preview/apply binding and idempotent source saves through ac
   const before = (await bucket.head(prefix + "Notes/Original.md"))!.version;
   const op = (await tool("preview_changes", { operations })).data;
   expect(op.preview.results[0].diff).toBeDefined();
+  expect(
+    (await tool("get_change_status", { operation_id: op.operation_id })).data,
+  ).toMatchObject({ state: "issued", results: [] });
+  expect(
+    await db
+      .prepare("SELECT state FROM r2_mutation_operations WHERE id=?")
+      .bind(op.operation_id)
+      .first(),
+  ).toBeNull();
   expect((await bucket.head(prefix + "Notes/Original.md"))!.version).toBe(
     before,
   );
@@ -818,4 +831,48 @@ it("rotates/revokes READWRITE and rejects cross-role and partial configuration",
       await target.dispose();
     }
   }
+});
+
+it("requires an existing D1 row for a legacy operation ID", async () => {
+  const operations = [
+    {
+      type: "create_note",
+      path: "Notes/Legacy.md",
+      content: "# Synthetic legacy",
+    },
+  ];
+  const plan = (await tool("preview_changes", { operations })).data;
+  const [, issued, expires, , digest, policy] = plan.operation_id.split(".");
+  const nonce = randomUUID();
+  const sign = (value: string) =>
+    createHmac("sha256", admin)
+      .update(VAULT_ID + "\0" + value)
+      .digest("hex");
+  const base = ["r2m1", issued, expires, nonce, digest].join(".");
+  const id = base + "." + sign(base);
+  const args = {
+    operation_id: id,
+    preview_binding: sign("preview\0" + id),
+    operations,
+  };
+  expect((await tool("apply_changes", args)).error.data.errorCode).toBe(
+    "OPERATION_UNKNOWN",
+  );
+  await db
+    .prepare(
+      "INSERT INTO r2_mutation_operations(id,nonce,digest,policy,issued,expires,preview,state,retention_ms) VALUES(?,?,?,?,?,?,1,'issued',?)",
+    )
+    .bind(
+      id,
+      nonce,
+      digest,
+      policy,
+      Number(issued),
+      Number(expires),
+      Number(expires) - Number(issued),
+    )
+    .run();
+  const result = (await tool("apply_changes", args)).data;
+  expect(result.results[0].status).toBe("applied");
+  expect((await tool("apply_changes", args)).data).toEqual(result);
 });

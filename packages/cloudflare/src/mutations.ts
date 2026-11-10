@@ -38,6 +38,10 @@ type Operation = {
   lease_until: number;
   retention_ms: number;
 };
+type OperationClaim = Pick<
+  Operation,
+  "id" | "nonce" | "digest" | "policy" | "issued" | "expires" | "preview"
+>;
 type Item = {
   operation_id: string;
   item_index: number;
@@ -161,14 +165,22 @@ export class R2MutationService {
   private async verify(id: string, allowExpired = false) {
     if (typeof id !== "string" || id.length > 300) fail("OPERATION_INVALID");
     const parts = id.split(".");
+    const deferred = parts[0] === "r2m2";
+    const nonce = parts[3]!;
+    const digest = parts[4]!;
+    const policy = parts[5]!;
+    const preview = parts[6];
     if (
-      parts.length !== 6 ||
-      parts[0] !== "r2m1" ||
+      (deferred
+        ? parts.length !== 8 ||
+          !/^[a-f0-9]{64}$/.test(policy) ||
+          (preview !== "0" && preview !== "1")
+        : parts.length !== 6 || parts[0] !== "r2m1") ||
       !/^\d{1,16}$/.test(parts[1]!) ||
       !/^\d{1,16}$/.test(parts[2]!) ||
-      !/^[a-f0-9-]{36}$/.test(parts[3]!) ||
-      !/^[a-f0-9]{64}$/.test(parts[4]!) ||
-      !(await this.verifies(parts.slice(0, 5).join("."), parts[5]!))
+      !/^[a-f0-9-]{36}$/.test(nonce) ||
+      !/^[a-f0-9]{64}$/.test(digest) ||
+      !(await this.verifies(parts.slice(0, -1).join("."), parts.at(-1)!))
     )
       fail("OPERATION_INVALID");
     const issued = Number(parts[1]),
@@ -177,11 +189,14 @@ export class R2MutationService {
       !Number.isSafeInteger(issued) ||
       !Number.isSafeInteger(expires) ||
       expires <= issued ||
-      issued > this.now() + 30000
+      issued > this.now() + core.MUTATION_CLOCK_SKEW_MS
     )
       fail("OPERATION_INVALID");
     if (!allowExpired && this.now() >= expires) fail("OPERATION_EXPIRED");
-    return { digest: parts[4]!, expires };
+    const claim: OperationClaim | undefined = deferred
+      ? { id, nonce, digest, policy, issued, expires, preview: Number(preview) }
+      : undefined;
+    return { digest, claim };
   }
   private operation(id: string) {
     return this.env.DB.prepare(
@@ -238,24 +253,16 @@ export class R2MutationService {
     const issued = this.now(),
       expires = issued + this.settings.history_retention_days * 86400000;
     const nonce = crypto.randomUUID();
-    const base = ["r2m1", issued, expires, nonce, batch.request_digest].join(
-      ".",
-    );
+    const base = [
+      "r2m2",
+      issued,
+      expires,
+      nonce,
+      batch.request_digest,
+      this.policy,
+      Number(includePreview),
+    ].join(".");
     const id = `${base}.${await this.sign(base)}`;
-    await this.env.DB.prepare(
-      "INSERT INTO r2_mutation_operations(id,nonce,digest,policy,issued,expires,preview,state,retention_ms) VALUES(?,?,?,?,?,?,?,'issued',?)",
-    )
-      .bind(
-        id,
-        nonce,
-        batch.request_digest,
-        this.policy,
-        issued,
-        expires,
-        Number(includePreview),
-        this.settings.history_retention_days * 86400000,
-      )
-      .run();
     return {
       operation_id: id,
       expires,
@@ -268,12 +275,21 @@ export class R2MutationService {
     };
   }
   async status(id: string) {
-    await this.verify(id, true);
-    return this.durableStatus(id);
+    const { claim } = await this.verify(id, true);
+    return this.durableStatus(id, claim);
   }
-  private async durableStatus(id: string) {
+  private async durableStatus(id: string, claim?: OperationClaim) {
     const op = await this.operation(id);
-    if (!op) fail("OPERATION_UNKNOWN", 404);
+    if (!op) {
+      if (!claim || this.now() >= claim.expires) fail("OPERATION_UNKNOWN", 404);
+      if (claim.policy !== this.policy) fail("PREVIEW_CHANGED");
+      return {
+        operation_id: id,
+        state: "issued",
+        expires: claim.expires,
+        results: [],
+      };
+    }
     const rows = await this.env.DB.prepare(
       "SELECT state,result FROM r2_mutation_items WHERE operation_id=? ORDER BY item_index LIMIT 101",
     )
@@ -330,7 +346,7 @@ export class R2MutationService {
       }),
     };
   }
-  private guard(op: Operation, token: string) {
+  private guard(op: Pick<Operation, "id">, token: string) {
     return this.env.DB.prepare(
       "INSERT OR REPLACE INTO ingestion_guard VALUES(1,COALESCE((SELECT 1 FROM r2_mutation_operations WHERE id=? AND lease=? AND lease_until>?),0))",
     ).bind(op.id, token, this.now());
@@ -342,7 +358,8 @@ export class R2MutationService {
   }
   async apply(id: string, input: unknown, binding?: string) {
     const verified = await this.verify(id);
-    const op = await this.operation(id);
+    const recorded = await this.operation(id);
+    const op = recorded ?? verified.claim;
     if (!op) fail("OPERATION_UNKNOWN", 404);
     if (op.policy !== this.policy) fail("PREVIEW_CHANGED");
     if (
@@ -357,7 +374,7 @@ export class R2MutationService {
         !(await this.verifies(`preview\0${id}`, binding)))
     )
       fail("PREVIEW_REQUIRED");
-    if (op.state !== "issued") return this.durableStatus(id);
+    if (recorded && recorded.state !== "issued") return this.durableStatus(id);
     const batch = await core.prepareMutationBatch(this.context(), input);
     const token = crypto.randomUUID();
     const results = batch.items.map(
@@ -375,6 +392,22 @@ export class R2MutationService {
     );
     try {
       await this.env.DB.batch([
+        ...(!recorded
+          ? [
+              this.env.DB.prepare(
+                "INSERT INTO r2_mutation_operations(id,nonce,digest,policy,issued,expires,preview,state,retention_ms) VALUES(?,?,?,?,?,?,?,'issued',?) ON CONFLICT(id) DO NOTHING",
+              ).bind(
+                id,
+                op.nonce,
+                op.digest,
+                op.policy,
+                op.issued,
+                op.expires,
+                op.preview,
+                op.expires - op.issued,
+              ),
+            ]
+          : []),
         this.env.DB.prepare(
           "INSERT OR REPLACE INTO ingestion_guard VALUES(1,COALESCE((SELECT 1 FROM r2_mutation_operations WHERE id=? AND state='issued' AND expires>?),0))",
         ).bind(id, this.now()),
@@ -388,8 +421,9 @@ export class R2MutationService {
         ),
       ]);
     } catch (error) {
-      if ((await this.operation(id))?.state !== "issued")
-        return this.durableStatus(id);
+      const current = await this.operation(id);
+      if (current && current.state !== "issued") return this.durableStatus(id);
+      await this.verify(id);
       throw error;
     }
     await this.options.checkpoint?.("claimed", -1);
@@ -400,7 +434,7 @@ export class R2MutationService {
     return this.durableStatus(id);
   }
   private async applyItem(
-    op: Operation,
+    op: Pick<Operation, "id" | "nonce">,
     token: string,
     item: core.PreparedMutationItem,
     result: Result,
@@ -783,10 +817,11 @@ export class R2MutationService {
   async cleanup(limit = 10, deadline = Infinity) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       fail("INVALID_REQUEST", 400);
+    const now = this.now();
     const ops = await this.env.DB.prepare(
-      "SELECT id,nonce FROM r2_mutation_operations WHERE cleanup_retry_after<=? AND ((state='completed' AND cleanup_after<?) OR (state='issued' AND expires<?)) ORDER BY cleanup_checked,issued LIMIT ?",
+      "SELECT id,nonce FROM r2_mutation_operations WHERE cleanup_retry_after<=? AND expires<=? AND (state='issued' OR (state='completed' AND cleanup_after<?)) ORDER BY cleanup_checked,issued LIMIT ?",
     )
-      .bind(this.now(), this.now(), this.now(), limit)
+      .bind(now, now - core.MUTATION_CLOCK_SKEW_MS, now, limit)
       .all<{ id: string; nonce: string }>();
     let inspected = 0;
     for (const op of ops.results) {

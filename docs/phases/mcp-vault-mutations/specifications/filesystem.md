@@ -33,13 +33,14 @@ remain rejected; HTTP/stdio setup describes the accepted race limitation.
 
 The service uses the same source policy, schemas and all-files preflight as the
 portable core. It returns a signed operation ID before source mutation. Review
-mode additionally requires the binding returned with the explicit preview;
-direct mode may allocate an ID without a diff. Apply resupplies the request.
-An HMAC binds ID format, issue time, fixed expiry, random nonce, request digest
+mode additionally requires the binding returned with the explicit preview.
+Direct mode may obtain an ID without a diff. Apply resupplies the request and
+records the operation before changing the source. An HMAC binds ID format,
+issue time, fixed expiry, random nonce, request digest, policy, preview mode
 and vault/source identity. The private journal persists the signing key. A key
 rotation invalidates existing IDs, with no anonymous fallback. Validate signature
-before operation lookup; unknown IDs never allocate work. More than 30 seconds
-of future clock skew is rejected. Apply rejects an expired ID even if retention
+before operation lookup. Legacy IDs require their original journal row. More
+than 30 seconds of future clock skew is rejected. Apply rejects an expired ID even if retention
 was subsequently increased. Policy changes invalidate unused proposals.
 
 The journal is `mutations.sqlite` beside the vault's index database, independent
@@ -76,14 +77,12 @@ commit intent is an unknown outcome, not an automatically retryable failure.
 
 Completed items are not repeated. Different content under the same ID fails
 with `IDEMPOTENCY_CONFLICT`. Failed items require a fresh ID and versions.
-Cleanup is bounded, explicit service maintenance (also run during allocations);
-transport lifecycle scheduling remains step 3. Completed audit rows are retained
-for the ID's originally configured retention duration after terminal completion,
-independently of the earlier fixed apply expiry. Per-item update timestamps and
-operation completion times are metadata. Unused expired proposals can be removed
-at expiry. Delete eligible terminal rows only after their staging files have
-been safely removed. Keep unresolved
-state, pending index work and access suppression independently of audit TTL.
+The transport schedules bounded cleanup. Completed audit rows remain for the
+ID's originally configured retention duration after terminal completion. Cleanup
+also waits until the apply expiry and clock-skew window have passed. Unused
+legacy proposals become eligible at that point. Delete eligible terminal rows
+after safely removing their staging files. Keep unresolved state, pending index
+work and access suppression independently of audit TTL.
 
 ## Source and index reads
 

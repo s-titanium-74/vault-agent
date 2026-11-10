@@ -269,7 +269,7 @@ describe("local MCP file changes", () => {
     ]) {
       const tool = tools.find((tool) => tool.name === name)!;
       expect(tool.description).toContain("untrusted");
-      expect(tool.annotations?.readOnlyHint).toBe(false);
+      expect(tool.annotations?.readOnlyHint).toBe(name !== "apply_changes");
     }
     expect(
       tools.find((tool) => tool.name === "apply_changes")?.annotations,

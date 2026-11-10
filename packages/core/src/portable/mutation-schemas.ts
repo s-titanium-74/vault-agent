@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const MUTATION_CLOCK_SKEW_MS = 30_000;
+
 const positive = z.number().int().positive().safe();
 export const mutationSettingsSchema = z
   .object({

@@ -91,7 +91,7 @@ export const mutationTools: Tool[] = [
   {
     name: "preview_changes",
     description:
-      "Validate note/attachment changes and allocate an expiring metadata-only operation ID. Returns bounded note diffs or attachment/deletion metadata; changes no source file. preview:false allocates without diffs in direct mode only." +
+      "Validate note/attachment changes and return an expiring signed operation ID without recording it or changing source files. Returns bounded note diffs or attachment/deletion metadata; preview:false skips diffs in direct mode only." +
       trust,
     inputSchema: {
       type: "object",
@@ -100,7 +100,7 @@ export const mutationTools: Tool[] = [
       properties: { operations, preview: { type: "boolean", default: true } },
     },
     annotations: {
-      readOnlyHint: false,
+      readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: false,
     },
@@ -108,7 +108,7 @@ export const mutationTools: Tool[] = [
   {
     name: "apply_changes",
     description:
-      "Apply exactly the operations bound to an issued ID; default review mode requires its preview_binding. Permanent deletion has no trash/restore. Source save success is separate from asynchronous indexing. Use get_change_status after a lost response; reuse the same ID/request to avoid duplicate application." +
+      "Record the operation and apply exactly the changes bound to its issued ID; default review mode requires its preview_binding. Permanent deletion has no trash/restore. Source save success is separate from asynchronous indexing. Use get_change_status after a lost response; reuse the same ID/request to avoid duplicate application." +
       trust,
     inputSchema: {
       type: "object",
@@ -138,7 +138,7 @@ export const mutationTools: Tool[] = [
       properties: { operation_id: { type: "string" } },
     },
     annotations: {
-      readOnlyHint: false,
+      readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
     },

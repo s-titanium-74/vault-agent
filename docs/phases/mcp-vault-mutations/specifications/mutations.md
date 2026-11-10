@@ -100,17 +100,17 @@ accepted limitation is explicit in setup and tools. These layers do not close #5
 
 ## MCP tools and modes
 
-| Tool (proposed)     | Purpose                                                                       | Side effects                                                                 |
-| ------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `preview_changes`   | Validate operations and show note diffs / attachment metadata / deletion list | May allocate expiring metadata-only operation identity; never changes source |
-| `apply_changes`     | Apply exactly the previewed request; direct requests only when enabled        | Source mutation and pending index work                                       |
-| `get_change_status` | Resolve lost responses and retrieve per-item results                          | No source mutation                                                           |
+| Tool (proposed)     | Purpose                                                                       | Side effects                                          |
+| ------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `preview_changes`   | Validate operations and show note diffs / attachment metadata / deletion list | Returns an expiring signed ID without a journal write |
+| `apply_changes`     | Apply the bound request in review or direct mode                              | Source mutation and pending index work                |
+| `get_change_status` | Resolve lost responses and retrieve per-item results                          | Read-only status lookup                               |
 
 Use the existing MCP result/error conventions. Preserve existing read tools.
 In the default `review` mode require a preview binding before `apply_changes`;
 `direct` mode permits application without preview. Both require writes enabled.
 This applies to filesystem, R2 and opt-in pCloud Markdown writes (#72).
-Direct callers still allocate an issued operation ID through `preview_changes`
+Direct callers still obtain a signed operation ID through `preview_changes`
 with `preview:false`, then resupply the identical operations to `apply_changes`.
 It changes neither provider concurrency guarantees nor exclusive write ownership
 for pCloud; ambiguous provider results are reconciled without replaying writes.
@@ -126,10 +126,10 @@ operations and the server verifies the binding. Temporary write staging needed
 for crash recovery is private operational data with bounded cleanup, not an
 audit archive or restore feature.
 
-Mutation tools declare `readOnlyHint: false`. `apply_changes` declares
-`destructiveHint: true`; duplicate-safe calls may declare `idempotentHint: true`
-only with the mandatory operation-ID semantics. Preview descriptions must
-explain any metadata allocation. Annotations are client hints, not authorization.
+`preview_changes` and `get_change_status` declare `readOnlyHint: true`.
+`apply_changes` declares `readOnlyHint: false`, `destructiveHint: true` and
+`idempotentHint: true` with mandatory operation-ID semantics. Annotations are
+client hints, not authorization. Clients decide whether to prompt.
 Descriptions explicitly say that retrieved note/guidance content is untrusted
 data, not permission to edit; mutations must follow the user's request.
 
@@ -298,13 +298,16 @@ other actors' directories during cleanup. Do not leave partial target files.
 
 ## Operation identity and retention
 
-IDs are server-issued, time-bound, unguessable and bound to vault/source and
-canonical request digest. `preview_changes` can issue them; direct mode needs
-an allocation path through the same metadata tool without requiring a diff.
-The client must receive the ID before the first source mutation so a lost
-response is recoverable. A same-ID/different-request call fails with
-`IDEMPOTENCY_CONFLICT`; same ID and same request returns prior item results or
-current pending status, without reapplying successful items.
+IDs are server-issued, time-bound, unguessable and bound to vault/source,
+canonical request digest, policy and whether a diff was requested. Preview
+returns the signed ID without persisting it, including in direct mode.
+The client receives the ID before the first source mutation so a lost response
+is recoverable. The first valid apply records the ID and claims the operation
+in one journal transaction before writing the source. Status for a valid,
+unexpired ID awaiting apply is `issued` with empty results. A same-ID request
+with different changes fails with `IDEMPOTENCY_CONFLICT`. Resending the same
+ID and changes returns prior item results or current pending status without
+reapplying successful items.
 
 Recover pending items under the same ID without repeating applied items.
 Terminal failures are retained as results; to retry failed items, submit those
@@ -313,10 +316,11 @@ expand an existing ID's scope. Serialize concurrent claims of the same ID.
 Persist item outcome and the request digest across restarts/isolates.
 
 Do not trust an arbitrary client timestamp as proof of a new ID. Validate the
-issued identity and expiry before looking up evicted history; an unknown/expired
-issued ID must never turn into a new operation. Define clock skew, secret
-rotation, and retention-setting changes; keep each ID's expiry stable so raising
-retention cannot resurrect a previously expired ID.
+issued identity and expiry before claiming new work. Legacy IDs require their
+original journal row. Expired IDs cannot create work under either format. Keep
+each ID's expiry stable across retention changes. Cleanup retains journal rows
+through expiry plus the allowed 30-second clock skew to prevent replay if the
+clock moves backwards within that window.
 
 Default history retention is seven days and configurable. Audit records contain
 operation ID, timestamps, relative path, operation, outcome and before/after
