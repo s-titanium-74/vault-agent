@@ -133,7 +133,7 @@ describe("CLI integration tests with local server", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.data.status).toBe("ok");
-      expect(data.data.version).toBe("0.2.2");
+      expect(data.data.version).toBe("0.2.3");
       expect(data.data.index.available).toBe(true);
     });
   });
