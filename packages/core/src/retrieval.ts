@@ -185,7 +185,7 @@ export function getAttachmentBytes(
   }
 }
 
-function getContentType(filePath: string): string {
+export function getContentType(filePath: string): string {
   const mimeType = mime.lookup(filePath);
   return mimeType || "application/octet-stream";
 }

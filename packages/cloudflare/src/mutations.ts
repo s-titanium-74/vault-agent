@@ -214,8 +214,6 @@ export class R2MutationService {
       includes: JSON.parse(this.env.INCLUDE_PATHS),
       excludes: JSON.parse(this.env.EXCLUDE_PATHS),
       settings: this.settings,
-      attachmentAllowed: (p) =>
-        !isPCloud(this.env) && core.uploadKind(p) === "attachment",
       snapshot: async (path, opts) => {
         const row = await mutationPath(this.env, path);
         if (row?.state === "uncertain") fail("SOURCE_UNAVAILABLE", 503);
@@ -330,6 +328,7 @@ export class R2MutationService {
       results: rows.results.map((r) => {
         const result = JSON.parse(r.result) as Result;
         if (
+          (!isPCloud(this.env) || result.note_id) &&
           result.status === "applied" &&
           fresh.has(
             `${result.index}:${result.type === "delete_file" ? "deleted" : "saved"}`,
@@ -512,7 +511,7 @@ export class R2MutationService {
       committing = true;
       await this.options.checkpoint?.("committing", item.index);
       if (isPCloud(this.env)) {
-        await pcloudSource(this.env, true).writeNote(
+        await pcloudSource(this.env, true).writeFile(
           item.path,
           intent.before,
           item.bytes ?? null,
@@ -651,7 +650,7 @@ export class R2MutationService {
         : (intent.digest ?? undefined);
     result.status = "applied";
     delete result.code;
-    result.index_state = "pending";
+    if (!isPCloud(this.env) || result.note_id) result.index_state = "pending";
     if (version) result.version = version;
     await this.env.DB.batch([
       this.pathGuard(id, result.index, result.path),
@@ -887,7 +886,7 @@ async function readRawMutationSource(
   if (isPCloud(env)) {
     const source = pcloudSource(env);
     try {
-      const current = await source.readCurrent(path, maxBytes);
+      const current = await source.readCurrentFile(path, maxBytes);
       if (!current) return null;
       const { entry, bytes } = current;
       return {

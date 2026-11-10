@@ -4,6 +4,12 @@ import type {
   SourceReadOptions,
   VaultSource,
 } from "./contracts.js";
+import { RetrievalSizeError } from "../errors.js";
+import {
+  DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT,
+  DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT,
+} from "../schemas.js";
+import { uploadKind, uploadLimit } from "./ingestion.js";
 import { contentRevision } from "./identifiers.js";
 import {
   canonicalSourcePath,
@@ -25,9 +31,9 @@ export interface PCloudOptions {
   writesEnabled?: boolean;
   fetch?: typeof fetch;
 }
-export interface PCloudObservation {
+export interface PCloudObservation<K extends SourceEntry["kind"] = "note"> {
   path: string;
-  kind: "note";
+  kind: K;
   size: number;
   updated: string;
   /** Provider evidence, deliberately distinct from the verified body digest. */
@@ -204,11 +210,12 @@ export class PCloudSource implements VaultSource {
       throw unavailable();
     return m;
   }
-  private observation(
+  private observation<K extends SourceEntry["kind"]>(
     m: Metadata,
     path: string,
     parent: string,
-  ): PCloudObservation {
+    kind: K,
+  ): PCloudObservation<K> {
     if (
       m.isfolder !== false ||
       m.encrypted ||
@@ -220,11 +227,9 @@ export class PCloudSource implements VaultSource {
       !Number.isFinite(Date.parse(String(m.modified)))
     )
       throw unavailable();
-    if (Number(m.size) > PCLOUD_MAX_NOTE_BYTES)
-      throw new SourceError("SOURCE_TOO_LARGE");
     return {
       path,
-      kind: "note",
+      kind,
       size: Number(m.size),
       updated: new Date(String(m.modified)).toISOString(),
       version: JSON.stringify([
@@ -239,15 +244,19 @@ export class PCloudSource implements VaultSource {
   private check(path: string) {
     canonicalSourcePath(path);
     if (path.length > 512) throw new SourceError("INVALID_PATH");
-    if (
-      !this.allowed(path) ||
-      guidanceKind(path) ||
-      !/\.(md|markdown)$/i.test(path)
-    )
-      throw new SourceError("SOURCE_EXCLUDED");
+    const kind = uploadKind(path);
+    if (!this.allowed(path) || !kind) throw new SourceError("SOURCE_EXCLUDED");
+    return kind;
   }
   /** Complete bounded observation; failures never return partial membership. */
   async observe(signal?: AbortSignal): Promise<PCloudObservation[]> {
+    return this.observeKind("note", this.options.maxNotes ?? 500, signal);
+  }
+  private async observeKind<K extends "note" | "guidance">(
+    kind: K,
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<PCloudObservation<K>[]> {
     return this.operation(signal, async (signal) => {
       const data = await this.call(
         "listfolder",
@@ -255,7 +264,7 @@ export class PCloudSource implements VaultSource {
         signal,
       );
       if (data.truncated || data.has_more) throw unavailable();
-      const items: PCloudObservation[] = [];
+      const items: PCloudObservation<K>[] = [];
       const seen = new Set<string>();
       let nodes = 0;
       const walk = (
@@ -282,16 +291,16 @@ export class PCloudSource implements VaultSource {
           if (child.isfolder === true)
             walk(child, id(child.folderid), path + "/", depth + 1);
           else if (child.isfolder !== false) throw unavailable();
-          else if (
-            this.allowed(path) &&
-            !guidanceKind(path) &&
-            /\.(md|markdown)$/i.test(path)
-          ) {
+          else if (this.allowed(path) && uploadKind(path) === kind) {
             const fileId = `f${id(child.fileid)}`;
             if (seen.has(fileId)) throw unavailable();
             seen.add(fileId);
-            items.push(this.observation(child, path, folderId));
-            if (items.length > (this.options.maxNotes ?? 500))
+            const entry = this.observation(child, path, folderId, kind);
+            items.push(entry);
+            if (
+              items.length > limit ||
+              (kind === "note" && entry.size > PCLOUD_MAX_NOTE_BYTES)
+            )
               throw new SourceError("SOURCE_TOO_LARGE");
           }
         }
@@ -307,7 +316,7 @@ export class PCloudSource implements VaultSource {
     signal: AbortSignal,
     createParents = false,
   ) {
-    this.check(path);
+    const kind = this.check(path);
     const segments = path.split("/");
     if (segments.length > 64) throw new SourceError("SOURCE_EXCLUDED");
     let folderId = this.options.folderId;
@@ -356,7 +365,9 @@ export class PCloudSource implements VaultSource {
       )
         throw new SourceError("SOURCE_EXCLUDED");
       if (i === segments.length - 1)
-        return { folderId, entry: this.observation(child, path, folderId) };
+        return child.isfolder === true
+          ? null
+          : { folderId, entry: this.observation(child, path, folderId, kind) };
       if (child.isfolder !== true) return null;
       folderId = id(child.folderid);
     }
@@ -366,26 +377,29 @@ export class PCloudSource implements VaultSource {
     return (await this.locate(path, signal))?.entry ?? null;
   }
 
-  /** Requires exclusive write ownership of the configured folder scope. */
   async writeNote(
     path: string,
     expectedRevision: string | null,
     bytes: Uint8Array | null,
     signal?: AbortSignal,
   ): Promise<SourceEntry | null> {
+    if (this.check(path) !== "note") throw new SourceError("SOURCE_EXCLUDED");
+    return this.writeFile(path, expectedRevision, bytes, signal);
+  }
+
+  /** Requires exclusive write ownership of the configured folder scope. */
+  async writeFile(
+    path: string,
+    expectedRevision: string | null,
+    bytes: Uint8Array | null,
+    signal?: AbortSignal,
+  ): Promise<SourceEntry | null> {
     if (!this.options.writesEnabled) throw unavailable();
-    if (bytes && bytes.length > PCLOUD_MAX_NOTE_BYTES)
+    const kind = this.check(path);
+    if (kind === "guidance") throw new SourceError("SOURCE_EXCLUDED");
+    if (bytes && bytes.length > uploadLimit(kind))
       throw new SourceError("SOURCE_TOO_LARGE");
-    if (bytes) {
-      try {
-        if (
-          new TextDecoder("utf-8", { fatal: true }).decode(bytes).includes("\0")
-        )
-          throw new Error();
-      } catch {
-        throw new SourceError("SOURCE_NOT_UTF8");
-      }
-    }
+    if (bytes && kind === "note") decodeText(bytes);
     const desired = bytes ? await contentRevision(bytes) : null;
     return this.operation(signal, async (signal) => {
       const target = await this.locate(
@@ -409,17 +423,27 @@ export class PCloudSource implements VaultSource {
         const [fileid] = JSON.parse(target.entry.version) as [string];
         await this.call("deletefile", { fileid }, signal);
       }
-      const after = await this.stat(path, signal);
+      const after =
+        (await this.readCurrentFile(path, undefined, signal))?.entry ?? null;
       if ((after?.revision ?? null) !== desired)
         throw new SourceError("SOURCE_REVISION_MISMATCH");
       return after;
     });
   }
 
-  async readObserved(entry: PCloudObservation, signal?: AbortSignal) {
+  async readObserved(
+    entry: PCloudObservation<SourceEntry["kind"]>,
+    signal?: AbortSignal,
+  ) {
+    if (entry.size > uploadLimit(entry.kind))
+      throw new SourceError("SOURCE_TOO_LARGE");
     return this.operation(signal, async (signal) => {
       const before = await this.resolve(entry.path, signal);
-      if (!before || before.version !== entry.version)
+      if (
+        !before ||
+        before.kind !== entry.kind ||
+        before.version !== entry.version
+      )
         throw new SourceError("SOURCE_REVISION_MISMATCH");
       const [fileid] = JSON.parse(before.version) as string[];
       const data = await this.call(
@@ -447,17 +471,12 @@ export class PCloudSource implements VaultSource {
         throw unavailable();
       const bytes = await bounded(
         await this.fetcher(url, { signal, redirect: "manual" }),
-        Math.min(PCLOUD_MAX_NOTE_BYTES, entry.size),
+        entry.size,
       );
       const after = await this.resolve(entry.path, signal);
       if (bytes.length !== entry.size || after?.version !== entry.version)
         throw new SourceError("SOURCE_REVISION_MISMATCH");
-      try {
-        const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        if (text.includes("\0")) throw new Error();
-      } catch {
-        throw new SourceError("SOURCE_NOT_UTF8");
-      }
+      if (entry.kind !== "attachment") decodeText(bytes);
       return {
         bytes,
         entry: {
@@ -475,18 +494,75 @@ export class PCloudSource implements VaultSource {
     maxBytes = PCLOUD_MAX_NOTE_BYTES,
     signal?: AbortSignal,
   ) {
+    if (this.check(path) !== "note") throw new SourceError("SOURCE_EXCLUDED");
+    return this.readCurrentFile(path, maxBytes, signal);
+  }
+  async readCurrentFile(path: string, maxBytes?: number, signal?: AbortSignal) {
     const observed = await this.operation(signal, (s) => this.resolve(path, s));
     if (!observed) return null;
-    if (observed.size > maxBytes) throw new SourceError("SOURCE_TOO_LARGE");
+    if (observed.size > (maxBytes ?? uploadLimit(observed.kind)))
+      throw new SourceError("SOURCE_TOO_LARGE");
     return this.readObserved(observed, signal);
   }
   async stat(path: string, signal?: AbortSignal): Promise<SourceEntry | null> {
-    return (
-      (await this.readCurrent(path, PCLOUD_MAX_NOTE_BYTES, signal))?.entry ??
-      null
+    return (await this.readCurrent(path, undefined, signal))?.entry ?? null;
+  }
+  async listGuidance() {
+    return {
+      guidance: (await this.observeKind("guidance", 500)).map(
+        guidanceCandidate,
+      ),
+    };
+  }
+  async getGuidance(path: string, allowLarge: boolean) {
+    if (this.check(path) !== "guidance") return null;
+    const observed = await this.operation(undefined, (signal) =>
+      this.resolve(path, signal),
     );
+    if (!observed) return null;
+    const limit = allowLarge
+      ? uploadLimit("guidance")
+      : DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT;
+    if (observed.size > limit)
+      throw new RetrievalSizeError(
+        "GUIDANCE_TOO_LARGE",
+        "Guidance exceeds the retrieval size limit.",
+      );
+    const { bytes } = await this.readObserved(observed);
+    return {
+      ...guidanceCandidate(observed),
+      content: decodeText(bytes),
+      contentType: /\.(md|markdown|mdc)$/i.test(path)
+        ? "text/markdown; charset=utf-8"
+        : "text/plain; charset=utf-8",
+    };
+  }
+  async getAttachment(path: string, download: boolean, allowLarge: boolean) {
+    if (this.check(path) !== "attachment") return null;
+    const observed = await this.operation(undefined, (signal) =>
+      this.resolve(path, signal),
+    );
+    if (!observed) return null;
+    const limit = allowLarge
+      ? uploadLimit("attachment")
+      : DEFAULT_ATTACHMENT_DOWNLOAD_SIZE_LIMIT;
+    const metadata = {
+      path,
+      fileName: path.split("/").at(-1)!,
+      size: observed.size,
+      downloadAvailable: observed.size <= limit,
+    };
+    if (!download) return { metadata };
+    if (!metadata.downloadAvailable)
+      throw new RetrievalSizeError(
+        "ATTACHMENT_TOO_LARGE",
+        "Attachment exceeds the download size limit.",
+      );
+    const { bytes, entry } = await this.readObserved(observed);
+    return { metadata, bytes, version: entry.revision };
   }
   async readBytes(path: string, options: SourceReadOptions) {
+    if (this.check(path) !== "note") throw new SourceError("SOURCE_EXCLUDED");
     if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 0)
       throw new SourceError("SOURCE_TOO_LARGE");
     const observed = await this.operation(options.signal, (s) =>
@@ -558,4 +634,33 @@ export class PCloudSource implements VaultSource {
           : undefined,
     };
   }
+}
+
+function decodeText(bytes: Uint8Array) {
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (text.includes("\0")) throw new Error();
+    return text;
+  } catch {
+    throw new SourceError("SOURCE_NOT_UTF8");
+  }
+}
+
+function guidanceCandidate(
+  entry: Pick<PCloudObservation<"guidance">, "path" | "size" | "updated">,
+) {
+  const { path, size, updated } = entry;
+  const kind = guidanceKind(path)!;
+  const scope =
+    kind === "cursor_rule"
+      ? path.split(/(?:^|\/)\.cursor\/rules\//)[0]!
+      : path.split("/").slice(0, -1).join("/");
+  return {
+    path,
+    kind,
+    scope,
+    appliesTo: scope ? `${scope}/**` : "**",
+    size,
+    updated,
+  };
 }

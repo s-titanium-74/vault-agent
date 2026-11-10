@@ -173,10 +173,11 @@ describe("local MCP file changes", () => {
   }
 
   it.each(["review", "direct"] as const)(
-    "updates a pCloud note through the MCP client in %s mode and publishes it to search",
+    "reads guidance and changes pCloud notes and attachments in %s mode",
     async (mode) => {
       const api = new SyntheticPCloud();
       api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard.");
+      api.set("Notes/AGENTS.md", "# Synthetic rule");
       const fetchMock = vi
         .spyOn(globalThis, "fetch")
         .mockImplementation(api.fetch);
@@ -239,6 +240,78 @@ describe("local MCP file changes", () => {
           (await call("get_note", { noteId: noteIdFromPath(relative) }))
             .content,
         ).toContain("Changedbody");
+
+        expect((await call("vault_guidance_list", {})).guidance).toEqual([
+          expect.objectContaining({ path: "Notes/AGENTS.md", kind: "agents" }),
+        ]);
+        expect(
+          await call("vault_guidance_get", { path: "Notes/AGENTS.md" }),
+        ).toMatchObject({ content: "# Synthetic rule" });
+
+        const attachmentPath = "Notes/Synthetic.png";
+        const upload = {
+          type: "upload_attachment",
+          path: attachmentPath,
+          content_base64: "AP+AQQ==",
+        };
+        const change = async (operation: unknown) => {
+          const operations = [operation];
+          const plan = await call("preview_changes", {
+            operations,
+            preview: mode === "review",
+          });
+          return (
+            await call("apply_changes", {
+              operations,
+              operation_id: plan.operation_id,
+              preview_binding: plan.preview_binding,
+            })
+          ).results[0];
+        };
+        expect(
+          await change(remove("Notes/AGENTS.md", "0".repeat(64))),
+        ).toMatchObject({ status: "failed", code: "SOURCE_WRITE_UNSUPPORTED" });
+        const saved = await change(upload);
+        expect(saved).toMatchObject({
+          status: "applied",
+          version: expect.any(String),
+        });
+        expect(saved.index_state).toBeUndefined();
+        const args = { vaultRelativePath: attachmentPath };
+        const calls = api.requests.length;
+        const metadata = await call("get_attachment", args);
+        expect(metadata).toMatchObject({ size: 4, contentType: "image/png" });
+        expect(metadata.content).toBeUndefined();
+        expect(
+          api.requests.slice(calls).every((r) => r.method === "/listfolder"),
+        ).toBe(true);
+        expect(
+          await call("get_attachment", { ...args, download: true }),
+        ).toMatchObject({
+          content: upload.content_base64,
+          encoding: "base64",
+          version: saved.version,
+        });
+        const replaced = await change({
+          ...upload,
+          content_base64: "gAH/",
+          replace: true,
+          expected_version: saved.version,
+        });
+        expect(replaced.status).toBe("applied");
+        expect(replaced.version).not.toBe(saved.version);
+        expect(
+          await change(remove(attachmentPath, saved.version)),
+        ).toMatchObject({
+          status: "failed",
+          code: "SOURCE_REVISION_MISMATCH",
+        });
+        expect(
+          await change(remove(attachmentPath, replaced.version)),
+        ).toMatchObject({ status: "applied" });
+        await expect(call("get_attachment", args)).rejects.toMatchObject({
+          data: { errorCode: "ATTACHMENT_NOT_FOUND" },
+        });
       } finally {
         await runtime?.close();
         fetchMock.mockRestore();

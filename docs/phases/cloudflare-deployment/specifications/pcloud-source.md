@@ -1,12 +1,12 @@
-# pCloud original source (#51, #67)
+# pCloud original source (#51, #67, #81)
 
 ## Initial scope
 
 Explicit opt-in selects one normal pCloud folder per local configuration or
 Worker deployment. The adapter defaults to read-only. An administrator can
 explicitly enable Markdown writes through MCP in review mode (default) or
-explicitly opt into direct mode (#72). Crypto folders, shortcuts, attachments and guidance are
-not supported initially; Markdown (.md/.markdown) notes only. Existing filesystem
+explicitly opt into direct mode (#72). Crypto folders and shortcuts are
+unsupported. Only Markdown notes enter the index. Existing filesystem
 and R2 sources remain defaults. Switching source requires a separate index or
 fresh deployment; never reuse an existing deployment across source identities.
 
@@ -41,7 +41,7 @@ No automatic OAuth/browser flow or account-region discovery is performed.
 Tokens must never enter repository config, logs or public output. pCloud sees
 API metadata/read requests; enumerating the selected root transfers its folder
 metadata, including excluded filenames, transiently to the selected runtime;
-only admitted Markdown bodies are downloaded and indexed; local SQLite retains derived text locally; Workers
+only admitted Markdown note bodies are downloaded for indexing; local SQLite retains derived text locally; Workers
 send selected originals transiently to Cloudflare and store derived text in D1.
 Embedding remains a separate opt-in with the existing provider disclosure.
 
@@ -135,7 +135,7 @@ checks the current exact-byte SHA-256 against the requested expected version. A 
 mismatch before the provider request rejects the write. Creation uses
 `createfolderifnotexists` for missing parents and `uploadfile` with `nopartial`.
 A failed create can leave empty parent folders. Deletion uses the verified file
-ID. Rename and attachments remain outside the MCP mutation scope.
+ID. Rename and guidance changes remain outside the MCP mutation scope.
 
 Writes remain disabled by default. When enabled, `write.mode=review` (Node)
 or `WRITE_MODE=review` (Workers) remains the default and requires a diff preview
@@ -165,6 +165,38 @@ ambiguous outcomes and index convergence. The [upload API](https://docs.pcloud.c
 [folder API](https://docs.pcloud.com/methods/folder/createfolderifnotexists.html) and
 [delete API](https://docs.pcloud.com/methods/file/deletefile.html) describe the
 provider operations used here.
+
+## Guidance and attachments (#81)
+
+Both runtimes expose `GET /agent-guidance`, `GET /agent-guidance/<path>` and
+`GET /attachments/<path>` through HTTP, with the corresponding
+`vault_guidance_list`, `vault_guidance_get` and `get_attachment` MCP tools.
+These reads use live pCloud originals, independently of note indexing. Status
+advertises guidance, attachment reads and whether attachment mutations are
+enabled. MCP lists mutation tools only for authorized callers when writes are
+enabled. Source-dependent HTTP operations such as uploading to R2 return
+`CAPABILITY_UNSUPPORTED` in pCloud mode.
+
+Guidance discovery uses the same canonical names as the other sources and
+returns metadata only. It uses a complete bounded pCloud listing with up to
+500 guidance candidates. Explicit reads accept only admitted guidance paths
+and bounded UTF-8 text, up to 200 KiB by default and 2 MiB with `allowLarge`.
+Attachment metadata uses the resolved provider metadata without downloading
+bytes. Supported extensions are PDF, PNG, JPEG, GIF, WebP, SVG and AVIF.
+Explicit attachment downloads have a 10 MiB default limit and a 20 MiB hard
+limit, with the existing MCP transport limits also applying.
+
+The shared adapter enforces source include paths, exclusions, canonical
+relative paths and provider metadata checks for both runtimes. Neither
+guidance nor attachment bytes are indexed or replicated to R2. An explicit
+attachment download returns the exact-byte version for replacement or deletion
+in MCP (the `X-Vault-Source-Version` header over HTTP). The existing MCP
+`upload_attachment` (create or replace) and `delete_file` operations use
+the configured write mode, READWRITE/ADMIN or trusted local stdio, write size
+and batch limits, and the same exclusive-writer and recovery rules as notes.
+Attachment changes have no index publication step. Guidance can be read
+but mutation requests targeting admitted guidance return
+`SOURCE_WRITE_UNSUPPORTED`.
 
 ## Setup examples
 

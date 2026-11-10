@@ -19,6 +19,11 @@ export interface IndexStatusInfo {
 export interface FullStatus {
   source?: {
     provider: "pcloud";
+    capabilities: {
+      guidance: true;
+      attachments: true;
+      attachmentMutations: boolean;
+    };
     updateMode: "poll";
     automaticUpdatesEnabled: boolean;
     pollIntervalSeconds: number;
@@ -97,6 +102,11 @@ export function buildStatus(
       ? {
           source: {
             provider: "pcloud" as const,
+            capabilities: {
+              guidance: true,
+              attachments: true,
+              attachmentMutations: config.write.enabled,
+            },
             updateMode: "poll" as const,
             automaticUpdatesEnabled: config.watch.enabled,
             pollIntervalSeconds: config.vault.pcloud.poll_seconds,

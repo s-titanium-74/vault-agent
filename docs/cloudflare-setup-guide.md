@@ -362,6 +362,11 @@ live-resource deletion; no immediate backup-erasure promise is made.
 
 ## Optional pCloud source
 
+pCloud supports metadata-only guidance discovery and attachment lookup through
+HTTP and MCP. Explicit downloads return attachment bytes and a version for
+MCP replacement or deletion when writes are enabled. Guidance and attachments
+stay in pCloud.
+
 Use a dedicated pCloud folder and a synthetic Markdown note for the first
 deployment. Obtain a [pCloud OAuth access token](https://docs.pcloud.com/methods/oauth_2.0/authorize.html)
 and the numeric `folderid` using

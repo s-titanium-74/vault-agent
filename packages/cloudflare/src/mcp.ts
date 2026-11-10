@@ -241,6 +241,11 @@ async function call(
   try {
     const service = await RetrievalService.open(env, {
       allowUnindexed: ["get_note", "get_attachment"].includes(name),
+      allowLiveSource: [
+        "get_attachment",
+        "vault_guidance_list",
+        "vault_guidance_get",
+      ].includes(name),
     });
     const result = await service.invoke(name, mapped(args));
     let data = result.data;

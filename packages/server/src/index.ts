@@ -115,7 +115,9 @@ export async function createServer(
               ? 413
               : error.code === "SOURCE_EXCLUDED"
                 ? 403
-                : 503,
+                : error.code === "INVALID_PATH"
+                  ? 400
+                  : 503,
         )
         .send(err(error.code, "Source operation failed.", request.id));
     if (appConfig.write?.enabled)
