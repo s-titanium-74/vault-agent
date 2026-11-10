@@ -1,4 +1,4 @@
-import { isPCloud, PCloudSnapshotSource } from "./source.js";
+import { isPCloud, pcloudSource, PCloudSnapshotSource } from "./source.js";
 import {
   detectionStatus,
   ingestionEnabled,
@@ -121,7 +121,10 @@ export class RetrievalService {
       this.operations,
     );
   }
-  static async open(env: Env, options: { allowUnindexed?: boolean } = {}) {
+  static async open(
+    env: Env,
+    options: { allowUnindexed?: boolean; allowLiveSource?: boolean } = {},
+  ) {
     // One ordered session, anchored at the primary, covers the complete read.
     const session = env.DB.withSession("first-primary");
     const DB = new Proxy(env.DB, {
@@ -154,9 +157,10 @@ export class RetrievalService {
     }>();
     if (!row) {
       if (
-        options.allowUnindexed &&
-        sourceEpoch !== null &&
-        (config(env).write.enabled || sourceEpoch > 0)
+        (options.allowLiveSource && isPCloud(env)) ||
+        (options.allowUnindexed &&
+          sourceEpoch !== null &&
+          (config(env).write.enabled || sourceEpoch > 0))
       ) {
         const empty = "0".repeat(64);
         return new RetrievalService(
@@ -261,6 +265,56 @@ export class RetrievalService {
     input: unknown,
   ): Promise<{ data: unknown; warnings: core.WarningItem[]; usage?: Usage }> {
     const args = (input ?? {}) as Record<string, unknown>;
+    if (isPCloud(this.env) && operation === "vault_guidance_list") {
+      const data = await pcloudSource(this.env).listGuidance();
+      await this.current();
+      return { data, warnings: [] };
+    }
+    if (
+      isPCloud(this.env) &&
+      ["vault_guidance_get", "get_attachment"].includes(operation)
+    ) {
+      const p = parse(fileSchema, args);
+      this.pin(p.snapshot);
+      const source = pcloudSource(this.env);
+      if (operation === "vault_guidance_get") {
+        const data = await source.getGuidance(p.path, p.allowLarge ?? false);
+        if (!data) throw new CloudError("GUIDANCE_NOT_FOUND", 404);
+        await this.current();
+        return { data, warnings: [] };
+      }
+      if (
+        this.mutationReadEpoch !== null &&
+        (await mutationPath(this.env, p.path))?.state === "uncertain"
+      )
+        throw new CloudError("SOURCE_UNAVAILABLE", 503);
+      const result = await source.getAttachment(
+        p.path,
+        p.download ?? false,
+        p.allowLarge ?? false,
+      );
+      if (!result) throw new CloudError("ATTACHMENT_NOT_FOUND", 404);
+      await this.current();
+      const bytes = result.bytes;
+      return {
+        data: {
+          ...result.metadata,
+          contentType: attachmentType(p.path),
+          ...(bytes
+            ? {
+                version: result.version,
+                stream: new ReadableStream<Uint8Array>({
+                  start(controller) {
+                    controller.enqueue(bytes);
+                    controller.close();
+                  },
+                }),
+              }
+            : {}),
+        },
+        warnings: [],
+      };
+    }
     if (this.unindexed && !["get_note", "get_attachment"].includes(operation))
       throw new CloudError("INDEX_NOT_FOUND", 409);
     const detection = await detectionStatus(this.env);
@@ -729,12 +783,13 @@ export async function cloudStatus(
       capabilities: {
         lexical: true,
         semantic: ready,
-        attachments: !isPCloud(env),
+        attachments: true,
+        attachmentMutations: config(env).write.enabled,
         related: true,
         orientation: true,
         filters: true,
         links: true,
-        guidance: !isPCloud(env),
+        guidance: true,
         profiles: true,
         mcpHttp: true,
         upload: ingestionEnabled(env) && !isPCloud(env),

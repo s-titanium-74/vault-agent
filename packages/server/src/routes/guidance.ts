@@ -4,6 +4,7 @@ import {
   RetrievalSizeError,
   getAgentGuidance,
   listAgentGuidance,
+  pcloudSource,
 } from "@vault-agent/core";
 import { err } from "../http-utils.js";
 import { getAppState } from "../state.js";
@@ -11,16 +12,6 @@ import { getAppState } from "../state.js";
 export function registerGuidanceRoutes(app: FastifyInstance): void {
   app.get("/agent-guidance", async (request, reply) => {
     const { config } = getAppState();
-    if (config?.vault.pcloud)
-      return reply
-        .code(501)
-        .send(
-          err(
-            "CAPABILITY_UNSUPPORTED",
-            "pCloud guidance is unsupported.",
-            request.id,
-          ),
-        );
     if (!config) {
       return reply
         .code(409)
@@ -31,7 +22,9 @@ export function registerGuidanceRoutes(app: FastifyInstance): void {
 
     try {
       return {
-        data: listAgentGuidance(config.vault.root, config.vault.exclude),
+        data: config.vault.pcloud
+          ? await pcloudSource(config).listGuidance()
+          : listAgentGuidance(config.vault.root, config.vault.exclude),
         warnings: [],
       };
     } catch (error) {
@@ -44,16 +37,6 @@ export function registerGuidanceRoutes(app: FastifyInstance): void {
 
   app.get("/agent-guidance/*", async (request, reply) => {
     const { config } = getAppState();
-    if (config?.vault.pcloud)
-      return reply
-        .code(501)
-        .send(
-          err(
-            "CAPABILITY_UNSUPPORTED",
-            "pCloud guidance is unsupported.",
-            request.id,
-          ),
-        );
     if (!config) {
       return reply
         .code(409)
@@ -66,12 +49,17 @@ export function registerGuidanceRoutes(app: FastifyInstance): void {
     const { allowLarge } = request.query as { allowLarge?: string };
 
     try {
-      const result = getAgentGuidance(
-        config.vault.root,
-        vaultRelativePath,
-        allowLarge === "true",
-        config.vault.exclude,
-      );
+      const result = config.vault.pcloud
+        ? await pcloudSource(config).getGuidance(
+            vaultRelativePath,
+            allowLarge === "true",
+          )
+        : getAgentGuidance(
+            config.vault.root,
+            vaultRelativePath,
+            allowLarge === "true",
+            config.vault.exclude,
+          );
 
       if (!result) {
         return reply

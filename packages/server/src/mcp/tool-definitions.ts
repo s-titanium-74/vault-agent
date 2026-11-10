@@ -108,7 +108,7 @@ export const tools: Tool[] = [
   {
     name: "get_attachment",
     description:
-      "Retrieve metadata about an attachment file, or download its contents. By default returns only metadata (name, size, MIME type). Set download=true to get the file content as base64-encoded data.",
+      "Retrieve metadata about an attachment file, or download its contents. By default returns only metadata (name, size, MIME type). Set download=true to get the file content as base64-encoded data. For pCloud, download=true also returns the version used for replacement or deletion.",
     inputSchema: {
       type: "object",
       properties: {

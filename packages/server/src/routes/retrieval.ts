@@ -7,6 +7,7 @@ import {
   getAttachmentMetadata,
   getChunk,
   getConfiguredNote,
+  getPCloudAttachment,
   resolveVaultRelativePath,
   validateVaultPath,
 } from "@vault-agent/core";
@@ -161,22 +162,45 @@ export function registerRetrievalRoutes(app: FastifyInstance): void {
         .send(err("CONFIG_INVALID", "Server not configured.", request.id));
     }
 
-    if (config.vault.pcloud)
-      return reply
-        .code(501)
-        .send(
-          err(
-            "CAPABILITY_UNSUPPORTED",
-            "pCloud attachments are unsupported.",
-            request.id,
-          ),
-        );
-
     const vaultRelativePath = (request.params as { "*": string })["*"];
     const { download, allowLarge } = request.query as {
       download?: string;
       allowLarge?: string;
     };
+    if (config.vault.pcloud) {
+      try {
+        const result = await getPCloudAttachment(
+          config,
+          vaultRelativePath,
+          download === "true",
+          allowLarge === "true",
+        );
+        if (!result)
+          return reply
+            .code(404)
+            .send(
+              err("ATTACHMENT_NOT_FOUND", "Attachment not found.", request.id),
+            );
+        if (!result.bytes) return { data: result.metadata, warnings: [] };
+        const fileName = encodeURIComponent(result.metadata.fileName).replace(
+          /['()*]/g,
+          (char) => `%${char.charCodeAt(0).toString(16)}`,
+        );
+        reply.header("Content-Type", result.metadata.contentType);
+        reply.header(
+          "Content-Disposition",
+          `attachment; filename*=UTF-8''${fileName}`,
+        );
+        reply.header("X-Vault-Source-Version", result.version);
+        return reply.send(Buffer.from(result.bytes));
+      } catch (error) {
+        if (error instanceof RetrievalSizeError)
+          return reply
+            .code(413)
+            .send(err(error.code, error.message, request.id));
+        throw error;
+      }
+    }
     if (app.vaultMutations) {
       const current =
         app.vaultMutations.service.getFileVersion(vaultRelativePath);

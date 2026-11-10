@@ -104,11 +104,10 @@ export async function prepareMutationBatch(
   );
   if (!parsedSettings.success) throw new MutationError("INVALID_REQUEST");
   const settings = parsedSettings.data;
-  if (context.sourceKind === "pcloud")
-    settings.max_file_bytes = Math.min(
-      settings.max_file_bytes,
-      PCLOUD_MAX_NOTE_BYTES,
-    );
+  const fileLimit = (attachment: boolean) =>
+    context.sourceKind === "pcloud" && !attachment
+      ? Math.min(settings.max_file_bytes, PCLOUD_MAX_NOTE_BYTES)
+      : settings.max_file_bytes;
   if (!settings.enabled) throw new MutationError("WRITE_DISABLED");
   const parsed = mutationBatchSchema.safeParse(input);
   if (!parsed.success) throw new MutationError("INVALID_REQUEST");
@@ -127,12 +126,13 @@ export async function prepareMutationBatch(
     if (keys.has(key)) throw new MutationError("DUPLICATE_PATH");
     keys.add(key);
     paths.push(key);
+    const limit = fileLimit(op.type === "upload_attachment");
     let bytes: Uint8Array | undefined;
     if (op.type === "create_note" || op.type === "replace_note") {
-      checkMutationSize(op.content.length, settings.max_file_bytes);
+      checkMutationSize(op.content.length, limit);
       bytes = mutationTextBytes(op.content);
     } else if (op.type === "upload_attachment") {
-      bytes = decodeMutationBase64(op.content_base64, settings.max_file_bytes);
+      bytes = decodeMutationBase64(op.content_base64, limit);
     } else if (op.type === "patch_note") {
       for (const replacement of op.replacements) {
         patchBytes += mutationTextBytes(replacement.pattern).length;
@@ -141,7 +141,7 @@ export async function prepareMutationBatch(
       }
     }
     if (bytes) {
-      checkMutationSize(bytes.length, settings.max_file_bytes);
+      checkMutationSize(bytes.length, limit);
       inputBytes += bytes.length;
       payloads.set(index, bytes);
     }
@@ -166,10 +166,10 @@ export async function prepareMutationBatch(
       status: "failed",
     };
     try {
-      if (
-        op.path.split("/").some((part) => part.startsWith(".")) ||
-        !allowed(op.path)
-      )
+      if (!allowed(op.path)) throw new MutationError("SOURCE_EXCLUDED");
+      if (context.sourceKind === "pcloud" && uploadKind(op.path) === "guidance")
+        throw new MutationError("SOURCE_WRITE_UNSUPPORTED");
+      if (op.path.split("/").some((part) => part.startsWith(".")))
         throw new MutationError("SOURCE_EXCLUDED");
       const note = isNote(op.path);
       const attachment =
@@ -192,9 +192,10 @@ export async function prepareMutationBatch(
       const readContent =
         op.type === "patch_note" ||
         (!!options.preview && note && op.type !== "delete_file" && !creation);
+      const limit = fileLimit(attachment);
       const current = await context.snapshot(op.path, {
         readContent,
-        maxBytes: settings.max_file_bytes,
+        maxBytes: limit,
       });
       if (creation && current) throw new MutationError("FILE_ALREADY_EXISTS");
       if (!creation && !current) throw new MutationError("SOURCE_NOT_FOUND");
@@ -205,10 +206,7 @@ export async function prepareMutationBatch(
       if (readContent && current?.content === undefined)
         throw new MutationError("SOURCE_UNAVAILABLE");
       if (current?.content !== undefined) {
-        checkMutationSize(
-          mutationTextBytes(current.content).length,
-          settings.max_file_bytes,
-        );
+        checkMutationSize(mutationTextBytes(current.content).length, limit);
       }
       let bytes = payloads.get(index);
       if (op.type === "patch_note") {
@@ -216,7 +214,7 @@ export async function prepareMutationBatch(
           prepareMutationText(
             current!.content!,
             op.replacements,
-            settings.max_file_bytes,
+            limit,
             budget,
           ),
         );

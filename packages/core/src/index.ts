@@ -165,4 +165,4 @@ export type {
 export { buildStatus } from "./status.js";
 
 export { configuredVaultIdentity, pcloudSource } from "./local/source.js";
-export { getConfiguredNote } from "./local/retrieval.js";
+export { getConfiguredNote, getPCloudAttachment } from "./local/retrieval.js";

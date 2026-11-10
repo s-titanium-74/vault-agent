@@ -194,7 +194,7 @@ describe("coordinated filesystem mutations", () => {
         create("Outside/Forbidden.md"),
         {
           type: "upload_attachment",
-          path: "Notes/Pixel.png",
+          path: "Notes/Unsupported.zip",
           content_base64: "AA==",
         },
       ]) {

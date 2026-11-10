@@ -1,6 +1,14 @@
 /** Synthetic HTTP service shared by adapter and cross-runtime contract tests. */
 export class SyntheticPCloud {
-  files = new Map<string, { text: string; hash: string; fileid: number }>();
+  files = new Map<
+    string,
+    {
+      text: string;
+      bytes?: Uint8Array<ArrayBuffer>;
+      hash: string;
+      fileid: number;
+    }
+  >();
   requests: { host: string; method: string; params: URLSearchParams }[] = [];
   failure: number | null = null;
   partial = false;
@@ -15,6 +23,10 @@ export class SyntheticPCloud {
       fileid: this.files.get(path)?.fileid ?? ++this.serial,
       hash: `1844674407370955${String(++this.serial).padStart(4, "0")}`,
     });
+  }
+  setBytes(path: string, bytes: Uint8Array<ArrayBuffer>) {
+    this.set(path, "");
+    this.files.get(path)!.bytes = bytes;
   }
   fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
@@ -41,9 +53,9 @@ export class SyntheticPCloud {
       const file = [...this.files.values()].find(
         (f) => f.fileid === Number(url.pathname.slice(1)),
       );
-      const text = file?.text;
+      const body = file?.bytes ?? file?.text;
       this.onDownload?.();
-      return new Response(text, { status: file ? 200 : 404 });
+      return new Response(body, { status: file ? 200 : 404 });
     }
     if (url.pathname === "/getfilelink")
       return Response.json({
@@ -110,7 +122,7 @@ export class SyntheticPCloud {
             name: p.split("/").at(-1),
             parentfolderid: folderId(prefix),
             fileid: f.fileid,
-            size: new TextEncoder().encode(f.text).length,
+            size: f.bytes?.length ?? new TextEncoder().encode(f.text).length,
             hash: f.hash,
             modified: "Mon, 02 Nov 2026 00:00:00 +0000",
           })),
@@ -139,10 +151,9 @@ export class SyntheticPCloud {
       const file = form?.get("file");
       if (!file || typeof file === "string" || !params.has("nopartial"))
         throw new Error("Invalid upload");
-      this.set(
-        prefix ? `${prefix}/${file.name}` : file.name,
-        await file.text(),
-      );
+      const path = prefix ? `${prefix}/${file.name}` : file.name;
+      if (/\.(md|markdown)$/i.test(path)) this.set(path, await file.text());
+      else this.setBytes(path, new Uint8Array(await file.arrayBuffer()));
       return Response.json({ result: 0 });
     }
     if (url.pathname !== "/listfolder")

@@ -15,7 +15,7 @@ It is local-first and private-by-default:
 - Keep indexing, search, related lookup, file watching, and optional Git sync on
   your machine.
 - Use lexical search by default, with optional local embeddings when configured.
-- Opt in to MCP changes for local, R2, or pCloud notes. See the
+- Opt in to MCP changes for notes and supported attachments on filesystem, R2, or pCloud sources. See the
   [setup guide](docs/setup-guide.md) for source-specific limits and concurrency
   requirements.
 

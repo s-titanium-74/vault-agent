@@ -17,6 +17,9 @@ it.each(["review", "direct"] as const)(
     api.set("Notes/Apple.md", "# Apple\n\nSynthetic orchard. [[Pear]]\n");
     api.set("Notes/Pear.md", "# Pear\n\nSynthetic fruit.\n");
     api.set("Private/Skip.md", "# Excluded synthetic note\n");
+    api.set("Notes/AGENTS.md", "# Synthetic rule");
+    api.set("Private/AGENTS.md", "# Excluded synthetic rule");
+    api.setBytes("Notes/synthetic.pdf", Uint8Array.of(0, 255, 128, 65));
     const bundle = await build({
       entryPoints: ["test/ingestion-worker.ts"],
       bundle: true,
@@ -107,6 +110,63 @@ it.each(["review", "direct"] as const)(
         );
         return { status: response.status, ...((await response.json()) as any) };
       };
+
+      const metadataStart = api.requests.length;
+      expect(await request("/agent-guidance")).toMatchObject({
+        status: 200,
+        data: {
+          guidance: [
+            expect.objectContaining({
+              path: "Notes/AGENTS.md",
+              scope: "Notes",
+            }),
+          ],
+        },
+        revision: { snapshot: null },
+      });
+      expect(await request("/attachments/Notes/synthetic.pdf")).toMatchObject({
+        status: 200,
+        data: {
+          contentType: "application/pdf",
+          size: 4,
+          downloadAvailable: true,
+        },
+      });
+      expect(
+        api.requests
+          .slice(metadataStart)
+          .every((r) => r.method === "/listfolder"),
+      ).toBe(true);
+      expect(await request("/agent-guidance/Private/AGENTS.md")).toMatchObject({
+        status: 403,
+        error: { code: "SOURCE_EXCLUDED" },
+      });
+      expect(await request("/agent-guidance/Notes/AGENTS.md")).toMatchObject({
+        status: 200,
+        data: { content: "# Synthetic rule" },
+      });
+      const bytes = await mf.dispatchFetch(
+        "https://vault.example.invalid/attachments/Notes/synthetic.pdf?download=true",
+        { headers: { Authorization: `Bearer ${admin}` } },
+      );
+      expect(bytes.status).toBe(200);
+      expect(new Uint8Array(await bytes.arrayBuffer())).toEqual(
+        Uint8Array.of(0, 255, 128, 65),
+      );
+      expect(bytes.headers.get("X-Vault-Source-Version")).toMatch(
+        /^[a-f0-9]{64}$/,
+      );
+      expect(await request("/status")).toMatchObject({
+        data: {
+          deployment: {
+            capabilities: {
+              attachments: true,
+              guidance: true,
+              attachmentMutations: true,
+            },
+          },
+        },
+      });
       const run = async () => {
         let job = (await request("/index", {})).data;
         for (
@@ -320,6 +380,86 @@ it.each(["review", "direct"] as const)(
         if (body.error) return { error: body.error };
         return JSON.parse(body.result.content[0].text);
       };
+
+      expect(await tool("vault_guidance_list", {})).toMatchObject({
+        guidance: [expect.objectContaining({ path: "Notes/AGENTS.md" })],
+      });
+      expect(
+        await tool("vault_guidance_get", { path: "Notes/AGENTS.md" }),
+      ).toMatchObject({
+        content: "# Synthetic rule",
+      });
+      const attachmentPath = "Notes/synthetic.pdf";
+      const fileArgs = { vaultRelativePath: attachmentPath };
+      const metadata = await tool("get_attachment", fileArgs, "b".repeat(64));
+      expect(metadata).toMatchObject({
+        size: 4,
+        contentType: "application/pdf",
+      });
+      expect(metadata.content).toBeUndefined();
+      const download = await tool("get_attachment", {
+        ...fileArgs,
+        download: true,
+      });
+      expect(download).toMatchObject({
+        content: "AP+AQQ==",
+        version: bytes.headers.get("X-Vault-Source-Version"),
+        encoding: "base64",
+      });
+      const changeAttachment = async (operation: unknown) => {
+        const operations = [operation];
+        const plan = await tool("preview_changes", {
+          operations,
+          preview: mode === "review",
+        });
+        return (
+          await tool("apply_changes", {
+            operations,
+            operation_id: plan.operation_id,
+            preview_binding: plan.preview_binding,
+          })
+        ).results[0];
+      };
+      const replace = {
+        type: "upload_attachment",
+        path: attachmentPath,
+        content_base64: "gAH/",
+        replace: true,
+        expected_version: download.version,
+      };
+      expect(
+        await tool(
+          "preview_changes",
+          { operations: [replace] },
+          "b".repeat(64),
+        ),
+      ).toMatchObject({ error: { code: "READWRITE_REQUIRED" } });
+      const replaced = await changeAttachment(replace);
+      expect(replaced.status).toBe("applied");
+      expect(replaced.index_state).toBeUndefined();
+      expect(
+        await tool("get_attachment", { ...fileArgs, download: true }),
+      ).toMatchObject({
+        content: replace.content_base64,
+        version: replaced.version,
+      });
+      expect(
+        await changeAttachment({
+          type: "delete_file",
+          path: attachmentPath,
+          expected_version: download.version,
+        }),
+      ).toMatchObject({ status: "failed", code: "SOURCE_REVISION_MISMATCH" });
+      expect(
+        await changeAttachment({
+          type: "delete_file",
+          path: attachmentPath,
+          expected_version: replaced.version,
+        }),
+      ).toMatchObject({ status: "applied" });
+      expect(await request("/attachments/Notes/synthetic.pdf")).toMatchObject({
+        status: 404,
+      });
       const target = "Notes/Created/Synthetic.md";
       const operations = [
         {

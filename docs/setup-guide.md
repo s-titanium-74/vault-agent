@@ -592,6 +592,11 @@ vault-agent search --mode hybrid --limit 5 --json "retrieval architecture"
 
 ## Optional pCloud source
 
+pCloud supports metadata-only guidance discovery and attachment lookup through
+HTTP and MCP. Explicit downloads return attachment bytes and a version for
+MCP replacement or deletion when writes are enabled. Guidance and attachments
+stay in pCloud.
+
 See [pCloud source contract](phases/cloudflare-deployment/specifications/pcloud-source.md) for source scope, explicit setup,
 SQLite/D1 data retention, polling and revision failures. pCloud mode uses no
 R2 original, staging or snapshot copy. Filesystem/R2 defaults remain unchanged.

@@ -138,7 +138,6 @@ export class LocalMutationService {
         sourceKind: this.remote ? "pcloud" : "filesystem",
         policyRevision: this.policy,
         includes,
-        ...(this.remote ? { attachmentAllowed: () => false } : {}),
         excludes: config.vault.exclude,
         settings: this.settings,
         // Conservative collision rejection across filesystem spelling conventions.
@@ -148,7 +147,7 @@ export class LocalMutationService {
           if (this.journal.path(relative)?.blocked)
             throw new MutationError("SOURCE_UNAVAILABLE");
           if (this.remote) {
-            const current = await this.remote.readCurrent(
+            const current = await this.remote.readCurrentFile(
               relative,
               read.maxBytes,
             );
@@ -338,7 +337,7 @@ export class LocalMutationService {
       .immediate();
     if (!intent) return;
     try {
-      await this.remote!.writeNote(
+      await this.remote!.writeFile(
         item.path,
         intent.expected ?? null,
         item.bytes ?? null,
@@ -364,7 +363,7 @@ export class LocalMutationService {
         result.status = "applied";
         delete result.code;
         result.version = intent.remoteDigest ?? undefined;
-        result.index_state = "pending";
+        if (result.note_id) result.index_state = "pending";
         this.journal.putPath({
           path: result.path,
           note_id: result.note_id ?? null,
@@ -372,7 +371,7 @@ export class LocalMutationService {
           index_hash: intent.remoteDigest ?? null,
           blocked: 0,
           deleted: Number(intent.action === "delete"),
-          pending: 1,
+          pending: Number(!!result.note_id),
         });
         this.journal.putItem(id, result, "applied");
       })
@@ -417,7 +416,7 @@ export class LocalMutationService {
           if (row.updated + 60000 > this.now()) continue;
           let entry;
           try {
-            entry = await this.remote!.stat(row.path);
+            entry = (await this.remote!.readCurrentFile(row.path))?.entry;
           } catch {
             continue;
           }
@@ -680,12 +679,14 @@ export class LocalMutationService {
         const result = JSON.parse(item.result) as MutationResult;
         const current = this.journal.path(item.path);
         if (
+          (!this.remote || result.note_id) &&
           result.status === "applied" &&
           current?.pending &&
           current.index_error
         )
           result.index_state = "failed";
         if (
+          (!this.remote || result.note_id) &&
           result.status === "applied" &&
           current &&
           !current.pending &&

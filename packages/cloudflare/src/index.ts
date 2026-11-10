@@ -165,6 +165,9 @@ async function dispatch(request: Request, env: Env) {
   }
   const service = await RetrievalService.open(env, {
     allowUnindexed: /^\/(notes|attachments)\//.test(url.pathname),
+    allowLiveSource:
+      url.pathname === "/status" ||
+      /^\/(attachments\/|agent-guidance(?:\/|$))/.test(url.pathname),
   });
   const revision = service.revision();
   if (url.pathname === "/status" && request.method === "GET") {
@@ -234,11 +237,15 @@ async function dispatch(request: Request, env: Env) {
       stream: ReadableStream<Uint8Array>;
       contentType: string;
       fileName: string;
+      version?: string;
     };
     return new Response(attachment.stream, {
       headers: {
         "Content-Type": attachment.contentType,
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(attachment.fileName).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16)}`)}`,
+        ...(attachment.version
+          ? { "X-Vault-Source-Version": attachment.version }
+          : {}),
       },
     });
   }

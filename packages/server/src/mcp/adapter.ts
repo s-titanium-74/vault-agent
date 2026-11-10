@@ -31,6 +31,8 @@ import {
   getChunk,
   listAgentGuidance,
   getConfiguredNote,
+  getPCloudAttachment,
+  pcloudSource,
   getRelated,
   search,
   getOverview,
@@ -624,12 +626,8 @@ async function handleGetAttachment(
   context: McpAdapterContext,
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const { config } = ensureContext(context);
-  if (config.vault.pcloud)
-    throw createMcpError(
-      "INVALID_TYPE",
-      "This pCloud source supports notes and chunks only.",
-    );
+  const config = ensureConfig(context);
+  if (!config.vault.pcloud) ensureContext(context);
 
   const vaultRelativePath = getStringArg(args, "vaultRelativePath");
   if (!vaultRelativePath) {
@@ -637,6 +635,31 @@ async function handleGetAttachment(
   }
   const download = getBooleanArg(args, "download");
   const allowLarge = getBooleanArg(args, "allowLarge");
+
+  if (config.vault.pcloud) {
+    try {
+      const result = await getPCloudAttachment(
+        config,
+        vaultRelativePath,
+        download ?? false,
+        allowLarge ?? false,
+      );
+      if (!result) throw createMcpError("ATTACHMENT_NOT_FOUND");
+      return {
+        ...result.metadata,
+        ...(result.bytes
+          ? {
+              version: result.version,
+              content: Buffer.from(result.bytes).toString("base64"),
+              encoding: "base64",
+            }
+          : {}),
+        warnings: [],
+      };
+    } catch (error) {
+      throw mapRetrievalError(error);
+    }
+  }
 
   if (vaultRelativePath.includes("..") || vaultRelativePath.includes("\0")) {
     throw createMcpError("INVALID_PATH");
@@ -961,11 +984,11 @@ async function handleVaultGuidanceList(
   context: McpAdapterContext,
 ): Promise<Record<string, unknown>> {
   const config = ensureConfig(context);
-  if (config.vault.pcloud)
-    throw createMcpError("INVALID_TYPE", "pCloud guidance is unsupported.");
 
   try {
-    const result = listAgentGuidance(config.vault.root, config.vault.exclude);
+    const result = config.vault.pcloud
+      ? await pcloudSource(config).listGuidance()
+      : listAgentGuidance(config.vault.root, config.vault.exclude);
     return {
       ...result,
       warnings: [],
@@ -980,8 +1003,6 @@ async function handleVaultGuidanceGet(
   args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const config = ensureConfig(context);
-  if (config.vault.pcloud)
-    throw createMcpError("INVALID_TYPE", "pCloud guidance is unsupported.");
 
   const guidancePath = getStringArg(args, "path");
   if (!guidancePath) {
@@ -990,12 +1011,17 @@ async function handleVaultGuidanceGet(
   const allowLarge = getBooleanArg(args, "allowLarge");
 
   try {
-    const result: AgentGuidanceRetrieveResult | null = getAgentGuidance(
-      config.vault.root,
-      guidancePath,
-      allowLarge,
-      config.vault.exclude,
-    );
+    const result: AgentGuidanceRetrieveResult | null = config.vault.pcloud
+      ? await pcloudSource(config).getGuidance(
+          guidancePath,
+          allowLarge ?? false,
+        )
+      : getAgentGuidance(
+          config.vault.root,
+          guidancePath,
+          allowLarge,
+          config.vault.exclude,
+        );
     if (!result) {
       throw createMcpError("GUIDANCE_NOT_FOUND");
     }

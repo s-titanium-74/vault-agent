@@ -331,6 +331,33 @@ it("excludes guidance, hidden files and configured exclusions from observations"
   ]);
 });
 
+it("checks guidance and attachment limits before requesting any download", async () => {
+  const { api, source } = make();
+  const guidance = "Notes/AGENTS.md";
+  const attachment = "Notes/large.png";
+  const body = "a".repeat(200 * 1024 + 1);
+  api.set(guidance, body);
+  api.setBytes(attachment, new Uint8Array(20 * 1024 * 1024 + 1));
+
+  await expect(source.getGuidance(guidance, false)).rejects.toMatchObject({
+    code: "GUIDANCE_TOO_LARGE",
+  });
+  await expect(
+    source.getAttachment(attachment, false, true),
+  ).resolves.toMatchObject({
+    metadata: { downloadAvailable: false },
+  });
+  await expect(
+    source.getAttachment(attachment, true, true),
+  ).rejects.toMatchObject({
+    code: "ATTACHMENT_TOO_LARGE",
+  });
+  expect(api.requests.every((r) => r.method === "/listfolder")).toBe(true);
+  await expect(source.getGuidance(guidance, true)).resolves.toMatchObject({
+    content: body,
+  });
+});
+
 it("verifies scoped writes against exact revisions and reads back the result", async () => {
   const { source, api } = make(true);
   const original = (await source.stat("Notes/Apple.md"))!;
