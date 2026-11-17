@@ -72,6 +72,7 @@ describe("agent guidance discovery", () => {
     const result = getAgentGuidance(vaultDir, "AGENTS.md");
     expect(result).not.toBeNull();
     expect(result!.content).toBe("# Root guidance\n");
+    expect(result!.version).toMatch(/^fs1:[a-f0-9]{64}$/);
     expect(result!.contentType).toBe("text/markdown; charset=utf-8");
   });
 

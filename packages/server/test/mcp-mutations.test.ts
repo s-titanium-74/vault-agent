@@ -172,6 +172,87 @@ describe("local MCP file changes", () => {
     return String(result.headers["mcp-session-id"]);
   }
 
+  it("uses guidance versions for patch/replace and rejects stale previews and applies", async () => {
+    const path = "AGENTS.md";
+    const file = `${config.vault.root}/${path}`;
+    fs.writeFileSync(file, "# Synthetic guidance\r\nOriginal rule.\r\n");
+    await connect();
+    const original = await call("vault_guidance_get", { path });
+    expect(original.version).toMatch(/^fs1:/);
+    const operations = [
+      {
+        type: "patch_note",
+        path,
+        expected_version: original.version,
+        replacements: [
+          {
+            match_type: "literal",
+            pattern: "Original rule.",
+            replacement: "Updated rule.",
+          },
+        ],
+      },
+    ];
+    const plan = await call("preview_changes", { operations });
+    const result = await call("apply_changes", {
+      operations,
+      operation_id: plan.operation_id,
+      preview_binding: plan.preview_binding,
+    });
+    expect(result.results[0].status).toBe("applied");
+    const saved = await call("vault_guidance_get", { path });
+    expect(saved.content).toBe("# Synthetic guidance\r\nUpdated rule.\r\n");
+    expect(saved.version).toBe(result.results[0].version);
+    const stale = await call("preview_changes", { operations });
+    expect(stale.preview.results[0]).toMatchObject({
+      status: "failed",
+      code: "SOURCE_REVISION_MISMATCH",
+    });
+    const replacement = [update(path, saved.version)];
+    const next = await call("preview_changes", { operations: replacement });
+    fs.writeFileSync(file, "# External synthetic change");
+    const conflict = await call("apply_changes", {
+      operations: replacement,
+      operation_id: next.operation_id,
+      preview_binding: next.preview_binding,
+    });
+    expect(conflict.results[0]).toMatchObject({
+      status: "failed",
+      code: "SOURCE_REVISION_MISMATCH",
+    });
+    expect(fs.readFileSync(file, "utf8")).toBe("# External synthetic change");
+  });
+
+  it("keeps excluded and hidden guidance outside write admission", async () => {
+    fs.writeFileSync(
+      `${config.vault.root}/AGENTS.md`,
+      "# Excluded synthetic guidance",
+    );
+    fs.writeFileSync(`${config.vault.root}/.cursorrules`, "Synthetic rules");
+    config.vault.exclude = ["AGENTS.md"];
+    await connect();
+    const hidden = await call("vault_guidance_get", { path: ".cursorrules" });
+    expect(hidden.version).toEqual(expect.any(String));
+    const plan = await call("preview_changes", {
+      operations: [
+        update("AGENTS.md", hidden.version),
+        update(".cursorrules", hidden.version),
+      ],
+    });
+    expect(plan.preview.results).toEqual([
+      expect.objectContaining({
+        path: "AGENTS.md",
+        status: "failed",
+        code: "SOURCE_EXCLUDED",
+      }),
+      expect.objectContaining({
+        path: ".cursorrules",
+        status: "failed",
+        code: "SOURCE_EXCLUDED",
+      }),
+    ]);
+  });
+
   it.each(["review", "direct"] as const)(
     "reads guidance and changes pCloud notes and attachments in %s mode",
     async (mode) => {
@@ -271,6 +352,57 @@ describe("local MCP file changes", () => {
         expect(
           await change(remove("Notes/AGENTS.md", "0".repeat(64))),
         ).toMatchObject({ status: "failed", code: "SOURCE_WRITE_UNSUPPORTED" });
+        const guidance = await call("vault_guidance_get", {
+          path: "Notes/AGENTS.md",
+        });
+        const guidanceSaved = await change(
+          update(
+            "Notes/AGENTS.md",
+            guidance.version,
+            "# Updated synthetic rule",
+          ),
+        );
+        expect(guidanceSaved.status).toBe("applied");
+        expect(
+          await call("vault_guidance_get", { path: "Notes/AGENTS.md" }),
+        ).toMatchObject({
+          content: "# Updated synthetic rule",
+          version: guidanceSaved.version,
+        });
+        const staleGuidance = await call("preview_changes", {
+          operations: [update("Notes/AGENTS.md", guidance.version)],
+        });
+        expect(staleGuidance.preview.results[0]).toMatchObject({
+          status: "failed",
+          code: "SOURCE_REVISION_MISMATCH",
+        });
+        const concurrentOps = [
+          update("Notes/AGENTS.md", guidanceSaved.version),
+        ];
+        const concurrentPlan = await call("preview_changes", {
+          operations: concurrentOps,
+          preview: mode === "review",
+        });
+        api.set("Notes/AGENTS.md", "# External synthetic guidance");
+        const concurrent = await call("apply_changes", {
+          operations: concurrentOps,
+          operation_id: concurrentPlan.operation_id,
+          preview_binding: concurrentPlan.preview_binding,
+        });
+        expect(concurrent.results[0]).toMatchObject({
+          status: "failed",
+          code: "SOURCE_REVISION_MISMATCH",
+        });
+        await runtime!.flush();
+        const candidates =
+          (await call("search", { query: "Updated synthetic rule" })).results ??
+          [];
+        expect(
+          candidates.some(
+            (candidate: { path: string }) =>
+              candidate.path === "Notes/AGENTS.md",
+          ),
+        ).toBe(false);
         const saved = await change(upload);
         expect(saved).toMatchObject({
           status: "applied",

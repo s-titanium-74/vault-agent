@@ -245,6 +245,7 @@ describe("MCP Adapter", () => {
     const getParsed = JSON.parse(getText.text);
     expect(getParsed.path).toBe("AGENTS.md");
     expect(getParsed.content).toBe("# Agent guidance\n");
+    expect(getParsed.version).toMatch(/^fs1:[a-f0-9]{64}$/);
     expect(getParsed.warnings).toEqual([]);
 
     await client.close();

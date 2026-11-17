@@ -396,10 +396,16 @@ export class PCloudSource implements VaultSource {
   ): Promise<SourceEntry | null> {
     if (!this.options.writesEnabled) throw unavailable();
     const kind = this.check(path);
-    if (kind === "guidance") throw new SourceError("SOURCE_EXCLUDED");
+    if (
+      kind === "guidance" &&
+      (!/\.(md|markdown)$/i.test(path) ||
+        expectedRevision === null ||
+        bytes === null)
+    )
+      throw new SourceError("SOURCE_EXCLUDED");
     if (bytes && bytes.length > uploadLimit(kind))
       throw new SourceError("SOURCE_TOO_LARGE");
-    if (bytes && kind === "note") decodeText(bytes);
+    if (bytes && kind !== "attachment") decodeText(bytes);
     const desired = bytes ? await contentRevision(bytes) : null;
     return this.operation(signal, async (signal) => {
       const target = await this.locate(
@@ -528,10 +534,14 @@ export class PCloudSource implements VaultSource {
         "GUIDANCE_TOO_LARGE",
         "Guidance exceeds the retrieval size limit.",
       );
-    const { bytes } = await this.readObserved(observed);
+    const { bytes, entry } = await this.readObserved(observed);
     return {
       ...guidanceCandidate(observed),
-      content: decodeText(bytes),
+      version: entry.revision,
+      content: new TextDecoder("utf-8", {
+        fatal: true,
+        ignoreBOM: true,
+      }).decode(bytes),
       contentType: /\.(md|markdown|mdc)$/i.test(path)
         ? "text/markdown; charset=utf-8"
         : "text/plain; charset=utf-8",

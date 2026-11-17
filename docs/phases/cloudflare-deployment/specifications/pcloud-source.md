@@ -135,7 +135,9 @@ checks the current exact-byte SHA-256 against the requested expected version. A 
 mismatch before the provider request rejects the write. Creation uses
 `createfolderifnotexists` for missing parents and `uploadfile` with `nopartial`.
 A failed create can leave empty parent folders. Deletion uses the verified file
-ID. Rename and guidance changes remain outside the MCP mutation scope.
+ID. Rename and guidance creation/deletion remain outside the MCP mutation scope.
+Existing visible Markdown guidance supports patch/replace using the version
+from explicit guidance retrieval, with the same write policy and race boundary.
 
 Writes remain disabled by default. When enabled, `write.mode=review` (Node)
 or `WRITE_MODE=review` (Workers) remains the default and requires a diff preview
@@ -194,9 +196,11 @@ in MCP (the `X-Vault-Source-Version` header over HTTP). The existing MCP
 `upload_attachment` (create or replace) and `delete_file` operations use
 the configured write mode, READWRITE/ADMIN or trusted local stdio, write size
 and batch limits, and the same exclusive-writer and recovery rules as notes.
-Attachment changes have no index publication step. Guidance can be read
-but mutation requests targeting admitted guidance return
-`SOURCE_WRITE_UNSUPPORTED`.
+Attachment and guidance changes have no index publication step. Explicit
+guidance retrieval returns an exact-byte `version` accepted as `expected_version`
+for patch/replace of existing visible Markdown guidance. Guidance creation and
+deletion return `SOURCE_WRITE_UNSUPPORTED`; hidden and non-Markdown paths remain
+excluded by the existing write policy. See the [safe update workflow](../../phase-3.3-agent-guidance/requirements.md#safe-markdown-guidance-updates-84).
 
 ## Setup examples
 

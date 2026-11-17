@@ -87,6 +87,7 @@ Candidates are sorted by path. The root scope is represented by an empty
     "scope": "",
     "appliesTo": "**",
     "content": "# Agent guidance\n",
+    "version": "opaque-source-version",
     "contentType": "text/markdown; charset=utf-8",
     "size": 17,
     "updated": "2026-07-03T00:00:00.000Z"
@@ -129,3 +130,32 @@ Guidance discovery must:
 - Return vault-relative paths only.
 - Avoid returning file bodies from list operations.
 - Use explicit retrieval with size limits for file bodies.
+
+## Safe Markdown guidance updates (#84)
+
+Explicit guidance retrieval returns an opaque `version` corresponding to the
+returned source bytes. Lists remain metadata-only. A version is a concurrency
+token, never write authorization. Read-only discovery remains available with
+writes disabled.
+
+For existing visible Markdown guidance (`AGENTS.md`, `CLAUDE.md`, `README.md`),
+use `vault_guidance_get({path})`, then `preview_changes` with `patch_note` or
+`replace_note`, the same `path`, and `expected_version: version`. Review the
+diff, obtain client execution confirmation, and submit the unchanged operations,
+operation ID and preview binding to `apply_changes`. Retrieve guidance again to
+verify the saved content. No search/index admission is added by this workflow.
+
+Existing write enablement, role authorization, source includes/excludes, hidden
+path restrictions and size limits apply at preview and apply. Non-Markdown and
+hidden guidance remain read-only under the existing mutation policy. pCloud
+permits only patch/replace of existing visible Markdown guidance; guidance
+creation/deletion and hidden guidance writes remain unsupported.
+
+A stale version fails with `SOURCE_REVISION_MISMATCH`; a review binding whose
+preview changed may instead fail with `PREVIEW_CHANGED`. Re-read and prepare a
+new preview; never force an overwrite. Apply rechecks the source, including the
+last check before publication. Filesystem writers retain the documented final
+check/rename race limitation. pCloud checks and writes are non-atomic and require
+one vault-agent writer for the configured scope. R2 retains conditional writes.
+When writes are enabled, R2 guidance retrieval reads the current source (including
+saved changes awaiting indexing) rather than returning stale published content.

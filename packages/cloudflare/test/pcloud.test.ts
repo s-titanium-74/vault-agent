@@ -434,6 +434,23 @@ it.each(["review", "direct"] as const)(
           "b".repeat(64),
         ),
       ).toMatchObject({ error: { code: "READWRITE_REQUIRED" } });
+      const guidance = await tool("vault_guidance_get", {
+        path: "Notes/AGENTS.md",
+      });
+      expect(guidance.version).toEqual(expect.any(String));
+      const guidanceSaved = await changeAttachment({
+        type: "replace_note",
+        path: "Notes/AGENTS.md",
+        expected_version: guidance.version,
+        content: "# Updated synthetic rule",
+      });
+      expect(guidanceSaved.status).toBe("applied");
+      expect(
+        await tool("vault_guidance_get", { path: "Notes/AGENTS.md" }),
+      ).toMatchObject({
+        content: "# Updated synthetic rule",
+        version: guidanceSaved.version,
+      });
       const replaced = await changeAttachment(replace);
       expect(replaced.status).toBe("applied");
       expect(replaced.index_state).toBeUndefined();
