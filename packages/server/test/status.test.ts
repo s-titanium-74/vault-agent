@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createServer, initApp, resetApp } from "../src/index.js";
 import {
   DEFAULT_CONFIG,
@@ -6,7 +6,10 @@ import {
   indexVault,
   vaultIdentity,
   GitSync,
+  FreshnessMachine,
+  IndexError,
 } from "@vault-agent/core";
+import { LocalMutationRuntime } from "../src/mcp/mutations.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -61,6 +64,72 @@ describe("GET /status", () => {
     resetApp();
     fs.rmSync(vaultDir, { recursive: true, force: true });
     fs.rmSync(indexDir, { recursive: true, force: true });
+  });
+
+  it("keeps health and status aligned while lexical text is fresh and embeddings are incomplete", async () => {
+    config.embedding.enabled = true;
+    config.embedding.model = "synthetic-model";
+    store.initVecTable(2);
+    store.setManifest({
+      ...store.getManifest()!,
+      embeddingModel: config.embedding.model,
+      embeddingDimension: 2,
+    });
+    const freshness = new FreshnessMachine("fresh");
+    initApp(store, config, undefined, undefined, freshness);
+    let health = (await app.inject({ method: "GET", url: "/health" })).json();
+    let status = (await app.inject({ method: "GET", url: "/status" })).json();
+    expect(health.data.index.embeddingAvailable).toBe(false);
+    expect(health.data.status).toBe("degraded");
+    expect(status.data.index.embeddingState).toBe("unavailable");
+    expect(status.data.index.freshness.state).toBe("fresh");
+    const chunks = store
+      .getDb()
+      .prepare("SELECT chunk_id, content_hash FROM chunks")
+      .all() as { chunk_id: string; content_hash: string }[];
+    store.storeEmbeddings(
+      chunks.map((c) => c.chunk_id),
+      chunks.map(() => new Float32Array([1, 0])),
+      chunks.map((c) => c.content_hash),
+      chunks.map(() => "synthetic-key"),
+    );
+    health = (await app.inject({ method: "GET", url: "/health" })).json();
+    status = (await app.inject({ method: "GET", url: "/status" })).json();
+    expect(health.data.index.embeddingAvailable).toBe(true);
+    expect(status.data.index.embeddingState).toBe("ready");
+    config.embedding.enabled = false;
+    expect(
+      (await app.inject({ method: "GET", url: "/health" })).json().data.index
+        .embeddingAvailable,
+    ).toBe(false);
+    expect(
+      (await app.inject({ method: "GET", url: "/status" })).json().data.index
+        .embeddingState,
+    ).toBe("disabled");
+  });
+
+  it("retains safe mutation-index failure codes in freshness", async () => {
+    const freshness = new FreshnessMachine("pending");
+    config.write.enabled = true;
+    const runtime = new LocalMutationRuntime(config, freshness);
+    vi.spyOn(runtime.service, "pendingCount").mockReturnValue(1);
+    vi.spyOn(runtime.service, "flushIndex").mockRejectedValue(
+      new IndexError("EMBEDDING_TIMEOUT", "private diagnostic"),
+    );
+    try {
+      await expect(runtime.flush()).rejects.toMatchObject({
+        code: "EMBEDDING_TIMEOUT",
+      });
+      expect(freshness.info.reindexReasons).toContain(
+        "Writer failed: EMBEDDING_TIMEOUT",
+      );
+      expect(JSON.stringify(freshness.info)).not.toContain(
+        "private diagnostic",
+      );
+    } finally {
+      await runtime.close();
+      vi.restoreAllMocks();
+    }
   });
 
   it("returns 200 with status data when index is available", async () => {

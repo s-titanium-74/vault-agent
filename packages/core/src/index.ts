@@ -137,6 +137,7 @@ export {
   RetrievalError,
   RetrievalSizeError,
   ConfigError,
+  publicIndexErrorCode,
 } from "./errors.js";
 export { InvalidPathError } from "./retrieval.js";
 export { PathSafetyError } from "./pathsafety.js";

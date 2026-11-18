@@ -8,6 +8,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import {
   Config,
+  publicIndexErrorCode,
   EmbeddingProvider,
   IndexStore,
   getIndexPath,
@@ -287,10 +288,9 @@ export async function startServer(
           await incrementalIndexUpdate(currentStore, preparedConfig, { paths });
           freshnessMachine.writerSucceeded();
         } catch (updateErr) {
-          freshnessMachine.writerFailed((updateErr as Error).message);
-          console.error(
-            `Incremental index update failed: ${(updateErr as Error).message}`,
-          );
+          const code = publicIndexErrorCode(updateErr);
+          freshnessMachine.writerFailed(code);
+          console.error(`Incremental index update failed: ${code}`);
         }
       });
     });
@@ -335,11 +335,14 @@ export async function startServer(
       if (running) return;
       running = true;
       try {
+        freshnessMachine.changesDetected(0);
         freshnessMachine.writerStarted();
         await indexVault(preparedConfig);
         freshnessMachine.writerSucceeded();
-      } catch {
-        freshnessMachine.writerFailed("SOURCE_UNAVAILABLE");
+      } catch (error) {
+        freshnessMachine.writerFailed(
+          publicIndexErrorCode(error, "SOURCE_UNAVAILABLE"),
+        );
       } finally {
         running = false;
       }

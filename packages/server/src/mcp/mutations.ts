@@ -4,6 +4,7 @@ import {
   LocalMutationError,
 } from "@vault-agent/core/local";
 import {
+  publicIndexErrorCode,
   type Config,
   type FreshnessMachine,
   DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT,
@@ -126,7 +127,7 @@ export class LocalMutationRuntime {
       })
       .catch((error) => {
         this.markPending();
-        this.freshness?.writerFailed("INDEX_UPDATE_FAILED");
+        this.freshness?.writerFailed(publicIndexErrorCode(error));
         throw error;
       })
       .finally(() => {

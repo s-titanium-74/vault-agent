@@ -14,15 +14,26 @@ export function registerHealthRoute(app: FastifyInstance): void {
         stale = true;
       }
     }
+    const embeddingAvailable = !!(
+      store &&
+      config &&
+      store.embeddingState(config) === "ready"
+    );
+    const embeddingIncomplete =
+      !!config?.embedding.enabled && !embeddingAvailable;
     return {
       data: {
-        status: manifest ? (stale ? "degraded" : "ok") : "degraded",
+        status: manifest
+          ? stale || embeddingIncomplete
+            ? "degraded"
+            : "ok"
+          : "degraded",
         version: "0.2.4",
         index: manifest
           ? {
               available: true,
               stale,
-              embeddingAvailable: manifest.embeddingModel !== null,
+              embeddingAvailable,
             }
           : {
               available: false,

@@ -244,6 +244,8 @@ export class EmbeddingProvider implements EmbeddingProviderContract {
       if ((error as Error).name === "AbortError") {
         throw new EmbeddingProviderError(
           `Embedding request timed out after ${this.timeout / 1000}s`,
+          undefined,
+          "EMBEDDING_TIMEOUT",
         );
       }
       throw new EmbeddingProviderError("Embedding provider request failed.");

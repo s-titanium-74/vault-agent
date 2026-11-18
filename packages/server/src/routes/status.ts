@@ -49,11 +49,7 @@ export function registerStatusRoute(app: FastifyInstance): void {
       const status = buildStatus(config, {
         index: {
           freshness: freshnessInfo,
-          embeddingState: config.embedding.enabled
-            ? store.isEmbeddingReady()
-              ? "ready"
-              : "unavailable"
-            : "disabled",
+          embeddingState: store.embeddingState(config),
         },
         watch: watcherStatus,
         sync: syncStatus,
@@ -105,11 +101,7 @@ export function registerStatusRoute(app: FastifyInstance): void {
     const status = buildStatus(config, {
       index: {
         freshness: freshnessInfo,
-        embeddingState: config.embedding.enabled
-          ? store.isEmbeddingReady()
-            ? "ready"
-            : "unavailable"
-          : "disabled",
+        embeddingState: store.embeddingState(config),
       },
       watch: watcherStatus,
       sync: syncStatus,
