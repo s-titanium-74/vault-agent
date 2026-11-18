@@ -300,3 +300,16 @@ No public `POST /index/incremental` endpoint is required in Phase 2. If an
 implementation exposes an internal or admin incremental-index endpoint, it must
 require API key authentication and must follow the same public-safe warning and
 error rules as other JSON endpoints.
+
+## Local embedding availability (#87)
+
+`/health` reports `index.embeddingAvailable` only when embeddings are enabled,
+the manifest model matches configuration, the index is compatible, sqlite-vec
+is loaded, and every published chunk has an embedding. Model metadata alone does
+not establish availability. `/status` uses the same readiness rule for `ready`;
+disabled embeddings report `disabled`, incompatible indexes report `incompatible`,
+and otherwise incomplete embeddings report `unavailable`. Missing embeddings
+make health degraded without changing successful lexical-update freshness.
+Periodic and mutation-triggered update failures preserve allowlisted public
+error codes in freshness reasons. Optional embedding failures remain indexing
+warnings; readiness identifies the unfinished embedding work.

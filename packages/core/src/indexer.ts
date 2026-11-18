@@ -71,17 +71,18 @@ export async function reindexVault(
 
     let result: IndexResult;
     let cacheSource: IndexStore | undefined;
+    // The active database also holds unpublished preparation checkpoints.
     try {
-      if (fs.existsSync(indexPath)) {
-        cacheSource = await IndexStore.openReadOnly(indexPath);
+      try {
+        cacheSource = await IndexStore.open(indexPath);
         cacheSource.getManifest();
+      } catch {
+        cacheSource?.close();
+        // Reindex must still repair an unreadable or incompatible active DB.
+        cacheSource = await IndexStore.open(
+          path.join(dir, "embedding-cache.sqlite"),
+        );
       }
-    } catch {
-      cacheSource?.close();
-      cacheSource = undefined;
-    }
-
-    try {
       const vid = config.vault.pcloud
         ? configuredVaultIdentity(config)
         : vaultIdentity(vaultRoot);

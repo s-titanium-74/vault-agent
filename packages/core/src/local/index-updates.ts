@@ -16,6 +16,7 @@ import {
   planSourceChanges,
   prepareNoteUpdate,
   prepareEmbeddingBatch,
+  embeddingInputKey,
   indexRowsEqual,
   type PreparedEmbedding,
   type SourceObservation,
@@ -26,7 +27,7 @@ import { EmbeddingProvider, validateEmbeddingEndpoint } from "../embedding.js";
 import { VaultDiscovery } from "../discovery.js";
 import { resolveVaultRelativePath, toVaultRelative } from "../pathsafety.js";
 import { noteIdFromPath } from "../identifiers.js";
-import { IndexError } from "../errors.js";
+import { publicIndexErrorCode, IndexError } from "../errors.js";
 import {
   INDEX_SCHEMA_VERSION,
   DEFAULT_EXCLUDE_PATTERNS,
@@ -329,14 +330,27 @@ export async function updateLocalIndex(
             cacheSource.getEmbeddingDimension() ??
             cachedManifest.embeddingDimension,
         };
+      // Discover dimensions from completed preparation even without a manifest.
+      const discoveryDescriptor = { ...descriptor, dimension: null };
+      if (descriptor.dimension === null) {
+        for (const row of chunkRows) {
+          const text = String(
+            row.embedding_input_text ?? row.content ?? "",
+          ).slice(0, CHUNK_EMBEDDING_INPUT_CAP);
+          const key = await embeddingInputKey(discoveryDescriptor, text);
+          const cached =
+            store.getEmbeddingCache(key) ?? cacheSource.getEmbeddingCache(key);
+          if (cached?.length && cached.every(Number.isFinite)) {
+            descriptor = { ...descriptor, dimension: cached.length };
+            break;
+          }
+        }
+      }
+      const batchSize = Math.min(8, descriptor.maxBatchSize);
       try {
-        for (
-          let offset = 0;
-          offset < chunkRows.length;
-          offset += descriptor.maxBatchSize
-        ) {
+        for (let offset = 0; offset < chunkRows.length; offset += batchSize) {
           const batch = chunkRows
-            .slice(offset, offset + descriptor.maxBatchSize)
+            .slice(offset, offset + batchSize)
             .map((row) => ({
               chunkId: String(row.chunk_id),
               contentHash: String(row.content_hash),
@@ -358,6 +372,27 @@ export async function updateLocalIndex(
                 cacheSource.getEmbeddingCache(key),
             },
           });
+          const current = store.getEmbeddingDimension();
+          if (
+            result.length &&
+            current !== null &&
+            result[0]!.values.length !== current
+          )
+            throw new IndexError(
+              "INDEX_EMBEDDING_DIMENSION_MISMATCH",
+              "Embedding dimensions changed; a full rebuild is required.",
+            );
+          const aliases = await Promise.all(
+            result.map(async (entry) => ({
+              cacheKey: await embeddingInputKey(
+                discoveryDescriptor,
+                entry.text,
+              ),
+              values: entry.values,
+            })),
+          );
+          // Reindex writes through to the durable cache, never the active vectors.
+          cacheSource.storeEmbeddingCache([...result, ...aliases]);
           vectors.push(...result);
           if (result.length) {
             dimension = result[0]!.values.length;
@@ -373,13 +408,12 @@ export async function updateLocalIndex(
       } catch (error) {
         if (required)
           throw new IndexError(
-            error instanceof IndexError ? error.code : "EMBEDDING_FAILED",
+            publicIndexErrorCode(error, "EMBEDDING_FAILED"),
             "Embedding preparation failed; the previous index was preserved.",
           );
-        vectors.length = 0;
-        dimension = store.getEmbeddingDimension();
+        dimension ??= store.getEmbeddingDimension();
         warnings.push({
-          code: "EMBEDDING_FAILED",
+          code: publicIndexErrorCode(error, "EMBEDDING_FAILED"),
           message:
             "Embedding preparation failed; lexical indexing remains usable.",
         });

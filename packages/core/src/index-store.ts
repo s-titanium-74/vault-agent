@@ -349,16 +349,23 @@ export class IndexStore {
       return null;
     }
   }
-  storePreparedEmbeddings(entries: readonly PreparedEmbedding[]): void {
+  storeEmbeddingCache(
+    entries: readonly Pick<PreparedEmbedding, "cacheKey" | "values">[],
+  ): void {
     const cache = this.db.prepare(
       "INSERT OR REPLACE INTO embedding_cache VALUES(?,?,?)",
     );
-    for (const entry of entries)
-      cache.run(
-        entry.cacheKey,
-        JSON.stringify(Array.from(entry.values)),
-        Date.now(),
-      );
+    this.db.transaction(() => {
+      for (const entry of entries)
+        cache.run(
+          entry.cacheKey,
+          JSON.stringify(Array.from(entry.values)),
+          Date.now(),
+        );
+    })();
+  }
+  storePreparedEmbeddings(entries: readonly PreparedEmbedding[]): void {
+    this.storeEmbeddingCache(entries);
     const writes = entries.filter((e) => e.needsWrite);
     if (writes.length)
       this.storeEmbeddings(
@@ -768,6 +775,17 @@ export class IndexStore {
     } catch {
       return null;
     }
+  }
+
+  embeddingState(
+    config: Config,
+  ): "disabled" | "ready" | "unavailable" | "incompatible" {
+    if (!config.embedding.enabled) return "disabled";
+    if (this.checkStaleness(config).incompatible) return "incompatible";
+    return this.getManifest()?.embeddingModel === config.embedding.model &&
+      this.isEmbeddingReady()
+      ? "ready"
+      : "unavailable";
   }
 
   isEmbeddingReady(): boolean {

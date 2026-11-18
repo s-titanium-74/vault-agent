@@ -173,3 +173,32 @@ Local manual indexing and watcher updates delegate to the same update adapter an
 portable mutation policy used by Workers. See [shared index updates](../../cloudflare-deployment/specifications/shared-index-updates.md).
 The adapter preserves SQLite atomicity and local provider opt-in; it does not
 enable cloud upload or hosted embedding processing.
+
+## Resumable local embedding preparation (#87)
+
+Local index, reindex and watcher updates persist each validated embedding batch
+in the vault-scoped SQLite cache before requesting the next batch. Cache writes
+contain no searchable rows and do not publish notes, chunks, vectors or manifests.
+Required failures preserve the last published snapshot; optional failures publish
+the lexical update and successful vectors together, leaving other chunks pending.
+A later index update retries pending inputs even when note text is unchanged.
+Full reindex checkpoints to the active database cache so deleting a failed staging
+database does not discard progress, including on a first build. When the active
+DB cannot be opened or its manifest is incompatible, reindex uses a separate
+`embedding-cache.sqlite` in the same private index directory so repair remains
+possible.
+
+Cache identity includes the complete provider/model/input descriptor and exact
+embedding input. A dimension-discovery alias (the same descriptor with a null
+dimension) allows retries before any manifest has committed; it only discovers
+the dimension, and actual reuse still validates the dimension-specific key.
+Local update requests contain at most eight chunks (and respect provider limits).
+There is no automatic batch splitting or immediate retry after provider failure.
+The existing provider timeout and provider-wide maximum batch size are unchanged.
+Cache data remains private derived data in the ignored index directory.
+
+Warnings and failed updates retain allowlisted public error codes, including
+EMBEDDING_TIMEOUT, EMBEDDING_FAILED and dimension/configuration errors. Unknown
+errors use a generic code; provider messages and arbitrary error codes are never
+forwarded. Text freshness and embedding readiness are independent: a successful
+optional lexical update may be fresh while embeddings remain unavailable.
