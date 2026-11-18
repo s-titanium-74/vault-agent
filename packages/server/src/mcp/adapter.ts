@@ -87,7 +87,7 @@ export function createMcpServer(context: McpAdapterContext): Server {
   const server = new Server(
     {
       name: "vault-agent",
-      version: "0.2.3",
+      version: "0.2.4",
     },
     {
       capabilities: {
