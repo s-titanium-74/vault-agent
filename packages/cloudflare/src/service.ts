@@ -278,6 +278,11 @@ export class RetrievalService {
       this.pin(p.snapshot);
       const source = pcloudSource(this.env);
       if (operation === "vault_guidance_get") {
+        if (
+          this.mutationReadEpoch !== null &&
+          (await mutationPath(this.env, p.path))?.state === "uncertain"
+        )
+          throw new CloudError("SOURCE_UNAVAILABLE", 503);
         const data = await source.getGuidance(p.path, p.allowLarge ?? false);
         if (!data) throw new CloudError("GUIDANCE_NOT_FOUND", 404);
         await this.current();
@@ -530,6 +535,47 @@ export class RetrievalService {
           await this.current();
           return { data, warnings: [] };
         }
+        if (
+          operation === "vault_guidance_get" &&
+          !p.path.split("/").some((part) => part.startsWith(".")) &&
+          (state || this.settings.write.enabled)
+        ) {
+          if (!core.guidanceKind(p.path))
+            throw new CloudError("GUIDANCE_NOT_FOUND", 404);
+          let value: Awaited<ReturnType<typeof readMutationSource>>;
+          try {
+            value = await readMutationSource(
+              this.env,
+              p.path,
+              true,
+              p.allowLarge ? 20 * 1024 * 1024 : 200 * 1024,
+            );
+          } catch (error) {
+            if (
+              error instanceof CloudError &&
+              error.code === "SOURCE_TOO_LARGE"
+            )
+              throw new CloudError("GUIDANCE_TOO_LARGE", 413);
+            throw error;
+          }
+          if (!value) throw new CloudError("GUIDANCE_NOT_FOUND", 404);
+          const data = {
+            ...this.guidance({
+              path: p.path,
+              kind: "guidance",
+              size: value.bytes.length,
+              updated: value.object?.uploaded.toISOString() ?? "",
+              revision: value.digest,
+            }),
+            version: value.version,
+            content: value.content!,
+            contentType: /\.(md|markdown|mdc)$/i.test(p.path)
+              ? "text/markdown; charset=utf-8"
+              : "text/plain; charset=utf-8",
+          };
+          await this.current();
+          return { data, warnings: [] };
+        }
         if (state && this.suppressed.has(p.path))
           throw new CloudError("REVISION_CHANGED", 409);
       }
@@ -549,6 +595,7 @@ export class RetrievalService {
           throw new CloudError("GUIDANCE_TOO_LARGE", 413);
         data = {
           ...candidate,
+          version: entry.revision,
           content: await this.source.readText(p.path, {
             expectedRevision: entry.revision,
             maxBytes: p.allowLarge

@@ -592,7 +592,7 @@ describe("internal R2 mutations and durable read suppression", () => {
       JSON.stringify((await req("/agent-guidance", undefined, read)).data),
     ).not.toContain("AGENTS.md");
   });
-  it("does not leak old guidance while a replacement awaits indexing", async () => {
+  it("retrieves current guidance with an update version while indexing is pending", async () => {
     const path = "Notes/AGENTS.md";
     await mutate([
       { type: "create_note", path, content: "# Guidance\nOldGuidanceMarker" },
@@ -612,8 +612,28 @@ describe("internal R2 mutations and durable read suppression", () => {
       undefined,
       read,
     );
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(200);
+    expect(response.data).toMatchObject({
+      content: "# Guidance\nLatest guidance",
+      version: expect.stringMatching(/^r2v1\./),
+    });
     expect(JSON.stringify(response)).not.toContain("OldGuidanceMarker");
+    const operations = [
+      {
+        type: "replace_note",
+        path,
+        expected_version: response.data.version,
+        content: "# Guidance\nConfirmed update",
+      },
+    ];
+    const result = await mutate(operations);
+    expect(result.results[0].status).toBe("applied");
+    expect(
+      (await req("/agent-guidance/Notes%2FAGENTS.md", undefined, read)).data,
+    ).toMatchObject({
+      content: "# Guidance\nConfirmed update",
+      version: result.results[0].version,
+    });
   });
   it("keeps an ambiguous saved source blocked until its durable receipt can be acknowledged", async () => {
     const path = "Notes/D1-ack.md";

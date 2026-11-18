@@ -167,7 +167,12 @@ export async function prepareMutationBatch(
     };
     try {
       if (!allowed(op.path)) throw new MutationError("SOURCE_EXCLUDED");
-      if (context.sourceKind === "pcloud" && uploadKind(op.path) === "guidance")
+      if (
+        context.sourceKind === "pcloud" &&
+        uploadKind(op.path) === "guidance" &&
+        op.type !== "patch_note" &&
+        op.type !== "replace_note"
+      )
         throw new MutationError("SOURCE_WRITE_UNSUPPORTED");
       if (op.path.split("/").some((part) => part.startsWith(".")))
         throw new MutationError("SOURCE_EXCLUDED");
@@ -185,7 +190,12 @@ export async function prepareMutationBatch(
             : !note
       )
         throw new MutationError("SOURCE_EXCLUDED");
-      if (note) item.note_id = await noteIdFromPath(op.path);
+      // pCloud guidance is editable source text, but has no note/index identity.
+      if (
+        note &&
+        !(context.sourceKind === "pcloud" && uploadKind(op.path) === "guidance")
+      )
+        item.note_id = await noteIdFromPath(op.path);
       const creation =
         op.type === "create_note" ||
         (op.type === "upload_attachment" && !op.replace);
@@ -231,7 +241,7 @@ export async function prepareMutationBatch(
               : "replace",
         ...(expected ? { expected_version: expected } : {}),
         ...(bytes ? { bytes, size: bytes.length } : {}),
-        ...(note && bytes
+        ...(item.note_id && bytes
           ? {
               oversized_for_index:
                 bytes.length > MAX_MARKDOWN_SIZE_FOR_INDEXING,

@@ -78,6 +78,8 @@ MCPからMarkdownノートの追加・更新・削除と、添付ファイルの
 - #67でpCloudのMarkdown書き込みを明示的に有効化できる。#72でNode/Workersともdirectを明示選択できる。既定は書き込み無効、有効化後はreview。directでも`preview_changes({preview:false, operations})`でIDを発行し、同じ操作とIDで`apply_changes`を呼ぶ。認可・版確認・再送防止・クライアントの実行確認は維持する。版確認とprovider書き込みは非原子的であり、対象scopeへの書き込み元はvault-agentの1インスタンスに限定する。
 - Markdownの拡張子・添付の許可判定は既存の各sourceの取得ポリシーを再利用する。
   例外的なguidance取得許可を新たな編集権限へ自動転用しない。
+  #84では既存の許可範囲内の可視Markdown guidanceに限り、取得versionでpatch/replaceできる。
+  pCloudのguidance新規作成・削除は対象外。詳細は[guidance仕様](../phase-3.3-agent-guidance/requirements.md)。
 - ローカルへの変更を勝手にuploadせず、クラウドの変更を勝手にdownloadしない。
   Git syncの意味を変更せず、pushや競合の自動解決を追加しない。
 - 検索・relatedから本文取得や変更、LLM呼び出しを暗黙に実行しない。

@@ -92,7 +92,7 @@ export function previewMutationBatch(
     const item = batch.items[index]!;
     if (
       item.status !== "prepared" ||
-      !item.note_id ||
+      !["create_note", "replace_note", "patch_note"].includes(item.type) ||
       item.action === "delete" ||
       !item.bytes
     )

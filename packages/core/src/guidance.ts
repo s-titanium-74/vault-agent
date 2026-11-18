@@ -10,6 +10,8 @@ import {
   toVaultRelative,
   validateVaultPath,
 } from "./pathsafety.js";
+import { MutationFilesystem } from "./local/mutation-filesystem.js";
+import { vaultIdentity } from "./identifiers.js";
 import { RetrievalSizeError } from "./errors.js";
 
 export type GuidanceKind =
@@ -29,6 +31,7 @@ export interface AgentGuidanceListResult {
 }
 
 export interface AgentGuidanceRetrieveResult extends AgentGuidanceCandidate {
+  version: string;
   content: string;
   contentType: string;
 }
@@ -110,10 +113,19 @@ export function getAgentGuidance(
     );
   }
 
-  const content = fs.readFileSync(resolved, "utf-8");
+  const snapshot = new MutationFilesystem(
+    vaultRealPath,
+    vaultIdentity(path.resolve(vaultRoot)),
+  ).read(
+    candidate.path,
+    allowLarge ? Number.MAX_SAFE_INTEGER : DEFAULT_NOTE_RETRIEVAL_SIZE_LIMIT,
+  );
+  if (!snapshot) return null;
+  const content = Buffer.from(snapshot.bytes).toString("utf-8");
   return {
     ...candidate,
     content,
+    version: snapshot.version,
     contentType: getGuidanceContentType(candidate.path),
     size: Buffer.byteLength(content, "utf-8"),
   };

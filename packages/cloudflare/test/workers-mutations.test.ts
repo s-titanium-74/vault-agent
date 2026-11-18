@@ -146,6 +146,11 @@ beforeAll(async () => {
     "# Referrer\n[[Original]] ![[images/original.svg]]",
   );
   await bucket.put(prefix + "images/original.svg", "<svg>original</svg>");
+  await bucket.put(
+    prefix + "AGENTS.md",
+    "\ufeff# Synthetic guidance\r\nOriginal rule.",
+  );
+  await bucket.put(prefix + ".cursorrules", "Synthetic read-only rule");
   await publish();
 });
 afterAll(async () => mf?.dispose());
@@ -875,4 +880,84 @@ it("requires an existing D1 row for a legacy operation ID", async () => {
   const result = (await tool("apply_changes", args)).data;
   expect(result.results[0].status).toBe("applied");
   expect((await tool("apply_changes", args)).data).toEqual(result);
+});
+
+it("uses public guidance versions for safe patches, replacements and conflict rejection", async () => {
+  const original = (
+    await tool("vault_guidance_get", { path: "AGENTS.md" }, read)
+  ).data;
+  expect(original.version).toMatch(/^r2v1\./);
+  expect(original.content).toBe("\ufeff# Synthetic guidance\r\nOriginal rule.");
+  const operations = [
+    {
+      type: "patch_note",
+      path: "AGENTS.md",
+      expected_version: original.version,
+      replacements: [
+        {
+          match_type: "literal",
+          pattern: "Original rule.",
+          replacement: "Updated rule.",
+        },
+      ],
+    },
+  ];
+  expect(
+    (await tool("preview_changes", { operations }, read)).error,
+  ).toBeDefined();
+  const result = await mutate(operations);
+  expect(result.results[0].status).toBe("applied");
+  const saved = (await tool("vault_guidance_get", { path: "AGENTS.md" }, read))
+    .data;
+  expect(saved.content).toBe("\ufeff# Synthetic guidance\r\nUpdated rule.");
+  expect(saved.version).toBe(result.results[0].version);
+  const stale = (await tool("preview_changes", { operations })).data;
+  expect(stale.preview.results[0]).toMatchObject({
+    status: "failed",
+    code: "SOURCE_REVISION_MISMATCH",
+  });
+  const replacement = [
+    {
+      type: "replace_note",
+      path: "AGENTS.md",
+      expected_version: saved.version,
+      content: "# Replacement guidance",
+    },
+  ];
+  const plan = (await tool("preview_changes", { operations: replacement }))
+    .data;
+  await bucket.put(prefix + "AGENTS.md", "# External guidance change");
+  const conflict = (
+    await tool("apply_changes", {
+      operations: replacement,
+      operation_id: plan.operation_id,
+      preview_binding: plan.preview_binding,
+    })
+  ).data;
+  expect(conflict.results[0]).toMatchObject({
+    status: "failed",
+    code: "SOURCE_REVISION_MISMATCH",
+  });
+  const hidden = await tool(
+    "vault_guidance_get",
+    { path: ".cursorrules" },
+    read,
+  );
+  expect(hidden.data.content).toBe("Synthetic read-only rule");
+  const excluded = (
+    await tool("preview_changes", {
+      operations: [
+        {
+          type: "replace_note",
+          path: ".cursorrules",
+          expected_version: hidden.data.version,
+          content: "never",
+        },
+      ],
+    })
+  ).data;
+  expect(excluded.preview.results[0]).toMatchObject({
+    status: "failed",
+    code: "SOURCE_EXCLUDED",
+  });
 });
