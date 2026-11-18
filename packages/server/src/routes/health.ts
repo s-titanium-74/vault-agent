@@ -17,7 +17,7 @@ export function registerHealthRoute(app: FastifyInstance): void {
     return {
       data: {
         status: manifest ? (stale ? "degraded" : "ok") : "degraded",
-        version: "0.2.3",
+        version: "0.2.4",
         index: manifest
           ? {
               available: true,
