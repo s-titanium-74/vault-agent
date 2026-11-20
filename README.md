@@ -37,8 +37,7 @@ npm install -g @vault-agent/cli
 vault-agent --help
 ```
 
-The 0.2.5 npm packages are pending npm registry authentication. Use a source
-checkout or the versioned Docker image below for the 0.2.5 features.
+The CLI, core, and server npm packages are available at version 0.2.5.
 
 For local development from a source checkout:
 
