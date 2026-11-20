@@ -258,7 +258,8 @@ Phase 1 embedding provider authentication is out of scope.
 
 Embedding provider request timeout: 120 seconds.
 
-Embedding provider requests are not retried in Phase 1.
+Embedding provider requests are not retried for transient failures. The bounded
+input-limit recovery below applies only to confirmed input-size errors.
 
 Embedding generation uses batches of up to 32 input texts per provider request.
 
@@ -273,6 +274,49 @@ Embedding input text for each chunk is generated from:
 Arbitrary frontmatter fields are not included in embedding input text.
 
 Embedding input text is capped at 8,000 characters.
+
+### Bounded input-limit recovery (#90)
+
+Character counts do not guarantee token limits. The local OpenAI-compatible
+adapter recognizes only allowlisted input-limit error messages in bounded JSON
+error responses (HTTP 400/413). Other errors, including unrelated 400 responses,
+are not split or retried. Raw provider responses never escape the adapter.
+
+Keep the existing Markdown chunks, IDs, offsets, lexical text and retrieval
+content. First send the ordinary input batch. On a confirmed input-limit error,
+bisect a multi-input batch to isolate the rejected input. Bisect a rejected
+single input at Unicode code-point boundaries, without dropping or duplicating
+text, and process every part. Each original input still produces one vector:
+combine part vectors by their Unicode code-point lengths, then normalize the
+weighted mean to unit length. Apply the same recovery to query and related
+inputs. This preserves the model's vector space but is an approximation to a
+whole-input embedding; it does not promise identical semantic ranking.
+
+The splitting/aggregation policy lives in portable core; only error recognition
+and HTTP transport belong to the local provider adapter. Workers AI keeps its
+existing admission and failure policy until its adapter explicitly adopts this
+recovery. No tokenizer dependency or universal model token limit is introduced.
+Recovery requires a rejection: it cannot detect silent truncation by an endpoint
+that returns success. The request schema and existing application character cap
+remain unchanged; this change does not promise to disable provider truncation.
+
+Recovery is sequential, limited to six text-split levels and 128 HTTP attempts
+per original provider batch, including the first attempt. All attempts share a
+120-second deadline and honor cancellation. Empty/indivisible input, exhausted
+limits and invalid/zero aggregate vectors fail safely. Terminal size errors use
+`EMBEDDING_INPUT_TOO_LARGE`; deadlines use `EMBEDDING_TIMEOUT`. Required and
+optional indexing preserve their existing publication/fallback rules.
+
+Ordinary successful vectors and the exact embedding input remain unchanged.
+The existing `vault-agent-v1` input format and cache keys remain valid; already
+prepared inputs do not need regenerating. The fallback extends previously
+rejected inputs, and its complete aggregate is cached under the same exact-input
+identity. No index/schema migration or full rebuild is required: a regular
+index update retries pending embeddings. Successful original batches retain
+their durable checkpoints; unfinished recovery within a failed batch is retried
+on a later update. The six-level, length-weighted, unit-normalized recovery is
+the initial fallback policy; changing its vector semantics later requires an
+explicit cache/migration decision.
 
 Embedding vectors are stored as float32 vectors in `sqlite-vec` tables.
 
