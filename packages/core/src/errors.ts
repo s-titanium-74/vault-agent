@@ -54,6 +54,7 @@ export class RetrievalSizeError extends Error {
 
 const publicIndexCodes = new Set([
   "EMBEDDING_TIMEOUT",
+  "EMBEDDING_INPUT_TOO_LARGE",
   "EMBEDDING_FAILED",
   "EMBEDDING_UNAVAILABLE",
   "EMBEDDING_CONFIG_INVALID",

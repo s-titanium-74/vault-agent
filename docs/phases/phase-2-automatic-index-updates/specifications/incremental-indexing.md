@@ -193,12 +193,14 @@ embedding input. A dimension-discovery alias (the same descriptor with a null
 dimension) allows retries before any manifest has committed; it only discovers
 the dimension, and actual reuse still validates the dimension-specific key.
 Local update requests contain at most eight chunks (and respect provider limits).
-There is no automatic batch splitting or immediate retry after provider failure.
-The existing provider timeout and provider-wide maximum batch size are unchanged.
+Confirmed local input-limit failures use the bounded splitting policy in the
+[indexing specification](../../phase-1-retrieval-foundation/specifications/indexing.md#bounded-input-limit-recovery-90).
+Other provider failures are not immediately retried. The provider-wide maximum
+batch size remains unchanged; recovery shares the original request deadline.
 Cache data remains private derived data in the ignored index directory.
 
 Warnings and failed updates retain allowlisted public error codes, including
-EMBEDDING_TIMEOUT, EMBEDDING_FAILED and dimension/configuration errors. Unknown
+EMBEDDING_TIMEOUT, EMBEDDING_INPUT_TOO_LARGE, EMBEDDING_FAILED and dimension/configuration errors. Unknown
 errors use a generic code; provider messages and arbitrary error codes are never
 forwarded. Text freshness and embedding readiness are independent: a successful
 optional lexical update may be fresh while embeddings remain unavailable.

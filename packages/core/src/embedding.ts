@@ -9,7 +9,10 @@ import type {
   EmbeddingResponse,
   EmbeddingProviderContract,
 } from "./portable/contracts.js";
-import { EmbeddingProviderError } from "./portable/embedding.js";
+import {
+  EmbeddingProviderError,
+  embedWithInputSplitting,
+} from "./portable/embedding.js";
 export type { EmbeddingResponse } from "./portable/contracts.js";
 export { EmbeddingProviderError } from "./portable/embedding.js";
 
@@ -136,7 +139,30 @@ export class EmbeddingProvider implements EmbeddingProviderContract {
     let dimension = 0;
 
     for (const batch of batches) {
-      const response = await this.embedBatch(batch, options?.signal);
+      const controller = new AbortController();
+      const signal = options?.signal
+        ? AbortSignal.any([controller.signal, options.signal])
+        : controller.signal;
+      const timer = setTimeout(() => controller.abort(), this.timeout);
+      let response: EmbeddingResponse;
+      try {
+        response = await embedWithInputSplitting(
+          batch,
+          (inputs) => this.embedBatch(inputs, signal),
+          { signal },
+        );
+      } catch (error) {
+        options?.signal?.throwIfAborted();
+        if (controller.signal.aborted)
+          throw new EmbeddingProviderError(
+            "Embedding request deadline exceeded.",
+            undefined,
+            "EMBEDDING_TIMEOUT",
+          );
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
       if (
         dimension &&
         (dimension !== response.dimension || responseModel !== response.model)
@@ -183,10 +209,11 @@ export class EmbeddingProvider implements EmbeddingProviderContract {
       });
 
       if (!response.ok) {
-        await response.body?.cancel();
+        const inputLimit = await isInputLimitResponse(response);
         throw new EmbeddingProviderError(
           `Embedding provider returned HTTP ${response.status}.`,
           response.status,
+          inputLimit ? "EMBEDDING_INPUT_TOO_LARGE" : "EMBEDDING_FAILED",
         );
       }
 
@@ -252,6 +279,46 @@ export class EmbeddingProvider implements EmbeddingProviderContract {
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+}
+
+/** Read only a bounded error body and never expose provider text to callers. */
+async function isInputLimitResponse(response: Response): Promise<boolean> {
+  const reader = response.body?.getReader();
+  if (!reader) return false;
+  try {
+    if (response.status !== 400 && response.status !== 413) return false;
+    const parts: Uint8Array[] = [];
+    let size = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > 8192) return false;
+      parts.push(value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const part of parts) {
+      bytes.set(part, offset);
+      offset += part.length;
+    }
+    const data = JSON.parse(new TextDecoder().decode(bytes)) as {
+      error?: string | { message?: unknown };
+    };
+    const message =
+      typeof data?.error === "string" ? data.error : data?.error?.message;
+    return (
+      typeof message === "string" &&
+      (/^(?:the )?input length exceeds the context length\.?$/i.test(message) ||
+        /^input \(\d+ tokens\) is too large to process\. increase the physical batch size \(current batch size: \d+\)$/i.test(
+          message,
+        ))
+    );
+  } catch {
+    return false;
+  } finally {
+    await reader.cancel().catch(() => undefined);
   }
 }
 
