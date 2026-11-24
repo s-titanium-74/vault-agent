@@ -37,8 +37,6 @@ npm install -g @vault-agent/cli
 vault-agent --help
 ```
 
-The CLI, core, and server npm packages are available at version 0.2.6.
-
 For local development from a source checkout:
 
 ```bash
@@ -50,7 +48,7 @@ npx --no-install vault-agent --help
 Docker image:
 
 ```bash
-docker pull namka0703/vault-agent:0.2.6
+docker pull namka0703/vault-agent:0.2.7
 ```
 
 Docker usage is covered in the [setup guide](docs/setup-guide.md).
