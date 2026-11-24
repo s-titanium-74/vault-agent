@@ -5,8 +5,7 @@ import { IndexStore, getIndexPath } from "./index-store.js";
 import { validateVaultPath } from "./pathsafety.js";
 import { Config } from "./config.js";
 import { IndexResult } from "./types.js";
-import { resolveIndexDir } from "./paths.js";
-import { IndexError } from "./errors.js";
+import { acquireIndexLock } from "./local/index-lock.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,18 +17,12 @@ export async function indexVault(
   config: Config,
   options?: IndexOptions,
 ): Promise<IndexResult> {
-  const lockPath = getLockFilePath(config);
-  acquireLock(lockPath);
+  const dbPath = getIndexPath(config);
+  const releaseLock = acquireIndexLock(path.dirname(dbPath));
   try {
     const vaultRoot = config.vault.pcloud
       ? ""
       : validateVaultPath(config.vault.root);
-    const dbPath = getIndexPath(config);
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
     const store = await IndexStore.open(dbPath);
 
     try {
@@ -45,7 +38,7 @@ export async function indexVault(
       store.close();
     }
   } finally {
-    releaseLock(lockPath);
+    releaseLock();
   }
 }
 
@@ -53,19 +46,14 @@ export async function reindexVault(
   config: Config,
   options?: IndexOptions,
 ): Promise<IndexResult> {
-  const lockPath = getLockFilePath(config);
-  acquireLock(lockPath);
+  const dbPath = getIndexPath(config);
+  const dir = path.dirname(dbPath);
+  const releaseLock = acquireIndexLock(dir);
   try {
     const vaultRoot = config.vault.pcloud
       ? ""
       : validateVaultPath(config.vault.root);
-    const dbPath = getIndexPath(config);
     const { indexPath, tmpPath } = getReindexPaths(dbPath);
-
-    const dir = path.dirname(indexPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
 
     const tmpStore = await IndexStore.open(tmpPath);
 
@@ -123,7 +111,7 @@ export async function reindexVault(
 
     return result;
   } finally {
-    releaseLock(lockPath);
+    releaseLock();
   }
 }
 
@@ -135,56 +123,4 @@ function getReindexPaths(dbPath: string): {
     indexPath: dbPath,
     tmpPath: dbPath.replace("index.sqlite", "index.tmp.sqlite"),
   };
-}
-
-function getLockFilePath(config: Config): string {
-  const vid = configuredVaultIdentity(config);
-  const indexDir = resolveIndexDir(config.index.dir || undefined);
-  return path.join(indexDir, vid, "index.lock");
-}
-
-function acquireLock(lockPath: string): void {
-  if (fs.existsSync(lockPath)) {
-    try {
-      const content = fs.readFileSync(lockPath, "utf-8");
-      const data = JSON.parse(content) as { pid: number; timestamp: number };
-      if (isProcessRunning(data.pid)) {
-        throw new IndexError(
-          "INDEX_BUSY",
-          `Index is already being built by process ${data.pid}`,
-          { pid: data.pid },
-        );
-      }
-    } catch (e) {
-      if (e instanceof IndexError) throw e;
-    }
-    fs.unlinkSync(lockPath);
-  }
-
-  const dir = path.dirname(lockPath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-
-  fs.writeFileSync(
-    lockPath,
-    JSON.stringify({ pid: process.pid, timestamp: Date.now() }),
-  );
-}
-
-function releaseLock(lockPath: string): void {
-  try {
-    if (fs.existsSync(lockPath)) {
-      fs.unlinkSync(lockPath);
-    }
-  } catch {}
-}
-
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
 }
