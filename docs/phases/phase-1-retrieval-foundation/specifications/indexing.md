@@ -409,3 +409,29 @@ Concurrent `index` or `reindex` requests for the same vault identity return `409
 When full reindex is running and a previous usable index exists, search and retrieval continue using the previous index until the rebuilt index is swapped into place.
 
 Indexing uses a vault-identity-scoped lock file to prevent concurrent indexing for the same vault from multiple server or CLI processes.
+
+### Recovering a lock after PID reuse (#94)
+
+Local `index` and `reindex` hold a non-waiting SQLite writer lock on a separate
+`index-lock.sqlite` connection from admission through cleanup. This serializes
+inspection, replacement, and removal of `index.lock` across processes and keeps
+the lock independent of the active index and full-rebuild swap. The lock database
+stays in place after release. A crashed process releases the SQLite lock, and the
+next writer checks the remaining owner record before proceeding.
+
+The owner record stores the writer's PID and timestamp. When available on Linux,
+it also stores the kernel boot ID, PID namespace, time namespace where supported,
+and process start time in kernel clock ticks. On the same host a changed boot ID
+proves the owner exited. Within the same boot and PID namespace, a missing PID
+proves that the owner exited. Start times are compared within the same time
+namespace because Linux applies its clock offset to the reported value. A
+different start time proves PID reuse. For legacy records and writers without a
+start identity, only a definitive missing-process result (`ESRCH`) permits recovery.
+Lock age alone never permits recovery. A live or uncertain owner (including
+permission failures, unreadable identity, and malformed records) returns
+`INDEX_BUSY` and its record is preserved. Replacements are published atomically.
+
+Use the index directory on a single host, with legacy or unidentified writers
+in the same PID namespace. Stop older writers before upgrading or downgrading.
+If an uncertain record requires manual recovery, stop all writers before
+removing `index.lock`. No index rebuild is required for this lock change.

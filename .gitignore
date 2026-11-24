@@ -3,6 +3,9 @@ dist/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+index-lock.sqlite-journal
+index.lock
+index.lock.tmp
 .vault-agent-mutation-*.tmp
 .env
 coverage/
